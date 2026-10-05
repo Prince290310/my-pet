@@ -43,6 +43,7 @@ Shadow appears just above your taskbar, and a small panther-head icon shows up i
 | Mouse comes near a sleeping Shadow | Wakes up with a stretch |
 | Every 20–40 min | Says a random idle quip (unless muted) |
 | Reminder time | Walks to the centre-bottom of the screen, plays the alert animation, shows the message until you click it |
+| Google Calendar event coming up | Same reminder: 10 min before ("in 10 mins") and when it starts (see section 8) |
 
 Clicks on the **transparent** parts of Shadow's window pass straight through to whatever is behind it.
 Only the panther itself (and its speech bubble) catch the mouse.
@@ -60,7 +61,8 @@ Only the panther itself (and its speech bubble) catch the mouse.
 ### Settings window
 
 Pet name · size · quip frequency (every _X_ to _Y_ minutes) · sleep timeout · mute quips ·
-start with Windows · **AI Brain** (chat provider, API key, model, and a **Test Brain** button).
+start with Windows · **Google Calendar** (secret iCal link, minutes-before, **Test Link** button) ·
+**AI Brain** (chat provider, API key, model, and a **Test Brain** button).
 
 Settings are saved to `%APPDATA%\Shadow\settings.json`. That's deliberately *outside* the project
 folder, so an API key never lands in your code.
@@ -146,11 +148,12 @@ Windows SmartScreen may warn "unknown publisher" because the installer isn't cod
 npm test
 ```
 
-Runs 117 automated end-to-end checks against the real app (~1.5 min) in a **throw-away profile**.
+Runs 139 automated end-to-end checks against the real app (~1.5 min) in a **throw-away profile**.
 Your settings, config and Start-with-Windows setting are never touched. The checks cover window
 properties, every animation frame, click-through hit-testing, click/double-click/Ctrl+Click, dragging and
 clamping, wandering and pouncing, sleep and wake, the right-click menu, the chat → `askPet()` round trip,
-the quips, reminders (fire, hot-reload, broken JSON), every tray item, the settings window, no network
+the quips, reminders (fire, hot-reload, broken JSON), Google Calendar reminders (against a fake local
+calendar server), every tray item, the settings window, no network
 requests, and low CPU. While it runs, the test panther ignores your real mouse.
 
 Dev helpers:
@@ -180,6 +183,7 @@ main/            Electron main process
   petWindow.js     transparent click-through window, screen bounds, multi-monitor
   config.js        quips/reminders/personality loading + live reload
   reminders.js     reminder clock
+  calendar.js      Google Calendar reminders (reads the secret iCal link)
   settings.js      settings.json load/validate/save
   tray.js          tray icon + menu
   windows.js       chat panel + settings window
@@ -255,3 +259,52 @@ All AI code lives in [`main/ai.js`](main/ai.js):
   OpenAI-compatible, that's all it takes.
 
 After changing providers or code, `npm run build` makes a new installer with the brain included.
+
+---
+
+## 8. Google Calendar reminders
+
+Shadow can read your Google Calendar and remind you before each event, using the same walk-to-centre,
+alert, sticky-bubble reminder as `reminders.json`.
+
+### Connect it (one time, about 2 minutes)
+
+1. Open **Settings → Google Calendar** and click **OPEN GOOGLE CALENDAR SETTINGS** (or go to
+   calendar.google.com → ⚙ → **Settings**).
+2. On the left, under **Settings for my calendars**, click your calendar, then **Integrate calendar**.
+3. Copy the **Secret address in iCal format** (it ends in `basic.ics`). This is *not* the "Public address".
+4. Paste it into **Secret iCal address**, click **TEST LINK** (it should say ✓ Works! and show your next
+   event), then **SAVE**.
+
+Have more than one calendar? Each Google calendar has its own secret address. Shadow reads one, usually
+your main one.
+
+### What Shadow does
+
+| When | Shadow says |
+| --- | --- |
+| 10 min before (change it in Settings; 0 = off) | ⏰ Prince! "Maths class" in 10 mins (Room 4) |
+| When it starts (tick box in Settings) | ⏰ Prince! "Maths class" is starting now |
+| All-day events, at 9:00 that day | ⏰ Today: "Mom's birthday" 📅 |
+
+- Repeating events, events you moved or deleted once, and time zones are handled. Cancelled events and
+  invitations you said **No** to are skipped.
+- Click the bubble to dismiss it, like any reminder.
+- If the PC was asleep and wakes up just before an event, you still get a reminder ("in 3 mins"). Events
+  that already started more than 5 minutes ago stay quiet.
+
+### Good to know
+
+- **Read-only.** Shadow can only *read* your calendar. It can't change or add anything.
+- **The link is a secret.** Anyone who has it can see your events. Shadow keeps it in
+  `%APPDATA%\Shadow\settings.json` on this PC only (never in the project folder, never in logs). If it ever
+  leaks, click **Reset** next to the secret address in Google Calendar and paste the new one.
+- **Checks every 5 minutes**, so a brand-new event can take a few minutes to show up. Google itself
+  sometimes takes a bit longer to update the link.
+- **Needs internet to check.** The next 2 weeks of events are cached in
+  `%APPDATA%\Shadow\calendar-cache.json`, so reminders keep working offline and after a restart.
+- **Shadow has to be running.** Turn on **Start with Windows** so you never miss one.
+- No link = calendar off, and Shadow makes no calendar requests at all.
+
+The code is in [`main/calendar.js`](main/calendar.js). It works with any iCal link, so an Outlook or
+Apple calendar's published `.ics` link works too.

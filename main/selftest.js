@@ -11,6 +11,7 @@
 const { app, session } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const { validate: validateSettings } = require('./settings');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function waitFor(fn, timeout = 5000, every = 50) {
@@ -553,6 +554,120 @@ async function run(ctx, h) {
     tr = await t({});
     check('AI server unreachable -> friendly line, no crash', !tr.ok && tr.kind === 'offline', tr.message);
     settings.update({ aiProvider: 'gemini', aiModel: '', aiBaseUrl: '', apiKeys: {} });
+
+    section('Google Calendar (fake local calendar server - no real account)');
+    const cal = ctx.calendar;
+    const calHits = [];
+    const icsTime = (ms) => new Date(ms).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+    const pad2 = (n) => String(n).padStart(2, '0');
+    const today = new Date();
+    const todayDate = `${today.getFullYear()}${pad2(today.getMonth() + 1)}${pad2(today.getDate())}`;
+    const soon = Date.now() + 9.5 * 60 * 1000; // a class starting in 9.5 minutes
+    const calServer = http.createServer((req, res) => {
+      calHits.push(req.url);
+      if (req.url === '/missing.ics') {
+        res.writeHead(404);
+        return res.end('Not Found');
+      }
+      if (req.url === '/page.html') {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        return res.end('<html>not a calendar</html>');
+      }
+      res.writeHead(200, { 'Content-Type': 'text/calendar' });
+      res.end(
+        [
+          'BEGIN:VCALENDAR',
+          'VERSION:2.0',
+          'BEGIN:VEVENT',
+          `DTSTART:${icsTime(soon)}`,
+          'UID:class@test',
+          'SUMMARY:Self-test class',
+          'LOCATION:Room 4',
+          'END:VEVENT',
+          'BEGIN:VEVENT',
+          `DTSTART;VALUE=DATE:${todayDate}`,
+          'UID:allday@test',
+          'SUMMARY:Self-test holiday',
+          'END:VEVENT',
+          'BEGIN:VEVENT',
+          `DTSTART:${icsTime(soon + 60 * 60 * 1000)}`,
+          'UID:cancelled@test',
+          'STATUS:CANCELLED',
+          'SUMMARY:Cancelled thing',
+          'END:VEVENT',
+          'END:VCALENDAR',
+        ].join('\r\n')
+      );
+    });
+    await new Promise((r) => calServer.listen(0, '127.0.0.1', r));
+    const calBase = `http://127.0.0.1:${calServer.address().port}`;
+    check('no calendar link -> calendar off, no requests', !cal.status().configured && calHits.length === 0);
+    let ct = await cal.test(`${calBase}/missing.ics`);
+    check('Test link: wrong/old link -> friendly line', !ct.ok && ct.kind === 'not-found' && ct.message.includes("doesn't exist"), ct.message);
+    ct = await cal.test(`${calBase}/page.html`);
+    check('Test link: not a calendar -> friendly line', !ct.ok && ct.kind === 'not-ical', ct.message);
+    ct = await cal.test('http://127.0.0.1:9/cal.ics');
+    check('Test link: offline -> friendly line', !ct.ok && ct.kind === 'offline', ct.message);
+    ct = await cal.test('ftp://example.com/cal.ics');
+    check('Test link: not a web link -> friendly line', !ct.ok && ct.kind === 'bad-url', ct.message);
+    ct = await cal.test(`${calBase}/basic.ics`);
+    check('Test link: works and finds the next event', ct.ok && ct.next && ['Self-test class', 'Self-test holiday'].includes(ct.next.title), JSON.stringify(ct));
+    check('settings rejects non-https links', validateSettings({ calendarUrl: 'http://example.com/a.ics' }).calendarUrl === '');
+    check('settings turns webcal:// into https://', validateSettings({ calendarUrl: 'webcal://calendar.google.com/a.ics' }).calendarUrl === 'https://calendar.google.com/a.ics');
+
+    quiet();
+    brain.rest(60000);
+    const calFired = [];
+    const onCalFire = (r) => calFired.push(r);
+    cal.on('fire', onCalFire);
+    settings.update({ calendarUrl: `${calBase}/basic.ics`, calendarLeadMinutes: 10, calendarAtStart: true });
+    const st = await cal.sync();
+    check('calendar syncs (cancelled events skipped)', st.configured && !st.error && st.count === 2, JSON.stringify(st));
+    await waitFor(() => calFired.length > 0, 2000);
+    const leadMsg = calFired.find((r) => r.message.includes('Self-test class'));
+    check('10 min before -> "in 10 mins" reminder', leadMsg && leadMsg.message === 'Prince! "Self-test class" in 10 mins (Room 4)', leadMsg && leadMsg.message);
+    await waitFor(() => brain.state === 'reminder', 9000);
+    check('calendar reminder uses the reminder bubble + alert animation', brain.state === 'reminder' && brain.anim === 'alert' && brain.bubble.text.includes('Self-test class'), brain.bubble && brain.bubble.text);
+    check('calendar reminder fires only once', cal.check().filter((r) => r.message.includes('in 10')).length === 0);
+    const nowFire = cal.check(soon + 1000);
+    check('at start time -> "starting now" reminder', nowFire.length === 1 && nowFire[0].message.includes('is starting now'), nowFire.map((r) => r.message).join(' | '));
+    check('started long ago -> stays quiet', cal.check(soon + 30 * 60 * 1000).length === 0);
+    const nine = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 9, 0, 0).getTime();
+    const dayFire = [...calFired, ...cal.check(nine)].filter((r) => r.message.includes('holiday')); // fires during sync if it's past 9 already
+    check('all-day event -> one heads-up at 9:00', dayFire.length === 1 && dayFire[0].message === 'Today: "Self-test holiday" 📅', dayFire.map((r) => r.message).join(' | '));
+    cal.off('fire', onCalFire);
+    for (let k = 0; k < 6 && brain.activeReminder; k++) {
+      brain.dismissReminder();
+      await waitFor(() => !brain.activeReminder || brain.state === 'reminder', 9000);
+    }
+    await waitFor(() => !brain.activeReminder, 4000);
+    check('calendar reminders dismissed, back to normal', !brain.activeReminder);
+    const { CalendarSync } = require('./calendar');
+    const fromCache = new CalendarSync({ settings, cacheFile: cal.cacheFile });
+    check('events cached for offline restarts', fromCache.upcoming.length === 2);
+    const cacheText = fs.readFileSync(cal.cacheFile, 'utf8');
+    check('secret link is not stored in the cache', !cacheText.includes(calBase) && !cacheText.includes('basic.ics'));
+
+    h.openSettings();
+    const sw3 = await waitFor(() => require('./windows').getSettingsWindow(), 3000);
+    await waitFor(() => js('document.getElementById("calendarUrl").value.length > 0', sw3.webContents), 3000);
+    const calUi = await js(`(async () => { document.getElementById('testCal').click();
+      for (let k = 0; k < 80 && !/Works|✗/.test(document.getElementById('calResult').textContent); k++) await new Promise(r => setTimeout(r, 50));
+      document.querySelector('.calendar').scrollIntoView();
+      return { result: document.getElementById('calResult').textContent, status: document.getElementById('calStatus').textContent,
+        hidden: document.getElementById('calendarUrl').type === 'password', lead: document.getElementById('calendarLeadMinutes').value }; })()`, sw3.webContents);
+    check('Settings shows the calendar is connected', calUi.status.includes('Connected') && calUi.status.includes('2 events'), calUi.status);
+    check('Settings "Test link" button works', calUi.result.includes('Works! 2 events'), calUi.result);
+    check('calendar link is hidden like a password', calUi.hidden && calUi.lead === '10');
+    await sleep(400);
+    await shot('settings-calendar', sw3.webContents);
+    sw3.close();
+    settings.update({ calendarUrl: '' });
+    await cal.sync();
+    const hitsAfterOff = calHits.length;
+    await cal.sync();
+    check('removing the link switches the calendar off', !cal.status().configured && cal.upcoming.length === 0 && calHits.length === hitsAfterOff);
+    await new Promise((r) => calServer.close(r));
 
     section('Offline & performance');
     await sleep(500);

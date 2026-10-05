@@ -58,6 +58,36 @@
         <label class="check"><input id="startWithWindows" type="checkbox" /><i></i>Start with Windows</label>
       </section>
 
+      <section class="calendar">
+        <h2>Google Calendar</h2>
+        <p class="note">
+          Shadow reminds you before your events. Paste your calendar's <b>Secret address in iCal format</b>:
+          Google Calendar → ⚙ Settings → click your calendar on the left → <b>Integrate calendar</b>.
+        </p>
+        <button type="button" id="openGcal" class="ghost">OPEN GOOGLE CALENDAR SETTINGS ↗</button>
+        <label class="field">
+          <span>Secret iCal address</span>
+          <div class="inline">
+            <input id="calendarUrl" type="password" placeholder="https://calendar.google.com/calendar/ical/…/basic.ics" spellcheck="false" />
+            <button type="button" id="revealCal" class="ghost">SHOW</button>
+          </div>
+        </label>
+        <div class="field">
+          <span>Remind me</span>
+          <div class="inline">
+            <input id="calendarLeadMinutes" type="number" min="0" max="1440" required />
+            <em>minutes before each event (0 = no early heads-up)</em>
+          </div>
+        </div>
+        <label class="check"><input id="calendarAtStart" type="checkbox" /><i></i>Also remind me when it starts</label>
+        <div class="inline">
+          <button type="button" id="testCal" class="ghost">TEST LINK</button>
+          <span id="calResult" class="test-result" role="status"></span>
+        </div>
+        <p class="note" id="calStatus"></p>
+        <p class="note">Treat this link like a password. It stays on this PC, and Shadow can only read your calendar, never change it.</p>
+      </section>
+
       <section class="brain">
         <h2>AI Brain <span class="badge">free options</span></h2>
         <label class="field">

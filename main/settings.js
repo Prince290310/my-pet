@@ -5,6 +5,7 @@ const { EventEmitter } = require('events');
 const fs = require('fs');
 const path = require('path');
 const { PROVIDERS, DEFAULT_PROVIDER } = require('./ai');
+const { cleanCalendarUrl } = require('./calendar');
 
 const DEFAULTS = Object.freeze({
   petName: 'Shadow',
@@ -17,6 +18,9 @@ const DEFAULTS = Object.freeze({
   aiModel: '', // blank = the provider's recommended model
   aiBaseUrl: '', // custom/ollama only; blank = default
   apiKeys: {}, // one key per provider, e.g. { gemini: '...' }
+  calendarUrl: '', // Google Calendar "Secret address in iCal format" (blank = calendar off)
+  calendarLeadMinutes: 10, // heads-up this many minutes before each event (0 = off)
+  calendarAtStart: true, // also remind when the event starts
   position: null, // last pet position {x, y}
 });
 
@@ -56,6 +60,9 @@ function validate(raw) {
     aiModel: typeof s.aiModel === 'string' ? s.aiModel.trim().slice(0, 120) : '',
     aiBaseUrl: cleanUrl(s.aiBaseUrl),
     apiKeys: {},
+    calendarUrl: cleanCalendarUrl(s.calendarUrl),
+    calendarLeadMinutes: int(s.calendarLeadMinutes, 0, 1440, DEFAULTS.calendarLeadMinutes),
+    calendarAtStart: s.calendarAtStart === undefined ? DEFAULTS.calendarAtStart : Boolean(s.calendarAtStart),
     position:
       s.position && Number.isFinite(s.position.x) && Number.isFinite(s.position.y)
         ? { x: Math.round(s.position.x), y: Math.round(s.position.y) }

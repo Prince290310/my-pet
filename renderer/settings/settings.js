@@ -9,6 +9,7 @@ let statusTimer = null;
 let providers = [];
 let keys = {};
 let currentProvider = 'gemini';
+const GCAL_SETTINGS_URL = 'https://calendar.google.com/calendar/r/settings';
 
 function setStatus(text, error = false) {
   status.textContent = text;
@@ -42,7 +43,40 @@ function showProvider(id) {
   $('testResult').className = 'test-result';
 }
 
-function fill({ settings: s, providers: list, startWithWindows, configDir }) {
+function when(ms, allDay) {
+  const d = new Date(ms);
+  const today = new Date();
+  const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+  const day =
+    d.toDateString() === today.toDateString()
+      ? 'today'
+      : d.toDateString() === tomorrow.toDateString()
+        ? 'tomorrow'
+        : d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+  return allDay ? `${day} (all day)` : `${day} ${d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
+}
+
+function showCalendarStatus(c) {
+  const el = $('calStatus');
+  el.classList.remove('bad');
+  if (!c || !c.configured) {
+    el.textContent = 'Not connected yet.';
+    return;
+  }
+  if (c.error) {
+    el.classList.add('bad');
+    el.textContent = `⚠ ${c.error}${c.lastSync ? ` (using events from ${when(c.lastSync)})` : ''}`;
+    return;
+  }
+  if (!c.lastSync) {
+    el.textContent = 'Connecting…';
+    return;
+  }
+  const next = c.next ? ` Next: "${c.next.title}" ${when(c.next.start, c.next.allDay)}.` : ' Nothing coming up in the next 2 weeks.';
+  el.textContent = `✓ Connected, checked ${when(c.lastSync)}. ${c.count} event${c.count === 1 ? '' : 's'} in the next 2 weeks.${next}`;
+}
+
+function fill({ settings: s, providers: list, startWithWindows, configDir, calendar }) {
   $('petName').value = s.petName;
   form.querySelectorAll('input[name="scale"]').forEach((r) => (r.checked = Number(r.value) === s.scale));
   $('quipMinMinutes').value = s.quipMinMinutes;
@@ -51,6 +85,10 @@ function fill({ settings: s, providers: list, startWithWindows, configDir }) {
   $('muteQuips').checked = s.muteQuips;
   $('startWithWindows').checked = startWithWindows;
   $('configDir').textContent = configDir;
+  $('calendarUrl').value = s.calendarUrl;
+  $('calendarLeadMinutes').value = s.calendarLeadMinutes;
+  $('calendarAtStart').checked = s.calendarAtStart;
+  showCalendarStatus(calendar);
 
   providers = list;
   keys = { ...s.apiKeys };
@@ -116,6 +154,8 @@ form.addEventListener('submit', async (e) => {
   const max = Number($('quipMaxMinutes').value);
   if (max < min) return setStatus('"to" must be ≥ "every" minutes', true);
   const brain = brainForm();
+  const calUrl = $('calendarUrl').value.trim();
+  setStatus(calUrl ? 'Saving…' : '');
   try {
     const saved = await window.settingsApi.save({
       petName: $('petName').value,
@@ -129,8 +169,12 @@ form.addEventListener('submit', async (e) => {
       aiModel: brain.model,
       aiBaseUrl: brain.baseUrl,
       apiKeys: keys,
+      calendarUrl: calUrl,
+      calendarLeadMinutes: Number($('calendarLeadMinutes').value),
+      calendarAtStart: $('calendarAtStart').checked,
     });
     fill(saved);
+    if (calUrl && !saved.settings.calendarUrl) return setStatus('Saved, but that calendar link is not valid', true);
     setStatus('Saved ✓');
   } catch (err) {
     setStatus(`Could not save: ${err.message}`, true);
@@ -142,6 +186,35 @@ $('reveal').addEventListener('click', () => {
   const show = k.type === 'password';
   k.type = show ? 'text' : 'password';
   $('reveal').textContent = show ? 'HIDE' : 'SHOW';
+});
+
+$('openGcal').addEventListener('click', () => window.settingsApi.openLink(GCAL_SETTINGS_URL));
+
+$('revealCal').addEventListener('click', () => {
+  const k = $('calendarUrl');
+  const show = k.type === 'password';
+  k.type = show ? 'text' : 'password';
+  $('revealCal').textContent = show ? 'HIDE' : 'SHOW';
+});
+
+$('testCal').addEventListener('click', async () => {
+  const out = $('calResult');
+  const btn = $('testCal');
+  btn.disabled = true;
+  out.className = 'test-result';
+  out.textContent = 'Checking…';
+  try {
+    const r = await window.settingsApi.testCalendar($('calendarUrl').value.trim());
+    out.classList.add(r.ok ? 'ok' : 'bad');
+    if (!r.ok) out.textContent = `✗ ${r.message}`;
+    else if (!r.next) out.textContent = '✓ Works! Nothing on your calendar in the next 2 weeks.';
+    else out.textContent = `✓ Works! ${r.count} event${r.count === 1 ? '' : 's'} soon. Next: "${r.next.title}" ${when(r.next.start, r.next.allDay)}. Hit SAVE to switch it on.`;
+  } catch (err) {
+    out.classList.add('bad');
+    out.textContent = `✗ ${err.message}`;
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 $('openConfig').addEventListener('click', () => window.settingsApi.openConfigFolder());

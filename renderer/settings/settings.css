@@ -134,6 +134,15 @@ select:focus {
 #getKey {
   margin: 0 0 14px;
 }
+#openGcal {
+  margin: 2px 0 14px;
+}
+.note b {
+  color: var(--ink);
+}
+#calStatus.bad {
+  color: #ff6f91;
+}
 .hidden {
   display: none !important;
 }

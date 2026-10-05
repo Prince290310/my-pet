@@ -1,7 +1,7 @@
 'use strict';
 /*
- * Shadow - desktop pet (Phase 1, fully offline).
- * Main process entry: creates the pet window, brain, tray, reminders and IPC wiring.
+ * Shadow - desktop pet.
+ * Main process entry: creates the pet window, brain, tray, reminders, calendar and IPC wiring.
  */
 
 const { app, ipcMain, screen, Menu, shell, nativeTheme, powerMonitor } = require('electron');
@@ -22,6 +22,7 @@ const paths = require('./paths');
 const { Settings } = require('./settings');
 const { ConfigStore } = require('./config');
 const { ReminderScheduler } = require('./reminders');
+const { CalendarSync, GCAL_SETTINGS_URL } = require('./calendar');
 const { PetWindow } = require('./petWindow');
 const { Brain } = require('./brain');
 const { createTray } = require('./tray');
@@ -98,6 +99,7 @@ function settingsPayload() {
   return {
     settings: s,
     providers: ai.publicProviders(),
+    calendar: ctx.calendar ? ctx.calendar.status() : null,
     startWithWindows: ctx.loginItem.get(),
     configDir: paths.configDir(),
     settingsFile: paths.settingsFile(),
@@ -272,10 +274,12 @@ function init() {
     for (const k of ['model', 'baseUrl', 'apiKey']) if (typeof form[k] === 'string') over[k] = form[k].slice(0, 500);
     return ai.testConnection(aiContext(over));
   });
-  // "Get a free key" buttons: only ever open the providers' own pages
+  // "Get a free key" / "Open Google Calendar settings" buttons: only ever open these known pages
   ipcMain.on('settings:open-link', (_e, url) => {
-    if (ai.publicProviders().some((p) => p.keyUrl && p.keyUrl === url)) shell.openExternal(url);
+    if (url === GCAL_SETTINGS_URL || ai.publicProviders().some((p) => p.keyUrl && p.keyUrl === url)) shell.openExternal(url);
   });
+  ipcMain.handle('calendar:test', (_e, url) => ctx.calendar.test(typeof url === 'string' ? url.slice(0, 1000) : ''));
+  ipcMain.handle('calendar:sync', () => ctx.calendar.sync());
   ipcMain.on('chat:close', () => {
     const w = getChatWindow();
     if (w) w.close();
@@ -283,10 +287,12 @@ function init() {
 
   // settings window
   ipcMain.handle('settings:load', () => settingsPayload());
-  ipcMain.handle('settings:save', (_e, patch = {}) => {
-    const allowed = ['petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys'];
+  ipcMain.handle('settings:save', async (_e, patch = {}) => {
+    const allowed = ['petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart'];
     const clean = Object.fromEntries(Object.entries(patch).filter(([k]) => allowed.includes(k)));
+    const before = settings.get('calendarUrl');
     settings.update(clean);
+    if (settings.get('calendarUrl') !== before) await ctx.calendar.sync(); // so Settings shows the new status
     if (typeof patch.startWithWindows === 'boolean' && patch.startWithWindows !== ctx.loginItem.get()) {
       ctx.loginItem.set(patch.startWithWindows);
       ctx.trayCtl.rebuild();
@@ -318,7 +324,20 @@ function init() {
     brain.reminder(r);
   });
   reminders.start();
-  powerMonitor.on('resume', () => reminders.check());
+
+  // Google Calendar -> the same reminder bubbles
+  const calendar = (ctx.calendar = new CalendarSync({ settings, cacheFile: path.join(app.getPath('userData'), 'calendar-cache.json') }));
+  calendar.on('fire', (r) => {
+    console.log(`[calendar] ${r.time} reminder`); // titles stay out of the log
+    brain.reminder(r);
+  });
+  calendar.start();
+
+  powerMonitor.on('resume', () => {
+    reminders.check();
+    calendar.check();
+    calendar.sync();
+  });
 
   const onDisplays = () => {
     brain.displaysChanged();
@@ -360,7 +379,7 @@ if (!SELF_TEST && !app.requestSingleInstanceLock()) {
     /* keep running in the tray */
   });
   app.on('before-quit', () => {
-    const { brain, config, reminders } = ctx;
+    const { brain, config, reminders, calendar } = ctx;
     try {
       if (brain && !['off', 'hidden'].includes(brain.state)) brain.savePosition();
     } catch {
@@ -369,6 +388,7 @@ if (!SELF_TEST && !app.requestSingleInstanceLock()) {
     if (brain) brain.stop();
     if (config) config.stop();
     if (reminders) reminders.stop();
+    if (calendar) calendar.stop();
   });
 }
 
