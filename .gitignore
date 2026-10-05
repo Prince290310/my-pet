@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.log
+
+# local tool data
+.claude/
+
+# separate project that lives in this folder - not part of Shadow
+spotify-assistant/

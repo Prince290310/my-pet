@@ -1,0 +1,87 @@
+{
+  "_help": "Shadow's lines, grouped by category. Add/edit/remove lines freely - the app reloads this file the moment you save. {name} becomes the pet's name from Settings. Categories: greetings (single-click), idle (random every 20-40 min), wakeup, sleepy, happy (double-click), drag, reminderDone.",
+
+  "greetings": [
+    "Arre Prince! Finally you noticed me. 😼",
+    "Yes, Prince? Your panther is listening.",
+    "Prince! Kya scene hai? I'm on patrol, as usual.",
+    "{name} reporting for duty, Prince.",
+    "Poke me again and I'm charging consultation fees. Kidding. Mostly.",
+    "Haan bolo, Prince. Main sun raha hoon.",
+    "Need something? I've been guarding this taskbar like a legend.",
+    "Oh, it's you. My favourite human. Don't tell the others.",
+    "Prince, you look busy. Should I be impressed or worried?",
+    "Kya hua? Missing me already?",
+    "At your service. Within reason. And snack availability.",
+    "Present, sir! Sleek, black, and fully loaded."
+  ],
+
+  "idle": [
+    "Prince, paani piya? Hydrate karo, founder saab.",
+    "Posture check! Sit straight, Prince. I'm watching. 👀",
+    "Fun fact: panthers are just leopards with better fashion sense.",
+    "Students ko padhana, startup chalana... aur mujhe ignore karna. Classic Prince.",
+    "Remember to stretch. Learn from the master. 🐾",
+    "I'd help with that spreadsheet, but... paws.",
+    "Chai break? I'll guard the laptop. Promise.",
+    "Bas thoda sa aur kaam, then rest. Deal, Prince?",
+    "Don't worry, nothing gets past me. Not even that cursor.",
+    "Mumbai traffic se toh behtar hai ye taskbar. Smooth ride.",
+    "You've got this, Prince. Big founder energy today.",
+    "Eyes off the screen for 20 seconds. Look far away. Panther's orders.",
+    "Patrolled for hours. Zero intruders. You're welcome.",
+    "Pro tip: close a few tabs. Even I can hear the RAM crying.",
+    "Dimaag garam? Deep breath. In... out... Nice.",
+    "If anyone bugs you, just say the word. I have claws.",
+    "Your to-do list called. I told it you're handling it. You are, right?",
+    "{name} fact #47: I'm always the coolest one in the room.",
+    "Teaching, building, hustling... proud of you, Prince. Don't make it weird.",
+    "Ek kaam karo, phone side mein rakho. Focus mode: on."
+  ],
+
+  "wakeup": [
+    "Mmm... Prince? I wasn't sleeping. I was resting my eyes on patrol.",
+    "*yaaawn* Okay okay, I'm up. Kya miss kiya?",
+    "Who dares wake the panther? Oh. It's you. Fine.",
+    "Power nap complete. Battery: 100%. Attitude: also 100%.",
+    "Uth gaya, uth gaya. Back on duty, Prince.",
+    "I dreamt I caught the mouse cursor. Today might be the day.",
+    "Ahh, that stretch. Okay, what did I miss?",
+    "Good timing, Prince. I was about to wake up anyway. Obviously."
+  ],
+
+  "sleepy": [
+    "You've gone quiet, Prince... I'll just close my eyes for a sec...",
+    "Nobody's moving... perfect time for a panther nap. Zzz...",
+    "Thoda sa so jaata hoon. Wake me if there's trouble.",
+    "Guard mode: dreams. Zzz...",
+    "Need me? Just bring the mouse close. I'll know.",
+    "Too quiet... nap time. Don't steal my spot."
+  ],
+
+  "happy": [
+    "Purrrr... okay fine, you're my favourite human, Prince. 💜",
+    "Ahh, that's the spot. Purr purr.",
+    "Hearts? Me? I'm a fearsome panther. ...Okay, maybe a few hearts.",
+    "Bas bas, itna pyaar? I'll get spoiled, Prince.",
+    "Purr level: maximum. Don't tell anyone I'm soft.",
+    "Loyal till the last life. All nine of them. 🖤"
+  ],
+
+  "drag": [
+    "Arre arre! Careful, Prince, I'm a premium panther!",
+    "Wheee- I mean, put me down, this is very undignified.",
+    "Kahan le ja rahe ho mujhe?!",
+    "Panther express! Next stop: wherever Prince wants, apparently.",
+    "Okay, I'm flying. This is fine. Totally fine."
+  ],
+
+  "reminderDone": [
+    "Done? Good. Proud of you, Prince. 😼",
+    "Shabaash! Back to patrol.",
+    "That's my Prince. Task handled.",
+    "Reminder delivered. Panther duties complete.",
+    "Ek kaam khatam. Next!",
+    "See? This is why you keep me around."
+  ]
+}

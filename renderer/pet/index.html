@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'"
+    />
+    <title>Shadow</title>
+    <link rel="stylesheet" href="../shared/fonts.css" />
+    <link rel="stylesheet" href="pet.css" />
+  </head>
+  <body>
+    <div id="bubble" class="hidden" role="status" aria-live="polite">
+      <div id="bubble-head">REMINDER</div>
+      <div id="bubble-text"></div>
+      <div id="bubble-hint">click when done ✓</div>
+      <svg id="bubble-tail" width="21" height="15" viewBox="0 0 7 5" shape-rendering="crispEdges" aria-hidden="true">
+        <rect class="f" x="0" y="0" width="7" height="1" />
+        <rect class="o" x="0" y="1" width="1" height="1" />
+        <rect class="f" x="1" y="1" width="4" height="1" />
+        <rect class="o" x="5" y="1" width="1" height="1" />
+        <rect class="o" x="1" y="2" width="1" height="1" />
+        <rect class="f" x="2" y="2" width="2" height="1" />
+        <rect class="o" x="4" y="2" width="1" height="1" />
+        <rect class="o" x="2" y="3" width="2" height="1" />
+      </svg>
+    </div>
+    <canvas id="pet" width="48" height="48"></canvas>
+    <script src="pet.js"></script>
+  </body>
+</html>

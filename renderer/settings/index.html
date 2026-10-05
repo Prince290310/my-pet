@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'"
+    />
+    <title>Shadow Settings</title>
+    <link rel="stylesheet" href="../shared/fonts.css" />
+    <link rel="stylesheet" href="settings.css" />
+  </head>
+  <body>
+    <header>
+      <img src="../../assets/icon.png" alt="" class="logo" />
+      <div>
+        <h1>SETTINGS</h1>
+        <p class="sub">Tune your panther. Changes apply instantly when you hit Save.</p>
+      </div>
+    </header>
+
+    <form id="form" autocomplete="off">
+      <section>
+        <h2>Pet</h2>
+        <label class="field">
+          <span>Pet name</span>
+          <input id="petName" maxlength="24" required />
+        </label>
+        <div class="field">
+          <span>Size</span>
+          <div class="seg" role="radiogroup" aria-label="Size">
+            <label><input type="radio" name="scale" value="1" /><b>1x</b></label>
+            <label><input type="radio" name="scale" value="2" /><b>2x</b></label>
+            <label><input type="radio" name="scale" value="3" /><b>3x</b></label>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Behaviour</h2>
+        <div class="field">
+          <span>Random quip every</span>
+          <div class="inline">
+            <input id="quipMinMinutes" type="number" min="1" max="720" required />
+            <em>to</em>
+            <input id="quipMaxMinutes" type="number" min="1" max="720" required />
+            <em>minutes</em>
+          </div>
+        </div>
+        <div class="field">
+          <span>Fall asleep after</span>
+          <div class="inline">
+            <input id="sleepTimeoutMinutes" type="number" min="1" max="240" required />
+            <em>minutes with no mouse/keyboard activity</em>
+          </div>
+        </div>
+        <label class="check"><input id="muteQuips" type="checkbox" /><i></i>Mute quips (spontaneous lines)</label>
+        <label class="check"><input id="startWithWindows" type="checkbox" /><i></i>Start with Windows</label>
+      </section>
+
+      <section class="brain">
+        <h2>AI Brain <span class="badge">free options</span></h2>
+        <label class="field">
+          <span>Provider</span>
+          <select id="aiProvider"></select>
+        </label>
+        <p class="note" id="providerHelp"></p>
+        <button type="button" id="getKey" class="ghost">GET A FREE KEY ↗</button>
+        <label class="field" id="keyField">
+          <span>API key</span>
+          <div class="inline">
+            <input id="apiKey" type="password" placeholder="Paste your key here" spellcheck="false" />
+            <button type="button" id="reveal" class="ghost">SHOW</button>
+          </div>
+        </label>
+        <label class="field">
+          <span>Model <em>(leave blank for the recommended one)</em></span>
+          <input id="aiModel" spellcheck="false" />
+        </label>
+        <label class="field" id="urlField">
+          <span>Base URL</span>
+          <input id="aiBaseUrl" spellcheck="false" placeholder="http://localhost:11434/v1" />
+        </label>
+        <div class="inline">
+          <button type="button" id="testAi" class="ghost">TEST BRAIN</button>
+          <span id="testResult" class="test-result" role="status"></span>
+        </div>
+        <p class="note">Keys stay on this PC only (in your settings file, never in the project folder).</p>
+      </section>
+
+      <section>
+        <h2>Files</h2>
+        <p class="note">Quips, reminders and personality live in your config folder and reload when saved.</p>
+        <p class="path" id="configDir"></p>
+        <button type="button" id="openConfig" class="ghost">OPEN CONFIG FOLDER</button>
+      </section>
+
+      <footer>
+        <span id="status" role="status"></span>
+        <button type="submit" id="save">SAVE</button>
+      </footer>
+    </form>
+    <script src="settings.js"></script>
+  </body>
+</html>

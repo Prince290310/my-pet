@@ -1,0 +1,26 @@
+/* Pixel fonts bundled locally (SIL Open Font License) - no network needed. */
+@font-face {
+  font-family: 'Pixelify Sans';
+  font-weight: 400;
+  src: url('../fonts/pixelify-sans-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Pixelify Sans';
+  font-weight: 600;
+  src: url('../fonts/pixelify-sans-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Pixelify Sans';
+  font-weight: 700;
+  src: url('../fonts/pixelify-sans-700.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Press Start 2P';
+  font-weight: 400;
+  src: url('../fonts/press-start-2p-400.woff2') format('woff2');
+}
+
+:root {
+  --font-pixel: 'Pixelify Sans', 'Segoe UI Emoji', 'Segoe UI', sans-serif;
+  --font-arcade: 'Press Start 2P', 'Pixelify Sans', monospace;
+}

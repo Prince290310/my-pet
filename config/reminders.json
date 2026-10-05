@@ -1,0 +1,10 @@
+{
+  "_help": "Each reminder: time (24h \"HH:MM\"), days (Mon..Sun, or \"daily\" / \"weekdays\" / \"weekends\"; leave out for every day), message. Add \"enabled\": false to pause one. Saved edits reload automatically.",
+
+  "reminders": [
+    { "time": "09:00", "days": ["Mon", "Tue", "Wed", "Thu", "Fri"], "message": "Prince, attendance time!" },
+    { "time": "13:30", "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], "message": "Lunch break, Prince! Khana khao, then conquer." },
+    { "time": "17:00", "days": ["Mon", "Wed", "Fri"], "message": "Prince, plan tomorrow's classes before you wrap up." },
+    { "time": "22:30", "days": ["Sun", "Mon", "Tue", "Wed", "Thu"], "message": "Screens down soon, Prince. Founders need sleep too." }
+  ]
+}

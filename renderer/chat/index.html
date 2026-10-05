@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'"
+    />
+    <title>Chat with Shadow</title>
+    <link rel="stylesheet" href="../shared/fonts.css" />
+    <link rel="stylesheet" href="chat.css" />
+  </head>
+  <body>
+    <header id="bar">
+      <img class="avatar" src="../../assets/tray@2x.png" alt="" />
+      <div class="title">
+        <span id="name">SHADOW</span>
+        <small id="brain">…</small>
+      </div>
+      <button id="close" title="Close (Esc)" aria-label="Close chat">✕</button>
+    </header>
+    <main id="log" aria-live="polite"></main>
+    <form id="composer" autocomplete="off">
+      <input id="msg" maxlength="2000" placeholder="Say something, Prince…" aria-label="Message" />
+      <button id="send" type="submit">SEND</button>
+    </form>
+    <script src="chat.js"></script>
+  </body>
+</html>

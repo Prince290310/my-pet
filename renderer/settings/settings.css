@@ -1,0 +1,263 @@
+:root {
+  --bg: #120e1c;
+  --panel: #1c1630;
+  --ink: #f4efff;
+  --muted: #a99cd6;
+  --line: #5747b4;
+  --gold: #ffd21f;
+  --field: #0b0812;
+}
+* {
+  box-sizing: border-box;
+}
+html {
+  background: var(--bg);
+  color-scheme: dark;
+}
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+}
+body {
+  margin: 0;
+  padding: 22px 24px 0;
+  color: var(--ink);
+  font: 500 15px/1.4 var(--font-pixel);
+  background: var(--bg);
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.logo {
+  width: 64px;
+  height: 64px;
+  image-rendering: pixelated;
+}
+h1 {
+  margin: 0 0 8px;
+  font: 18px/1 var(--font-arcade);
+  color: var(--gold);
+  text-shadow: 3px 3px 0 #4a3210;
+}
+.sub {
+  margin: 0;
+  color: var(--muted);
+}
+
+section {
+  background: var(--panel);
+  padding: 14px 16px 16px;
+  margin-bottom: 16px;
+  box-shadow:
+    -3px 0 0 var(--line),
+    3px 0 0 var(--line),
+    0 -3px 0 var(--line),
+    0 3px 0 var(--line);
+}
+h2 {
+  margin: 0 0 12px;
+  font: 11px/1.2 var(--font-arcade);
+  color: #c9bcff;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.badge {
+  font: 700 11px/1 var(--font-pixel);
+  padding: 4px 6px;
+  background: var(--gold);
+  color: #241600;
+}
+
+.field {
+  display: block;
+  margin-bottom: 12px;
+}
+.field > span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+}
+.inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.inline em {
+  font-style: normal;
+  color: var(--muted);
+}
+input[type='text'],
+input:not([type]),
+input[type='number'],
+input[type='password'] {
+  padding: 8px 10px;
+  border: 3px solid #07050c;
+  background: var(--field);
+  color: var(--ink);
+  font: 600 15px var(--font-pixel);
+  outline: none;
+}
+input:not([type]),
+input[type='password'] {
+  width: 100%;
+  flex: 1;
+}
+select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 3px solid #07050c;
+  background: var(--field);
+  color: var(--ink);
+  font: 600 15px var(--font-pixel);
+  outline: none;
+  cursor: pointer;
+}
+select:focus {
+  border-color: var(--gold);
+}
+.field em {
+  font-style: normal;
+  font-size: 12px;
+  opacity: 0.8;
+}
+#getKey {
+  margin: 0 0 14px;
+}
+.hidden {
+  display: none !important;
+}
+.test-result {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  font-size: 13px;
+}
+.test-result.ok {
+  color: #7dffa8;
+}
+.test-result.bad {
+  color: #ff6f91;
+}
+input[type='number'] {
+  width: 84px;
+}
+input:focus {
+  border-color: var(--gold);
+}
+
+.seg {
+  display: inline-flex;
+  gap: 8px;
+}
+.seg label {
+  cursor: pointer;
+}
+.seg input {
+  position: absolute;
+  opacity: 0;
+}
+.seg b {
+  display: inline-block;
+  padding: 9px 16px;
+  font: 11px/1 var(--font-arcade);
+  background: var(--field);
+  color: var(--muted);
+  box-shadow: 0 4px 0 #07050c;
+}
+.seg input:checked + b {
+  background: var(--gold);
+  color: #241600;
+  box-shadow: 0 4px 0 #8a5a00;
+}
+.seg input:focus-visible + b {
+  outline: 3px solid #c9bcff;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  cursor: pointer;
+}
+.check input {
+  position: absolute;
+  opacity: 0;
+}
+.check i {
+  width: 22px;
+  height: 22px;
+  background: var(--field);
+  border: 3px solid #07050c;
+  box-shadow: inset 0 0 0 3px var(--field);
+}
+.check input:checked + i {
+  background: var(--gold);
+}
+.check input:focus-visible + i {
+  outline: 3px solid #c9bcff;
+}
+
+.note {
+  margin: 6px 0 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.path {
+  margin: 0 0 10px;
+  font: 12px/1.4 Consolas, monospace;
+  color: #d8d0ff;
+  word-break: break-all;
+}
+
+button {
+  cursor: pointer;
+  border: 0;
+  font: 10px/1 var(--font-arcade);
+}
+.ghost {
+  padding: 10px 12px;
+  background: #2b2154;
+  color: var(--ink);
+  box-shadow: 0 4px 0 #07050c;
+}
+.ghost:active,
+#save:active {
+  transform: translateY(3px);
+}
+
+footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  padding: 14px 0 18px;
+  background: var(--bg);
+}
+#status {
+  color: var(--gold);
+  font-weight: 700;
+}
+#status.error {
+  color: #ff6f91;
+}
+#save {
+  padding: 14px 26px;
+  background: var(--gold);
+  color: #241600;
+  font-size: 12px;
+  box-shadow: 0 5px 0 #8a5a00;
+}

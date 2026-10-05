@@ -1,0 +1,257 @@
+# 🐾 Shadow — your pixel-art black panther desktop pet
+
+Shadow is an **original** pixel-art black panther who lives on top of all your windows, patrols the
+bottom of your screen, naps when you're away, talks in Hinglish, and nags you about reminders.
+
+**Everything works offline.** The only thing that ever goes online is chat, and only after you give
+Shadow an AI brain in Settings. Free options are built in (see the end of this file).
+
+![sprite sheet preview](assets/preview/sheet-dark.png)
+
+---
+
+## 1. Setup (one time)
+
+You need **Node.js 22+** (you have 24). In a terminal in this folder:
+
+```bash
+npm install
+```
+
+Then run Shadow:
+
+```bash
+npm start
+```
+
+Shadow appears just above your taskbar, and a small panther-head icon shows up in the system tray
+(click the `^` arrow near the clock if you don't see it).
+
+> First `npm start` after a fresh `npm install` downloads the Electron runtime once (~100 MB).
+
+## 2. What Shadow does
+
+| You do | Shadow does |
+| --- | --- |
+| Nothing | Wanders along the bottom of the screen at varying speeds, sits, grooms, stretches, pounces |
+| Click | Turns to you, talks, shows a random greeting bubble |
+| Double-click | Purrs with floating hearts 💜 |
+| Right-click | Small menu: **Sit, Sleep, Pounce, Chat…, Tuck Away** |
+| **Ctrl + Click** | Opens the mini chat panel |
+| Drag | Picks Shadow up. Drop near the floor → falls back down; drop high → perches there for a while |
+| No mouse/keyboard for 5 min | Curls up and sleeps with floating Zzz |
+| Mouse comes near a sleeping Shadow | Wakes up with a stretch |
+| Every 20–40 min | Says a random idle quip (unless muted) |
+| Reminder time | Walks to the centre-bottom of the screen, plays the alert animation, shows the message until you click it |
+
+Clicks on the **transparent** parts of Shadow's window pass straight through to whatever is behind it.
+Only the panther itself (and its speech bubble) catch the mouse.
+
+### Tray menu (panther head icon)
+
+- **Wake Pet / Tuck Away Pet**: hide or show Shadow (the animation loop pauses while tucked away, so it uses ~0 CPU)
+- **Chat…**: opens the chat panel
+- **Mute Quips**: no spontaneous lines (clicks and reminders still talk)
+- **Size**: 1x / 2x / 3x
+- **Open Settings**, **Open Config Folder**
+- **Start with Windows**: on/off (uses Electron's login-item setting = your user's Startup entry)
+- **Quit**
+
+### Settings window
+
+Pet name · size · quip frequency (every _X_ to _Y_ minutes) · sleep timeout · mute quips ·
+start with Windows · **AI Brain** (chat provider, API key, model, and a **Test Brain** button).
+
+Settings are saved to `%APPDATA%\Shadow\settings.json`. That's deliberately *outside* the project
+folder, so an API key never lands in your code.
+
+---
+
+## 3. Editing Shadow's personality, quips and reminders
+
+All three live in the **config folder** (tray → **Open Config Folder**):
+
+| Running from | Config folder |
+| --- | --- |
+| `npm start` (this project) | `config/` in this project |
+| Installed `.exe` | `%APPDATA%\Shadow\config\` (copied from the defaults on first run) |
+
+**Save the file and Shadow reloads it within a second.** No restart needed. If you make a JSON typo,
+Shadow tells you in a speech bubble and keeps using the last good version.
+
+### `config/quips.json`
+
+Lines grouped by category. Add, remove or edit freely:
+
+```json
+{
+  "greetings": ["Arre Prince! Finally you noticed me. 😼", "..."],
+  "idle": ["Prince, paani piya? Hydrate karo, founder saab.", "..."],
+  "wakeup": ["..."],
+  "sleepy": ["..."],
+  "happy": ["..."],
+  "drag": ["..."],
+  "reminderDone": ["..."]
+}
+```
+
+- `greetings`: single-click · `idle`: every 20–40 min · `wakeup` / `sleepy`: waking / dozing off
+- `happy`: double-click · `drag`: sometimes when picked up · `reminderDone`: after you dismiss a reminder
+- `{name}` is replaced with the pet's name from Settings.
+
+### `config/reminders.json`
+
+```json
+{
+  "reminders": [
+    { "time": "09:00", "days": ["Mon", "Tue", "Wed", "Thu", "Fri"], "message": "Prince, attendance time!" },
+    { "time": "22:30", "days": "daily", "message": "Screens down soon, Prince." }
+  ]
+}
+```
+
+- `time`: 24-hour `"HH:MM"`.
+- `days`: any of `Mon Tue Wed Thu Fri Sat Sun`, or `"daily"`, `"weekdays"`, `"weekends"`. Leave it out for every day.
+- `"enabled": false` pauses a reminder without deleting it.
+- Each reminder fires once per day. If Shadow is tucked away it pops back out, and if it's asleep it wakes up.
+  The bubble stays until you **click it** (or click Shadow).
+
+### `config/personality.md`
+
+Shadow's personality sheet: confident, loyal, protective, a little sarcastic, playful, casual
+Hinglish, always calls you "Prince". It becomes the AI's instructions when you chat (see section 7).
+Edits apply from the next message.
+
+---
+
+## 4. Build the Windows installer
+
+```bash
+npm run build
+```
+
+This regenerates the sprites, then uses **electron-builder** to create
+`dist/Shadow-Setup-1.0.0.exe`, a normal Windows installer with the panther-head icon, a Start-menu
+entry and a desktop shortcut. Run it to install Shadow like any other app. (The first build downloads
+electron-builder's NSIS tools, about 1–2 minutes.)
+
+Windows SmartScreen may warn "unknown publisher" because the installer isn't code-signed. Click
+**More info → Run anyway**.
+
+---
+
+## 5. Testing
+
+```bash
+npm test
+```
+
+Runs 117 automated end-to-end checks against the real app (~1.5 min) in a **throw-away profile**.
+Your settings, config and Start-with-Windows setting are never touched. The checks cover window
+properties, every animation frame, click-through hit-testing, click/double-click/Ctrl+Click, dragging and
+clamping, wandering and pouncing, sleep and wake, the right-click menu, the chat → `askPet()` round trip,
+the quips, reminders (fire, hot-reload, broken JSON), every tray item, the settings window, no network
+requests, and low CPU. While it runs, the test panther ignores your real mouse.
+
+Dev helpers:
+
+```bash
+npm run sprites
+```
+
+Regenerates `assets/sprites.png` and the icons from `scripts/generate-sprites.js`.
+
+To log Shadow's state and position every half second while it runs, set `SHADOW_DEBUG=1`
+(or `SHADOW_DEBUG=still` to also keep it sitting in one spot). In Git Bash:
+
+```bash
+SHADOW_DEBUG=1 npm start
+```
+
+---
+
+## 6. Project layout
+
+```
+main/            Electron main process
+  main.js          entry: windows, IPC, wiring
+  ai.js            ★ chat brain: Gemini / Groq / OpenRouter / Ollama / Claude / custom
+  brain.js         behaviour state machine (wander/sit/groom/stretch/pounce/sleep/reminders)
+  petWindow.js     transparent click-through window, screen bounds, multi-monitor
+  config.js        quips/reminders/personality loading + live reload
+  reminders.js     reminder clock
+  settings.js      settings.json load/validate/save
+  tray.js          tray icon + menu
+  windows.js       chat panel + settings window
+  selftest.js      `npm test`
+  preload/         secure bridges (contextIsolation + sandbox)
+renderer/
+  pet/             sprite player, speech bubbles, hit-testing
+  chat/            mini chat panel
+  settings/        settings window
+  fonts/           pixel fonts (Pixelify Sans, Press Start 2P - OFL), bundled for offline use
+assets/          sprites.png + sprites.json, icon.ico/png, tray icons (generated)
+config/          quips.json, reminders.json, personality.md (defaults)
+scripts/         generate-sprites.js (+ tiny PNG/ICO encoder), copy-fonts.js
+```
+
+### Notes and choices I made where the brief was open
+
+- **Sprites** are drawn by code (`scripts/generate-sprites.js`) with a tiny built-in PNG encoder
+  instead of the `canvas` package. Same result, but no native compilation step that can break on Windows.
+- Shadow is a **window that walks** (it moves itself), not a full-screen overlay. That keeps it cheap and
+  avoids confusing Windows' fullscreen detection.
+- Pixel animation is capped at **12 fps**. Window movement updates at 30 fps so walking looks smooth.
+- **Mute Quips** silences *spontaneous* lines only. Clicking Shadow and reminders still talk.
+- Dragged high and dropped, Shadow **perches** there for a bit, then hops down.
+- Shadow can't be dragged so close to the top edge that its speech bubble would go off-screen.
+- If anything minimizes Shadow (e.g. Win+D "Show desktop"), it pops right back. It also re-asserts
+  "always on top" every few seconds so other always-on-top apps don't bury it.
+
+---
+
+## 7. Give Shadow a brain (AI chat), free options included
+
+Ctrl+Click Shadow (or tray → **Chat…**) to open the chat panel. Replies show in the panel *and* in
+Shadow's speech bubble. Until you pick a brain, Shadow just explains how to add one, and nothing goes online.
+
+### Quick start (free, about 2 minutes)
+
+1. Tray icon → **Open Settings** → scroll to **AI Brain**.
+2. Pick a **Provider** (Google Gemini is the default and recommended).
+3. Click **GET A FREE KEY ↗**, sign in, create a key and copy it.
+4. Paste it into **API key** → click **TEST BRAIN** → you should see `✓ Works!` and a hello from Shadow.
+5. Click **SAVE**. Done: Ctrl+Click Shadow and chat.
+
+### Which provider?
+
+| Provider | Cost | What you need | Recommended model (auto) | Good to know |
+| --- | --- | --- | --- | --- |
+| **Google Gemini** | Free tier | Google account → key from AI Studio | `gemini-3.5-flash-lite` | No card. Daily free limit (shown in AI Studio). Google may use free-tier chats to improve its products. |
+| **Groq** | Free tier | Groq account → key | `llama-3.3-70b-versatile` | No card, very fast. Daily limits (shown in your Groq console). |
+| **OpenRouter** | Free models | OpenRouter account → key | `openrouter/free` | 50 free messages/day. `openrouter/free` auto-picks a free model that's up. |
+| **Ollama** | Free, private | Install Ollama, then `ollama pull gemma3:4b` (3.3 GB) | `gemma3:4b` | **No key, no internet, nothing leaves your PC.** Slower on laptops without a good GPU. |
+| **Claude** (Anthropic) | Paid (~₹1/message) | Key from console.anthropic.com + `npm install @anthropic-ai/sdk` | `claude-opus-5-5` | Best quality. Set Model to `claude-sonnet-5-5` for about half the price. |
+| **Custom** | — | Any OpenAI-compatible API: Base URL (ending in `/v1`) + Model | — | Key optional. |
+
+- Leave **Model** blank to use the recommended one, or type any model name that provider offers.
+- Each provider keeps its own key, so you can switch back and forth without re-pasting.
+- Keys are stored only in `%APPDATA%\Shadow\settings.json` on this PC, never in the project folder.
+  Treat them like passwords.
+
+### How it works
+
+All AI code lives in [`main/ai.js`](main/ai.js):
+
+- The system prompt is [`config/personality.md`](config/personality.md) plus rules that keep replies to
+  1–2 short, plain-text sentences for the speech bubble. Edit the personality file and the next message uses it.
+- The last 20 chat turns are sent along, so Shadow remembers the conversation while the app is open.
+- Gemini, Groq, OpenRouter, Ollama and Custom all use the standard OpenAI-style `/chat/completions`
+  API via plain `fetch`, so no extra packages are needed. Claude uses Anthropic's official SDK, with
+  automatic fallback if a harmless message is wrongly declined.
+- Nothing ever crashes Shadow: no key, a wrong key, no internet, a used-up free quota, an unknown model or
+  Ollama not running each turn into a friendly, in-character line.
+- To add another provider, add an entry to `PROVIDERS` at the top of `main/ai.js`. If it's
+  OpenAI-compatible, that's all it takes.
+
+After changing providers or code, `npm run build` makes a new installer with the brain included.
