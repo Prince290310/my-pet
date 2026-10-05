@@ -21,6 +21,7 @@ const DEFAULTS = Object.freeze({
   calendarUrl: '', // Google Calendar "Secret address in iCal format" (blank = calendar off)
   calendarLeadMinutes: 10, // heads-up this many minutes before each event (0 = off)
   calendarAtStart: true, // also remind when the event starts
+  calendarInChat: true, // chat AI can see upcoming events ("what's on tomorrow?")
   position: null, // last pet position {x, y}
 });
 
@@ -63,6 +64,7 @@ function validate(raw) {
     calendarUrl: cleanCalendarUrl(s.calendarUrl),
     calendarLeadMinutes: int(s.calendarLeadMinutes, 0, 1440, DEFAULTS.calendarLeadMinutes),
     calendarAtStart: s.calendarAtStart === undefined ? DEFAULTS.calendarAtStart : Boolean(s.calendarAtStart),
+    calendarInChat: s.calendarInChat === undefined ? DEFAULTS.calendarInChat : Boolean(s.calendarInChat),
     position:
       s.position && Number.isFinite(s.position.x) && Number.isFinite(s.position.y)
         ? { x: Math.round(s.position.x), y: Math.round(s.position.y) }

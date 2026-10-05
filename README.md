@@ -148,7 +148,7 @@ Windows SmartScreen may warn "unknown publisher" because the installer isn't cod
 npm test
 ```
 
-Runs 139 automated end-to-end checks against the real app (~1.5 min) in a **throw-away profile**.
+Runs 142 automated end-to-end checks against the real app (~1.5 min) in a **throw-away profile**.
 Your settings, config and Start-with-Windows setting are never touched. The checks cover window
 properties, every animation frame, click-through hit-testing, click/double-click/Ctrl+Click, dragging and
 clamping, wandering and pouncing, sleep and wake, the right-click menu, the chat → `askPet()` round trip,
@@ -292,6 +292,17 @@ your main one.
 - Click the bubble to dismiss it, like any reminder.
 - If the PC was asleep and wakes up just before an event, you still get a reminder ("in 3 mins"). Events
   that already started more than 5 minutes ago stay quiet.
+
+### Ask Shadow about your calendar
+
+Ctrl+Click Shadow and ask things like *"what's on tomorrow?"*, *"am I free at 3?"* or *"when is my next
+maths class?"*. The chat sees today's events and the next 2 weeks (titles, times, places), plus the current
+date and time.
+
+- This sends those events to your **AI Brain** provider (Gemini, Groq, ...) along with each message.
+  Untick **Let chat answer questions about my calendar** in Settings to stop that; reminders still work.
+  With **Ollama**, nothing leaves your PC.
+- Shadow can't add or move events from chat. It will tell you to do that in Google Calendar.
 
 ### Good to know
 

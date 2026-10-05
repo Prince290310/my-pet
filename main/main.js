@@ -243,8 +243,11 @@ function init() {
       apiKey: over.apiKey !== undefined ? over.apiKey : settings.get('apiKeys')[provider] || '',
       petName: settings.get('petName'),
       personality: config.personality,
+      // calendar text for the chat ('' = not connected); left out entirely if Prince switched it off
+      ...(settings.get('calendarInChat') && ctx.calendar ? { calendar: ctx.calendar.chatContext() } : {}),
     };
   };
+  ctx.aiContext = aiContext;
   ipcMain.handle('chat:info', () => {
     const c = aiContext();
     const p = ai.PROVIDERS[c.provider];
@@ -288,7 +291,7 @@ function init() {
   // settings window
   ipcMain.handle('settings:load', () => settingsPayload());
   ipcMain.handle('settings:save', async (_e, patch = {}) => {
-    const allowed = ['petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart'];
+    const allowed = ['petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat'];
     const clean = Object.fromEntries(Object.entries(patch).filter(([k]) => allowed.includes(k)));
     const before = settings.get('calendarUrl');
     settings.update(clean);

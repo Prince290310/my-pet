@@ -191,6 +191,14 @@ function parseIcs(text, { owner = '' } = {}) {
       case 'DTSTART':
         ev.start = parseDate(p.value, p.params);
         break;
+      case 'DTEND':
+        ev.end = parseDate(p.value, p.params);
+        break;
+      case 'DURATION': {
+        const m = /^P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/.exec(p.value.trim());
+        if (m) ev.duration = ((+m[1] || 0) * 7 * DAY) + ((+m[2] || 0) * DAY) + ((+m[3] || 0) * 60 * MIN) + ((+m[4] || 0) * MIN) + (+m[5] || 0) * 1000;
+        break;
+      }
       case 'RRULE':
         ev.rule = parseRule(p.value);
         break;
@@ -295,10 +303,16 @@ function expand(ev, fromMs, toMs_) {
 function occurrences(events, fromMs, toMs_) {
   const out = [];
   const replaced = new Set(); // "uid|ms" of recurring events that were moved or edited individually
+  const length = (ev) => {
+    if (ev.end) return Math.max(0, toMs(ev.end) - toMs(ev.start));
+    if (ev.duration !== undefined) return ev.duration;
+    return ev.start.allDay ? DAY : 0;
+  };
   const add = (ev, start) => {
     if (start < fromMs || start > toMs_) return;
     if (ev.status === 'CANCELLED' || ev.declined) return;
     out.push({
+      end: start + length(ev),
       key: `${ev.uid}|${start}`,
       title: (ev.title || '(no title)').slice(0, 120),
       location: (ev.location || '').slice(0, 80),
@@ -387,6 +401,37 @@ const hhmm = (ms) => {
   const d = new Date(ms);
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const dayLabel = (ms) => {
+  const d = new Date(ms);
+  return `${WEEKDAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`;
+};
+const clock12 = (ms) => {
+  const d = new Date(ms);
+  const h = d.getHours() % 12 || 12;
+  return `${h}:${pad(d.getMinutes())} ${d.getHours() < 12 ? 'AM' : 'PM'}`;
+};
+
+/** Plain-text schedule for the chat AI: today's events (even finished ones) and the next 2 weeks. */
+function agenda(list, now, max = 40) {
+  const todayStart = new Date(now).setHours(0, 0, 0, 0);
+  const items = list.filter((o) => (o.end || o.start) >= todayStart || o.start >= todayStart);
+  const lines = items.slice(0, max).map((o) => {
+    let when;
+    if (o.allDay) {
+      const days = Math.max(1, Math.round(((o.end || o.start + DAY) - o.start) / DAY));
+      when = days > 1 ? `${dayLabel(o.start)} to ${dayLabel(o.start + (days - 1) * DAY)}, all day` : `${dayLabel(o.start)}, all day`;
+    } else {
+      when = `${dayLabel(o.start)}, ${clock12(o.start)}${o.end > o.start ? ` to ${clock12(o.end)}` : ''}`;
+    }
+    const done = (o.end || o.start) < now && !o.allDay ? ' [already over]' : '';
+    return `- ${when}: ${o.title}${o.location ? ` (at ${o.location})` : ''}${done}`;
+  });
+  if (items.length > max) lines.push(`- ...and ${items.length - max} more`);
+  return lines.join('\n');
+}
+
 /** How many events are still ahead (all-day ones count until the day ends) and which is next. */
 function summary(list, now) {
   const ahead = list.filter((o) => (o.allDay ? o.start + DAY > now : o.start > now));
@@ -509,6 +554,14 @@ class CalendarSync extends EventEmitter {
     return due;
   }
 
+  /** Calendar text for the chat AI ('' when no calendar is connected). */
+  chatContext(now = this.clock()) {
+    if (!this.url()) return '';
+    if (!this.lastSync && !this.upcoming.length) return 'Calendar is connected but has not loaded yet.';
+    const list = agenda(this.upcoming, now);
+    return list || 'Nothing on the calendar for the next 2 weeks.';
+  }
+
   status() {
     return {
       configured: !!this.url(),
@@ -550,6 +603,7 @@ module.exports = {
   cleanCalendarUrl,
   ownerFromUrl,
   friendly,
+  agenda,
   toMs,
   GCAL_SETTINGS_URL,
 };

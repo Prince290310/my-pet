@@ -629,6 +629,13 @@ async function run(ctx, h) {
     await waitFor(() => brain.state === 'reminder', 9000);
     check('calendar reminder uses the reminder bubble + alert animation', brain.state === 'reminder' && brain.anim === 'alert' && brain.bubble.text.includes('Self-test class'), brain.bubble && brain.bubble.text);
     check('calendar reminder fires only once', cal.check().filter((r) => r.message.includes('in 10')).length === 0);
+    const ai2 = require('./ai');
+    const chatCtx = ctx.aiContext();
+    const sys = ai2.nowAndCalendar(chatCtx);
+    check('chat AI sees the calendar (titles, times, place)', /Self-test class \(at Room 4\)/.test(sys) && /Self-test holiday/.test(sys) && /\d:\d\d (AM|PM)/.test(sys) && !sys.includes('Cancelled thing'), sys.split('\n').slice(2, 6).join(' / '));
+    settings.update({ calendarInChat: false });
+    check('"Let chat see my calendar" off -> chat gets no events', ctx.aiContext().calendar === undefined && !ai2.nowAndCalendar(ctx.aiContext()).includes('Self-test'));
+    settings.update({ calendarInChat: true });
     const nowFire = cal.check(soon + 1000);
     check('at start time -> "starting now" reminder', nowFire.length === 1 && nowFire[0].message.includes('is starting now'), nowFire.map((r) => r.message).join(' | '));
     check('started long ago -> stays quiet', cal.check(soon + 30 * 60 * 1000).length === 0);
@@ -666,6 +673,7 @@ async function run(ctx, h) {
     await cal.sync();
     const hitsAfterOff = calHits.length;
     await cal.sync();
+    check('no calendar -> chat tells Prince how to connect it', ai2.nowAndCalendar(ctx.aiContext()).includes('NOT connected'));
     check('removing the link switches the calendar off', !cal.status().configured && cal.upcoming.length === 0 && calHits.length === hitsAfterOff);
     await new Promise((r) => calServer.close(r));
 

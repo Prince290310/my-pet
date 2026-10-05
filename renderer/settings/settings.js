@@ -88,6 +88,7 @@ function fill({ settings: s, providers: list, startWithWindows, configDir, calen
   $('calendarUrl').value = s.calendarUrl;
   $('calendarLeadMinutes').value = s.calendarLeadMinutes;
   $('calendarAtStart').checked = s.calendarAtStart;
+  $('calendarInChat').checked = s.calendarInChat;
   showCalendarStatus(calendar);
 
   providers = list;
@@ -172,6 +173,7 @@ form.addEventListener('submit', async (e) => {
       calendarUrl: calUrl,
       calendarLeadMinutes: Number($('calendarLeadMinutes').value),
       calendarAtStart: $('calendarAtStart').checked,
+      calendarInChat: $('calendarInChat').checked,
     });
     fill(saved);
     if (calUrl && !saved.settings.calendarUrl) return setStatus('Saved, but that calendar link is not valid', true);
