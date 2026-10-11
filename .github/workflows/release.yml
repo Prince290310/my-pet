@@ -22,9 +22,9 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -40,7 +40,23 @@ jobs:
           npm version --no-git-tag-version "$base.$((GITHUB_RUN_NUMBER))"
           node -p "'Building Shadow ' + require('./package.json').version"
 
-      - name: Build and publish installer
-        run: npx electron-builder --win nsis --publish always
+      - name: Build installer
+        shell: bash
+        run: |
+          set -o pipefail
+          npx electron-builder --win nsis --publish never 2>&1 | tee build.log || {
+            tail -n 40 build.log | sed 's/^/::error::/'
+            exit 1
+          }
+          ls -l dist
+
+      - name: Publish release
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          v=$(node -p "require('./package.json').version")
+          # latest.yml tells installed copies which version is newest; the .blockmap lets them
+          # download only the parts that changed
+          gh release create "v$v" "dist/Shadow-Setup-$v.exe" "dist/Shadow-Setup-$v.exe.blockmap" dist/latest.yml \
+            --target "$GITHUB_SHA" --title "Shadow $v" --notes "$(git log -1 --pretty=%s)"
