@@ -12,7 +12,7 @@ const { ASSETS } = require('./paths');
  * @param {{get(): boolean, set(on: boolean): void}} o.loginItem
  * @param {object} o.actions { openSettings, openConfigFolder, openChat, quit }
  */
-function createTray({ brain, settings, loginItem, actions }) {
+function createTray({ brain, settings, loginItem, actions, getUpdater = () => null }) {
   const icon = nativeImage.createFromPath(path.join(ASSETS, 'tray.png')); // tray@2x.png picked up automatically
   const tray = new Tray(icon);
 
@@ -24,9 +24,15 @@ function createTray({ brain, settings, loginItem, actions }) {
       { label: `🐾 ${settings.get('petName')}`, enabled: false },
       { type: 'separator' },
     ];
-    if (brain.activeReminder && !brain.reminderClosing) {
-      items.push({ id: 'dismiss', label: '⏰ Dismiss Reminder', click: () => brain.dismissReminder() }, { type: 'separator' });
+    const updater = getUpdater();
+    if (updater && updater.ready) {
+      items.push({ id: 'update', label: `✨ Restart to Update (${updater.state.version})`, click: () => updater.install() });
     }
+    if (brain.activeReminder && !brain.reminderClosing) {
+      const later = brain.activeReminder.kind === 'update';
+      items.push({ id: 'dismiss', label: later ? 'Update Later' : '⏰ Dismiss Reminder', click: () => brain.dismissReminder('menu') });
+    }
+    if (items.length > 2) items.push({ type: 'separator' });
     items.push(
       hidden
         ? { id: 'toggle', label: 'Wake Pet', click: () => brain.command('wake') }

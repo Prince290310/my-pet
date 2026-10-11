@@ -76,7 +76,39 @@ function showCalendarStatus(c) {
   el.textContent = `✓ Connected, checked ${when(c.lastSync)}. ${c.count} event${c.count === 1 ? '' : 's'} in the next 2 weeks.${next}`;
 }
 
-function fill({ settings: s, providers: list, startWithWindows, configDir, calendar }) {
+function updateText(u) {
+  if (!u) return '';
+  const v = `Version ${u.currentVersion}`;
+  switch (u.status) {
+    case 'disabled':
+      return `${v}. Updates only work in the installed app (not when started with npm start).`;
+    case 'checking':
+      return `${v}. Checking for updates…`;
+    case 'downloading':
+      return `${v}. Downloading ${u.version}… ${u.percent}%`;
+    case 'ready':
+      return `✨ ${u.version} is downloaded. Restart Shadow to finish (or it installs when Shadow quits).`;
+    case 'up-to-date':
+      return `✓ ${v} is the latest.`;
+    case 'error':
+      return `${v}. ⚠ ${u.error}`;
+    default:
+      return `${v}. Shadow checks for updates by itself every few hours.`;
+  }
+}
+
+let updPoll = null;
+function showUpdate(u) {
+  $('updStatus').textContent = updateText(u);
+  $('installUpd').classList.toggle('hidden', !u || u.status !== 'ready');
+  $('checkUpd').disabled = !u || !u.enabled || ['checking', 'downloading'].includes(u.status);
+  clearTimeout(updPoll);
+  if (u && ['checking', 'downloading'].includes(u.status)) {
+    updPoll = setTimeout(async () => showUpdate(await window.settingsApi.updateStatus()), 1000);
+  }
+}
+
+function fill({ settings: s, providers: list, startWithWindows, configDir, calendar, update }) {
   $('petName').value = s.petName;
   form.querySelectorAll('input[name="scale"]').forEach((r) => (r.checked = Number(r.value) === s.scale));
   $('quipMinMinutes').value = s.quipMinMinutes;
@@ -90,6 +122,7 @@ function fill({ settings: s, providers: list, startWithWindows, configDir, calen
   $('calendarAtStart').checked = s.calendarAtStart;
   $('calendarInChat').checked = s.calendarInChat;
   showCalendarStatus(calendar);
+  showUpdate(update);
 
   providers = list;
   keys = { ...s.apiKeys };
@@ -189,6 +222,9 @@ $('reveal').addEventListener('click', () => {
   k.type = show ? 'text' : 'password';
   $('reveal').textContent = show ? 'HIDE' : 'SHOW';
 });
+
+$('checkUpd').addEventListener('click', async () => showUpdate(await window.settingsApi.checkUpdate()));
+$('installUpd').addEventListener('click', () => window.settingsApi.installUpdate());
 
 $('openGcal').addEventListener('click', () => window.settingsApi.openLink(GCAL_SETTINGS_URL));
 

@@ -1,0 +1,46 @@
+# Builds the Windows installer on every push to main and publishes it as a GitHub Release.
+# Installed copies of Shadow find it there and update themselves (main/updater.js).
+#
+# Version = <major.minor from package.json>.<run number>, e.g. 1.0.7, so every build is newer
+# than the last without anyone editing package.json.
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md', 'assets/preview/**']
+  workflow_dispatch: {}
+
+permissions:
+  contents: write # create the release + upload the installer
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run sprites
+
+      - name: Set version
+        shell: bash
+        run: |
+          base=$(node -p "require('./package.json').version.split('.').slice(0, 2).join('.')")
+          npm version --no-git-tag-version "$base.$((GITHUB_RUN_NUMBER))"
+          node -p "'Building Shadow ' + require('./package.json').version"
+
+      - name: Build and publish installer
+        run: npx electron-builder --win nsis --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

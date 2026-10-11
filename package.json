@@ -2,7 +2,7 @@
   "name": "shadow-pet",
   "productName": "Shadow",
   "version": "1.0.0",
-  "description": "Shadow - an original pixel-art black panther desktop pet (Phase 1, fully offline).",
+  "description": "Shadow - an original pixel-art black panther desktop pet.",
   "author": "Prince",
   "license": "UNLICENSED",
   "private": true,
@@ -58,12 +58,23 @@
       "uninstallerIcon": "assets/icon.ico",
       "installerHeaderIcon": "assets/icon.ico",
       "artifactName": "Shadow-Setup-${version}.${ext}"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Prince290310",
+        "repo": "my-pet",
+        "releaseType": "release"
+      }
+    ]
   },
   "devDependencies": {
     "@fontsource/pixelify-sans": "^5.3.0",
     "@fontsource/press-start-2p": "^5.3.0",
     "electron": "^44.5.1",
     "electron-builder": "^26.15.3"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

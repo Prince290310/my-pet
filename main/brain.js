@@ -526,7 +526,7 @@ class Brain extends EventEmitter {
     const cur = this.activeReminder;
     if (r.key && cur && cur.key === r.key && !this.reminderClosing) {
       this.activeReminder = r;
-      if (this.state === 'reminder') this.say(`⏰ ${r.message}`, { sticky: true });
+      if (this.state === 'reminder') this.say(`${r.icon || '⏰'} ${r.message}`, { sticky: true });
       this.emit('reminder-start', r);
       return;
     }
@@ -553,7 +553,7 @@ class Brain extends EventEmitter {
       this.setState('reminder');
       this.facing = 'right';
       this.play('alert');
-      this.say(`⏰ ${r.message}`, { sticky: true });
+      this.say(`${r.icon || '⏰'} ${r.message}`, { sticky: true });
       this.emit('reminder-shown', r);
     };
     const go = () => {
@@ -565,11 +565,12 @@ class Brain extends EventEmitter {
     else go();
   }
 
-  dismissReminder() {
+  /** @param {'click'|'menu'} how  click = bubble/pet clicked, menu = "Dismiss"/"Update Later" picked */
+  dismissReminder(how = 'click') {
     const r = this.activeReminder;
     if (!r || this.reminderClosing) return;
     this.reminderClosing = true;
-    this.emit('reminder-dismissed', r);
+    this.emit('reminder-dismissed', r, how);
     this.interrupt();
     this.hideBubble();
     this.setState('happy');

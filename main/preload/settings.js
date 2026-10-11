@@ -9,4 +9,7 @@ contextBridge.exposeInMainWorld('settingsApi', {
   openLink: (url) => ipcRenderer.send('settings:open-link', String(url)),
   testCalendar: (url) => ipcRenderer.invoke('calendar:test', String(url)),
   syncCalendar: () => ipcRenderer.invoke('calendar:sync'),
+  checkUpdate: () => ipcRenderer.invoke('update:check'),
+  updateStatus: () => ipcRenderer.invoke('update:status'),
+  installUpdate: () => ipcRenderer.invoke('update:install'),
 });

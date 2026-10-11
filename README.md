@@ -148,7 +148,7 @@ Windows SmartScreen may warn "unknown publisher" because the installer isn't cod
 npm test
 ```
 
-Runs 142 automated end-to-end checks against the real app (~1.5 min) in a **throw-away profile**.
+Runs 160 automated end-to-end checks against the real app (~1.5 min) in a **throw-away profile**.
 Your settings, config and Start-with-Windows setting are never touched. The checks cover window
 properties, every animation frame, click-through hit-testing, click/double-click/Ctrl+Click, dragging and
 clamping, wandering and pouncing, sleep and wake, the right-click menu, the chat → `askPet()` round trip,
@@ -184,6 +184,7 @@ main/            Electron main process
   config.js        quips/reminders/personality loading + live reload
   reminders.js     reminder clock
   calendar.js      Google Calendar reminders (reads the secret iCal link)
+  updater.js       self-update from GitHub Releases
   settings.js      settings.json load/validate/save
   tray.js          tray icon + menu
   windows.js       chat panel + settings window
@@ -319,3 +320,27 @@ date and time.
 
 The code is in [`main/calendar.js`](main/calendar.js). It works with any iCal link, so an Outlook or
 Apple calendar's published `.ics` link works too.
+
+---
+
+## 9. Automatic updates
+
+The installed Shadow updates itself. There's no need to `git pull` or `npm run build` on your PC anymore.
+
+1. Every push to `main` makes GitHub build a new installer
+   ([`.github/workflows/release.yml`](.github/workflows/release.yml)) and publish it under **Releases**
+   as version `1.0.<build number>`. Changes that only touch `.md` files don't trigger a build.
+2. Shadow checks a minute after it starts and then every 4 hours, and downloads new versions quietly.
+3. When one is ready, Shadow walks out with a ✨ bubble:
+   - **Click the bubble** (or tray → **Restart to Update**) to restart into the new version right away.
+   - **Ignore it**, or pick **Update Later** from the right-click or tray menu, and it installs the next time
+     Shadow quits or the PC shuts down.
+4. **Settings → Updates** shows your version and has a **Check for updates** button.
+
+Notes:
+
+- The repo must be **public** so the installed app can download releases without a password. No keys,
+  calendar links or settings are in the repo. They live only in `%APPDATA%\Shadow` on your PC.
+- Only the installed app updates. `npm start` and `npm test` never do.
+- Building an installer yourself with `npm run build` still works (it's version 1.0.0, so the next release
+  replaces it).

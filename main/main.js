@@ -23,6 +23,7 @@ const { Settings } = require('./settings');
 const { ConfigStore } = require('./config');
 const { ReminderScheduler } = require('./reminders');
 const { CalendarSync, GCAL_SETTINGS_URL } = require('./calendar');
+const { Updater } = require('./updater');
 const { PetWindow } = require('./petWindow');
 const { Brain } = require('./brain');
 const { createTray } = require('./tray');
@@ -78,9 +79,15 @@ function openChatPanel() {
 
 function petMenuTemplate() {
   const { brain } = ctx;
-  const reminder = brain.activeReminder && !brain.reminderClosing ? [{ label: 'Dismiss Reminder', click: () => brain.dismissReminder() }, { type: 'separator' }] : [];
+  const items = [];
+  if (ctx.updater && ctx.updater.ready) items.push({ label: `✨ Restart to Update (${ctx.updater.state.version})`, click: () => ctx.updater.install() });
+  if (brain.activeReminder && !brain.reminderClosing) {
+    const later = brain.activeReminder.kind === 'update';
+    items.push({ label: later ? 'Update Later' : 'Dismiss Reminder', click: () => brain.dismissReminder('menu') });
+  }
+  if (items.length) items.push({ type: 'separator' });
   return [
-    ...reminder,
+    ...items,
     { label: 'Sit', click: () => brain.command('sit') },
     { label: 'Sleep', click: () => brain.command('sleep') },
     { label: 'Pounce', click: () => brain.command('pounce') },
@@ -102,6 +109,7 @@ function settingsPayload() {
     settings: s,
     providers: ai.publicProviders(),
     calendar: ctx.calendar ? ctx.calendar.status() : null,
+    update: ctx.updater ? ctx.updater.status() : null,
     startWithWindows: ctx.loginItem.get(),
     configDir: paths.configDir(),
     settingsFile: paths.settingsFile(),
@@ -320,6 +328,9 @@ function init() {
     return settingsPayload();
   });
   ipcMain.on('settings:open-config', () => openConfigFolder());
+  ipcMain.handle('update:check', () => ctx.updater.check());
+  ipcMain.handle('update:status', () => ctx.updater.status());
+  ipcMain.handle('update:install', () => ctx.updater.install());
 
   settings.on('change', (all, changed) => {
     if (changed.includes('scale')) {
@@ -331,12 +342,31 @@ function init() {
     if (changed.includes('quipMinMinutes') || changed.includes('quipMaxMinutes')) brain.scheduleQuip();
   });
 
+  // Self-updates from GitHub Releases - installed app only (see updater.js)
+  let autoUpdater = null;
+  if (app.isPackaged && !SELF_TEST) {
+    try {
+      ({ autoUpdater } = require('electron-updater'));
+      autoUpdater.logger = null;
+    } catch (err) {
+      console.warn('[update] updater unavailable:', err.message);
+    }
+  }
+  ctx.updater = new Updater({ autoUpdater, brain, currentVersion: app.getVersion(), enabled: !!autoUpdater });
+  // clicking the "update ready" bubble restarts into the new version; "Update Later" just closes it
+  brain.on('reminder-dismissed', (r, how) => {
+    if (r.kind === 'update' && how === 'click') setTimeout(() => ctx.updater.install(), 1200);
+  });
+
   ctx.trayCtl = createTray({
     brain,
     settings,
     loginItem: { get: () => ctx.loginItem.get(), set: (on) => ctx.loginItem.set(on) },
     actions: { openSettings, openConfigFolder, openChat: openChatPanel, quit },
+    getUpdater: () => ctx.updater,
   });
+  ctx.updater.on('status', () => ctx.trayCtl.rebuild());
+  ctx.updater.start();
 
   const reminders = (ctx.reminders = new ReminderScheduler(config));
   reminders.on('fire', (r) => {
@@ -399,7 +429,7 @@ if (!SELF_TEST && !app.requestSingleInstanceLock()) {
     /* keep running in the tray */
   });
   app.on('before-quit', () => {
-    const { brain, config, reminders, calendar } = ctx;
+    const { brain, config, reminders, calendar, updater } = ctx;
     try {
       if (brain && !['off', 'hidden'].includes(brain.state)) brain.savePosition();
     } catch {
@@ -409,6 +439,7 @@ if (!SELF_TEST && !app.requestSingleInstanceLock()) {
     if (config) config.stop();
     if (reminders) reminders.stop();
     if (calendar) calendar.stop();
+    if (updater) updater.stop();
   });
 }
 
