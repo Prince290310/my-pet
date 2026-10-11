@@ -148,7 +148,7 @@ Windows SmartScreen may warn "unknown publisher" because the installer isn't cod
 npm test
 ```
 
-Runs 292 automated end-to-end checks against the real app (~1.5 min) in a **throw-away profile**.
+Runs 311 automated end-to-end checks against the real app (~1.5 min) in a **throw-away profile**.
 Your settings, config and Start-with-Windows setting are never touched. The checks cover window
 properties, every animation frame, click-through hit-testing, click/double-click/Ctrl+Click, dragging and
 clamping, wandering and pouncing, sleep and wake, the right-click menu, the chat → `askPet()` round trip,
@@ -192,6 +192,7 @@ main/            Electron main process
   tutor.js         Sage: lessons, quizzes, flashcards, homework checks
   care.js          Zen: battery/storage/RAM/CPU/internet watch, pc health, tidy Downloads
   music.js         Tempo: play/pause/next, what's playing, play-a-mood searches
+  telegram.js      control Shadow from your phone through your own Telegram bot
   settings.js      settings.json load/validate/save
   tray.js          tray icon + menu
   windows.js       chat panel + settings window
@@ -503,3 +504,38 @@ from the last 10 minutes are left alone.
 Music control uses Windows' own media controls (the same ones behind the volume pop-up), so it works with
 most players. Spotify can't be told to play one exact song without a Spotify developer login, so Tempo
 opens the search and you pick.
+
+---
+
+## 14. Control Shadow from your phone (Telegram)
+
+Text your own Telegram bot from anywhere, and Shadow does it on your PC: `open spotify`, `lock my pc`,
+`take a screenshot` (the picture comes back to your phone), `pc health`, `next song`,
+`remind me at 6 pm to call mom`, `show my list`, questions, searches… Everything the chat panel can do.
+
+### Set up (about 3 minutes)
+1. In Telegram, open **@BotFather** (or click **OPEN @BOTFATHER** in Settings → Phone), send `/newbot`,
+   choose a name and a username ending in `bot`, and copy the **token** it gives you (looks like
+   `1234567890:AAH…`).
+2. In **Settings → Phone**, paste the token, click **TEST TOKEN**, tick **Let me control Shadow from
+   Telegram**, and **SAVE**.
+3. Click **PAIR MY PHONE**. It opens your bot with a one-time code. Press **Start**. Shadow says
+   "Phone paired!". (Or just send the 6-digit code shown in Settings to your bot.)
+
+### Safety
+- **Only your account.** Before pairing, the bot only answers "this is a private Shadow". After pairing,
+  messages from anyone else are ignored completely. The pairing code works once.
+- **Old messages are skipped.** If your PC was asleep and a message is more than 10 minutes old, Shadow
+  doesn't run it. It tells you and you can send it again.
+- **The token is a password.** It stays in `%APPDATA%\Shadow\settings.json` and is never logged. If it
+  ever leaks: @BotFather → `/revoke`, paste the new token, pair again. **UNPAIR** forgets your phone.
+- Everything else works exactly like the chat panel: same safety rules for opening apps and PC controls.
+
+### Good to know
+- Shadow must be running and the PC awake. It can't wake a sleeping or shut-down PC.
+- **Send reminders and PC alerts to my phone** (on by default): when you've been away from the PC for
+  2+ minutes, reminders and Zen's alerts (battery low, internet down…) also come to Telegram.
+- Shadow listens with Telegram's "long polling": no server, no open ports, nothing to configure on
+  your router. Only one running Shadow can use a bot at a time.
+- Why not WhatsApp? WhatsApp has no free personal bot API. The official one needs a Meta business
+  account and a separate number, and unofficial tools can get your number banned.

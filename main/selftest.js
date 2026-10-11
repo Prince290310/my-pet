@@ -1319,6 +1319,122 @@ async function run(ctx, h) {
     await waitFor(allAway, 12000);
     quiet();
 
+    section('Phone control through Telegram (fake Telegram server)');
+    const GOOD = '123456789:AAHgoodTokenForTheSelfTest_abcdefghij';
+    const tgSent = [];
+    const tgQueue = [];
+    let upId = 1;
+    const fakeTg = http.createServer((req, res) => {
+      const chunks = [];
+      req.on('data', (d) => chunks.push(d));
+      req.on('end', () => {
+        const m = /^\/bot([^/]+)\/(\w+)$/.exec(req.url) || [];
+        const send = (code, obj) => {
+          res.writeHead(code, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(obj));
+        };
+        if (m[1] !== GOOD) return send(401, { ok: false, description: 'Unauthorized' });
+        const body = Buffer.concat(chunks);
+        const j = /json/.test(req.headers['content-type'] || '') ? JSON.parse(body.toString() || '{}') : {};
+        switch (m[2]) {
+          case 'getMe':
+            return send(200, { ok: true, result: { id: 1, is_bot: true, username: 'ShadowTestBot', first_name: 'Shadow' } });
+          case 'getUpdates': {
+            const deliver = () => send(200, { ok: true, result: tgQueue.splice(0).filter((u) => u.update_id >= (j.offset || 0)) });
+            if (tgQueue.length) return deliver();
+            return setTimeout(deliver, 300);
+          }
+          case 'sendMessage':
+            tgSent.push({ chat: j.chat_id, text: j.text });
+            return send(200, { ok: true, result: {} });
+          case 'sendPhoto': {
+            const txt = body.toString('latin1');
+            tgSent.push({ photo: true, png: txt.includes('\x89PNG'), chat: Number((/name="chat_id"\r\n\r\n(\d+)/.exec(txt) || [])[1]), text: (/name="caption"\r\n\r\n([^\r]*)/.exec(Buffer.from(txt, 'latin1').toString('utf8')) || [])[1] });
+            return send(200, { ok: true, result: {} });
+          }
+          default:
+            return send(200, { ok: true, result: true });
+        }
+      });
+    });
+    await new Promise((r) => fakeTg.listen(0, '127.0.0.1', r));
+    const tg = ctx.telegram;
+    tg.apiBase = `http://127.0.0.1:${fakeTg.address().port}`;
+    check('phone control is off until set up', tg.info().state === 'off' && !settings.get('telegramEnabled'));
+    let tt = await tg.test('nonsense');
+    check('Test token: wrong format -> explains what a token looks like', !tt.ok && tt.message.includes('1234567890:AAH'), tt.message);
+    tt = await tg.test('987654321:AAHwrongTokenForTheSelfTest_abcdefghij');
+    check('Test token: wrong token -> friendly line', !tt.ok && tt.message.includes('token is wrong'), tt.message);
+    tt = await tg.test(GOOD);
+    check('Test token: works and shows the bot name', tt.ok && tt.bot === 'ShadowTestBot');
+    settings.update({ telegramToken: GOOD, telegramEnabled: true });
+    await waitFor(() => tg.info().state === 'waiting-pair', 5000);
+    const ti = tg.info();
+    check('connects and waits for pairing (one-time code + link)', ti.state === 'waiting-pair' && /^\d{6}$/.test(ti.pairCode) && ti.pairLink === `https://t.me/ShadowTestBot?start=${ti.pairCode}`, JSON.stringify(ti));
+    const nowS = () => Math.floor(Date.now() / 1000);
+    const msg = (chat, text, date = nowS()) => tgQueue.push({ update_id: upId++, message: { message_id: upId, date, text, chat: { id: chat, type: 'private' }, from: { id: chat, first_name: chat === 222 ? 'Prince' : 'Stranger' } } });
+    const sentTo = (chat) => tgSent.filter((x) => x.chat === chat);
+    const waitSent = async (chat, n) => waitFor(() => sentTo(chat).length >= n, 9000);
+    msg(111, 'lock my pc');
+    await waitSent(111, 1);
+    check('a stranger is told the bot is private (nothing runs)', sentTo(111)[0].text.startsWith('🔒 This is a private Shadow') && !ran.some((r) => r.includes('LockWorkStation') && r !== ran[0]));
+    const ranBeforeTg = ran.length;
+    msg(222, `/start ${ti.pairCode}`);
+    await waitSent(222, 1);
+    check('pairing with the code -> paired to that account only', sentTo(222)[0].text.startsWith('✅ Paired! Hi Prince') && settings.get('telegramChatId') === 222 && tg.info().state === 'paired', sentTo(222)[0].text.slice(0, 40));
+    check('...the code is one-time (a new one is made)', tg.info().pairCode !== ti.pairCode);
+    msg(111, 'lock my pc');
+    msg(222, 'open spotify');
+    await waitSent(222, 2);
+    await sleep(300);
+    check('after pairing, strangers are ignored completely', sentTo(111).length === 1 && ran.length === ranBeforeTg);
+    check('"open spotify" from the phone opens Spotify and replies', sentTo(222)[1].text === 'Opening Spotify 🚀' && launched.pop() === 'App.0!Spotify', sentTo(222)[1].text);
+    msg(222, 'take a screenshot');
+    await waitSent(222, 3);
+    const ph = sentTo(222)[2];
+    check('"take a screenshot" from the phone sends the picture back', ph.photo && ph.png && (ph.text || '').startsWith('📸 Saved'), JSON.stringify(ph));
+    msg(222, 'pc health');
+    await waitSent(222, 4);
+    check('"pc health" from the phone', sentTo(222)[3].text.startsWith('🔋'), sentTo(222)[3].text);
+    msg(222, 'lock my pc', nowS() - 3600);
+    await waitSent(222, 5);
+    check('an hour-old message (PC was asleep) is skipped, not run', sentTo(222)[4].text.startsWith('⏳ Skipped "lock my pc"') && !ran.slice(ranBeforeTg).some((r) => r.includes('LockWorkStation')), sentTo(222)[4].text);
+    msg(222, '/help');
+    await waitSent(222, 6);
+    check('/help lists what it can do', sentTo(222)[5].text.includes('take a screenshot'));
+    quiet();
+    brain.rest(60000);
+    fake.idle = 600; // Prince is away from the PC
+    brain.reminder({ time: '', message: 'Phone test reminder' });
+    await waitSent(222, 7);
+    check('reminders go to the phone when you are away', sentTo(222)[6].text === '⏰ Phone test reminder', sentTo(222)[6] && sentTo(222)[6].text);
+    fake.idle = 0;
+    await waitFor(() => brain.state === 'reminder', 9000);
+    brain.dismissReminder();
+    await waitFor(() => !brain.activeReminder, 4000);
+    brain.reminder({ time: '', message: 'At the desk' });
+    await sleep(800);
+    check('...but not when you are at the PC', sentTo(222).length === 7);
+    await waitFor(() => brain.state === 'reminder', 9000);
+    brain.dismissReminder();
+    await waitFor(() => !brain.activeReminder, 4000);
+    h.openSettings();
+    const sw10 = await waitFor(() => require('./windows').getSettingsWindow(), 3000);
+    await waitFor(() => js('document.getElementById("tgStatus").textContent.length > 0', sw10.webContents), 3000);
+    const tui = await js(`({ status: document.getElementById('tgStatus').textContent, hidden: document.getElementById('telegramToken').type === 'password', unpair: !document.getElementById('unpairTg').classList.contains('hidden') })`, sw10.webContents);
+    check('Settings shows "Paired", hides the token, offers Unpair', tui.status.startsWith('✓ Paired! Text @ShadowTestBot') && tui.hidden && tui.unpair, tui.status);
+    await js("document.querySelector('.phone').scrollIntoView()", sw10.webContents);
+    await sleep(300);
+    await shot('settings-phone', sw10.webContents);
+    sw10.close();
+    tg.unpair();
+    check('Unpair forgets the phone', settings.get('telegramChatId') === 0 && tg.info().state === 'waiting-pair');
+    settings.update({ telegramEnabled: false });
+    await sleep(300);
+    check('switching it off stops listening', tg.info().state === 'off' && !tg.running);
+    settings.update({ telegramToken: '' });
+    await new Promise((r) => fakeTg.close(r));
+
     section('Morning briefing & to-do nudges');
     quiet();
     brain.rest(60000);

@@ -31,6 +31,7 @@ const { FriendsManager } = require('./friends');
 const { MusicControl, parseMusicCommand, musicRequests } = require('./music');
 const { PcCare, parseCareCommand } = require('./care');
 const { Tutor, parseTutorCommand, bubbleLine } = require('./tutor');
+const { TelegramLink } = require('./telegram');
 const { PetWindow } = require('./petWindow');
 const { Brain } = require('./brain');
 const { createTray } = require('./tray');
@@ -119,6 +120,7 @@ function settingsPayload() {
     calendar: ctx.calendar ? ctx.calendar.status() : null,
     update: ctx.updater ? ctx.updater.status() : null,
     friends: ctx.friends ? ctx.friends.info() : [],
+    telegram: ctx.telegram ? ctx.telegram.info() : null,
     startWithWindows: ctx.loginItem.get(),
     configDir: paths.configDir(),
     settingsFile: paths.settingsFile(),
@@ -438,6 +440,7 @@ function init() {
     friends.quickJob('zen', '🩺 Heads up!', 6000);
     if (a.sticky) brain.reminder({ time: '', kind: 'care', key: `care|${a.key}`, icon: '🐢', head: 'PC CARE', hint: 'click to close ✓', message: a.text });
     else if (!brain.activeReminder && brain.state !== 'hidden') brain.say(a.text, { ms: 6000 });
+    if (!a.sticky && ctx.telegram && ctx.sensors.idleSeconds() > 120) ctx.telegram.notify(a.text); // sticky ones go via reminder-start
   });
   if (!SELF_TEST) care.start();
   async function runCare(cmd) {
@@ -504,10 +507,37 @@ function init() {
     return null;
   }
 
-  ipcMain.handle('chat:ask', async (_e, message) => {
+  ipcMain.handle('chat:ask', (_e, message) => handleMessage(message, ctx.chatHistory));
+  ctx.handleMessage = handleMessage;
+
+  // ---- control from the phone through your own Telegram bot (telegram.js)
+  ctx.tgHistory = [];
+  const tg = (ctx.telegram = new TelegramLink({
+    settings,
+    apiBase: ctx.telegramBase || 'https://api.telegram.org',
+    handle: async (text) => {
+      const shot = apps.lastScreenshot;
+      const r = await handleMessage(text, ctx.tgHistory);
+      if (ctx.tgHistory.length > 40) ctx.tgHistory.splice(0, ctx.tgHistory.length - 40);
+      // "take a screenshot" from the phone: send the picture back
+      if (apps.lastScreenshot && apps.lastScreenshot !== shot) r.photo = apps.lastScreenshot;
+      return r;
+    },
+  }));
+  tg.on('paired', () => brain.state !== 'hidden' && brain.say('📱 Phone paired! Text me anytime, Prince 🐾', { ms: 5000 }));
+  tg.on('message', (text) => console.log(`[telegram] message (${text.length} chars)`)); // content stays private
+  const away = () => ctx.sensors.idleSeconds() > 120;
+  ipcMain.handle('telegram:test', (_e, token) => tg.test(typeof token === 'string' ? token : ''));
+  ipcMain.handle('telegram:info', () => tg.info());
+  ipcMain.handle('telegram:unpair', () => (tg.unpair(), tg.info()));
+
+  /**
+   * Everything Shadow can do from a message - used by the chat panel and by Telegram (telegram.js).
+   * Returns { text, sources }.
+   */
+  async function handleMessage(message, history) {
     const text = String(message || '').trim().slice(0, 2000);
     if (!text) return { text: '' };
-    const history = ctx.chatHistory;
     history.push({ role: 'user', text });
     let reply;
     const gang = gangCommand(text);
@@ -636,7 +666,7 @@ function init() {
     }
     brain.chatReply(reply);
     return { text: reply, sources };
-  });
+  }
   /** Shadow says it's searching and Atlas the parrot flies in. Returns Atlas's done(line). */
   function searchingBubble() {
     if (!brain.activeReminder && brain.state !== 'hidden') brain.say('🔍 Searching the internet…', { ms: 20000 });
@@ -651,6 +681,7 @@ function init() {
   // Dash also delivers reminders as they fire (not update notices or the morning briefing)
   brain.on('reminder-start', (r) => {
     if (!['update', 'briefing', 'care'].includes(r.kind) && !brain.reminderClosing) friends.quickJob('dash', '📨 Delivery for Prince!', 7000);
+    if (!['update', 'briefing'].includes(r.kind) && ctx.telegram && away()) ctx.telegram.notify(`${r.icon || '⏰'} ${r.message}`);
   });
   ipcMain.handle('ai:test', (_e, form = {}) => {
     const over = {};
@@ -660,6 +691,7 @@ function init() {
   });
   // "Get a free key" / "Open Google Calendar settings" buttons: only ever open these known pages
   ipcMain.on('settings:open-link', (_e, url) => {
+    if (/^https:\/\/t\.me\/[A-Za-z0-9_]{4,40}(\?start=\d{6})?$/.test(url)) return shell.openExternal(url); // @BotFather / pairing link
     if (url === GCAL_SETTINGS_URL || url === search.TAVILY_KEY_URL || ai.publicProviders().some((p) => p.keyUrl && p.keyUrl === url)) shell.openExternal(url);
   });
   ipcMain.handle('calendar:test', (_e, url) => ctx.calendar.test(typeof url === 'string' ? url.slice(0, 1000) : ''));
@@ -672,7 +704,7 @@ function init() {
   // settings window
   ipcMain.handle('settings:load', () => settingsPayload());
   ipcMain.handle('settings:save', async (_e, patch = {}) => {
-    const allowed = ['petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat', 'morningBriefing', 'todoNudges', 'webSearch', 'searchKey', 'pcControl', 'pcCare', 'friendsMode', 'friends'];
+    const allowed = ['petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat', 'morningBriefing', 'todoNudges', 'webSearch', 'searchKey', 'pcControl', 'pcCare', 'friendsMode', 'friends', 'telegramEnabled', 'telegramToken', 'telegramNotify'];
     const clean = Object.fromEntries(Object.entries(patch).filter(([k]) => allowed.includes(k)));
     const before = settings.get('calendarUrl');
     settings.update(clean);
@@ -691,6 +723,10 @@ function init() {
 
   settings.on('change', (all, changed) => {
     if (changed.includes('friendsMode') || changed.includes('friends')) friends.apply();
+    if ((changed.includes('telegramToken') || changed.includes('telegramEnabled')) && ctx.telegram) {
+      if (changed.includes('telegramToken')) settings.update({ telegramChatId: 0 }); // new bot = pair again
+      ctx.telegram.restart();
+    }
     if (changed.includes('scale')) {
       friends.setScale(all.scale);
       pet.setScale(all.scale);
@@ -726,6 +762,7 @@ function init() {
     callGang: () => ctx.friends.callGang(),
   });
   ctx.updater.on('status', () => ctx.trayCtl.rebuild());
+  ctx.telegram.restart(); // does nothing until a bot token is set and switched on
   ctx.updater.start();
 
   const reminders = (ctx.reminders = new ReminderScheduler(config));
@@ -816,7 +853,7 @@ if (!SELF_TEST && !app.requestSingleInstanceLock()) {
     /* keep running in the tray */
   });
   app.on('before-quit', () => {
-    const { brain, config, reminders, calendar, updater, friends, care } = ctx;
+    const { brain, config, reminders, calendar, updater, friends, care, telegram } = ctx;
     try {
       if (brain && !['off', 'hidden'].includes(brain.state)) brain.savePosition();
     } catch {
@@ -829,6 +866,7 @@ if (!SELF_TEST && !app.requestSingleInstanceLock()) {
     if (updater) updater.stop();
     if (friends) friends.stop();
     if (care) care.stop();
+    if (telegram) telegram.stop();
   });
 }
 

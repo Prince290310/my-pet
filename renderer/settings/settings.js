@@ -137,7 +137,29 @@ form.addEventListener('change', (e) => {
   if (e.target.name === 'friendsMode') $('friendsModeHelp').textContent = MODE_HELP[e.target.value];
 });
 
-function fill({ settings: s, providers: list, startWithWindows, configDir, calendar, update, friends }) {
+let tgPoll = null;
+let tgInfo = null;
+function showTelegram(t) {
+  tgInfo = t;
+  if (!t) return;
+  const st = $('tgStatus');
+  st.classList.remove('bad');
+  const bot = t.bot ? `@${t.bot}` : 'your bot';
+  st.textContent = {
+    off: 'Off.',
+    connecting: 'Connecting to Telegram…',
+    'waiting-pair': `Connected to ${bot} ✓ Now pair: click PAIR MY PHONE, or send ${t.pairCode} to ${bot}.`,
+    paired: `✓ Paired! Text ${bot} from your phone.`,
+    error: `⚠ ${t.error}`,
+  }[t.state] || '';
+  if (t.state === 'error') st.classList.add('bad');
+  $('pairTg').classList.toggle('hidden', t.state !== 'waiting-pair');
+  $('unpairTg').classList.toggle('hidden', !t.paired);
+  clearTimeout(tgPoll);
+  if (['connecting', 'waiting-pair'].includes(t.state)) tgPoll = setTimeout(async () => showTelegram(await window.settingsApi.telegramInfo()), 1500);
+}
+
+function fill({ settings: s, providers: list, startWithWindows, configDir, calendar, update, friends, telegram }) {
   $('petName').value = s.petName;
   form.querySelectorAll('input[name="scale"]').forEach((r) => (r.checked = Number(r.value) === s.scale));
   $('quipMinMinutes').value = s.quipMinMinutes;
@@ -159,6 +181,10 @@ function fill({ settings: s, providers: list, startWithWindows, configDir, calen
   showCalendarStatus(calendar);
   showUpdate(update);
   showFriends(friends, s);
+  $('telegramToken').value = s.telegramToken;
+  $('telegramEnabled').checked = s.telegramEnabled;
+  $('telegramNotify').checked = s.telegramNotify;
+  showTelegram(telegram);
 
   providers = list;
   keys = { ...s.apiKeys };
@@ -239,6 +265,9 @@ form.addEventListener('submit', async (e) => {
       todoNudges: $('todoNudges').checked,
       pcControl: $('pcControl').checked,
       pcCare: $('pcCare').checked,
+      telegramToken: $('telegramToken').value.trim(),
+      telegramEnabled: $('telegramEnabled').checked,
+      telegramNotify: $('telegramNotify').checked,
       friendsMode: (form.querySelector('input[name="friendsMode"]:checked') || {}).value,
       friends: Object.fromEntries([...document.querySelectorAll('input[data-friend]')].map((b) => [b.dataset.friend, b.checked])),
       webSearch: $('webSearch').checked,
@@ -265,6 +294,24 @@ $('reveal').addEventListener('click', () => {
   const show = k.type === 'password';
   k.type = show ? 'text' : 'password';
   $('reveal').textContent = show ? 'HIDE' : 'SHOW';
+});
+
+$('openBotFather').addEventListener('click', () => window.settingsApi.openLink('https://t.me/BotFather'));
+$('pairTg').addEventListener('click', () => tgInfo && tgInfo.pairLink && window.settingsApi.openLink(tgInfo.pairLink));
+$('unpairTg').addEventListener('click', async () => showTelegram(await window.settingsApi.unpairTelegram()));
+$('revealTg').addEventListener('click', () => {
+  const k = $('telegramToken');
+  const show = k.type === 'password';
+  k.type = show ? 'text' : 'password';
+  $('revealTg').textContent = show ? 'HIDE' : 'SHOW';
+});
+$('testTg').addEventListener('click', async () => {
+  const out = $('tgResult');
+  out.className = 'test-result';
+  out.textContent = 'Checking…';
+  const r = await window.settingsApi.testTelegram($('telegramToken').value.trim());
+  out.classList.add(r.ok ? 'ok' : 'bad');
+  out.textContent = r.ok ? `✓ Works! Your bot is @${r.bot}. Tick the box and SAVE.` : `✗ ${r.message}`;
 });
 
 $('callGang').addEventListener('click', () => window.settingsApi.callGang());

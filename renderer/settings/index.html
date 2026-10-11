@@ -78,6 +78,36 @@
         <button type="button" id="callGang" class="ghost">CALL THE GANG 🐾</button>
       </section>
 
+      <section class="phone">
+        <h2>Phone (Telegram)</h2>
+        <p class="note">Text Shadow from your phone: open apps, lock the PC, get screenshots, reminders, music… Works while your PC is on.</p>
+        <ol class="steps note">
+          <li>In Telegram, open <b>@BotFather</b>, send <b>/newbot</b>, choose a name, and copy the <b>token</b> it gives you.</li>
+          <li>Paste the token below, tick <b>Let me control Shadow from Telegram</b> and click <b>SAVE</b>.</li>
+          <li>Click <b>PAIR MY PHONE</b> (or send the code to your bot). Only your account can control Shadow.</li>
+        </ol>
+        <button type="button" id="openBotFather" class="ghost">OPEN @BOTFATHER ↗</button>
+        <label class="field">
+          <span>Bot token</span>
+          <div class="inline">
+            <input id="telegramToken" type="password" placeholder="1234567890:AAH…" spellcheck="false" />
+            <button type="button" id="revealTg" class="ghost">SHOW</button>
+          </div>
+        </label>
+        <div class="inline">
+          <button type="button" id="testTg" class="ghost">TEST TOKEN</button>
+          <span id="tgResult" class="test-result" role="status"></span>
+        </div>
+        <label class="check"><input id="telegramEnabled" type="checkbox" /><i></i>Let me control Shadow from Telegram</label>
+        <label class="check"><input id="telegramNotify" type="checkbox" /><i></i>Send reminders and PC alerts to my phone when I'm away from the PC</label>
+        <p class="note" id="tgStatus"></p>
+        <div class="inline">
+          <button type="button" id="pairTg" class="ghost hidden">PAIR MY PHONE ↗</button>
+          <button type="button" id="unpairTg" class="ghost hidden">UNPAIR</button>
+        </div>
+        <p class="note">The token is a password: it stays on this PC. Anyone else who messages your bot is ignored.</p>
+      </section>
+
       <section class="calendar">
         <h2>Google Calendar</h2>
         <p class="note">
