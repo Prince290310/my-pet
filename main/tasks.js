@@ -158,7 +158,7 @@ function parseCommand(input, now = Date.now()) {
   if ((m = /^(?:remove|delete)\s+(?:to-?do\s+|todo\s+|task\s+|item\s+)?(?:#|no\.?\s*|number\s*)?(\d{1,3})(?:\s+from\s+(?:my\s+)?list)?$/i.exec(t))) return { type: 'todo-remove', n: +m[1] };
   if ((m = /^(?:cancel|delete|remove)\s+reminder\s*(?:#|no\.?\s*|number\s*)?(\d{1,3})$/i.exec(t))) return { type: 'reminder-cancel', n: +m[1] };
   if (/^(?:show\s+(?:me\s+)?|see\s+|what'?s\s+on\s+|what\s+is\s+on\s+|whats\s+on\s+)?(?:my\s+)?reminders\??$/i.test(t)) return { type: 'reminder-list' };
-  if (new RegExp(`^(?:show\\s+(?:me\\s+)?|see\\s+|what'?s\\s+on\\s+|what\\s+is\\s+on\\s+|whats\\s+on\\s+|read\\s+)?(?:my\\s+)?${LIST}\\??$`, 'i').test(t)) return { type: 'todo-list' };
+  if (new RegExp(`^(?:show\\s+(?:me\\s+)?|see\\s+|open\\s+|what'?s\\s+on\\s+|what\\s+is\\s+on\\s+|whats\\s+on\\s+|read\\s+)?(?:my\\s+)?${LIST}\\??$`, 'i').test(t)) return { type: 'todo-list' };
   return null;
 }
 

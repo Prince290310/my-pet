@@ -118,6 +118,7 @@ function fill({ settings: s, providers: list, startWithWindows, configDir, calen
   $('startWithWindows').checked = startWithWindows;
   $('morningBriefing').checked = s.morningBriefing;
   $('todoNudges').checked = s.todoNudges;
+  $('pcControl').checked = s.pcControl;
   $('webSearch').checked = s.webSearch;
   $('searchKey').value = s.searchKey;
   $('configDir').textContent = configDir;
@@ -205,6 +206,7 @@ form.addEventListener('submit', async (e) => {
       startWithWindows: $('startWithWindows').checked,
       morningBriefing: $('morningBriefing').checked,
       todoNudges: $('todoNudges').checked,
+      pcControl: $('pcControl').checked,
       webSearch: $('webSearch').checked,
       searchKey: $('searchKey').value.trim(),
       aiProvider: brain.provider,

@@ -922,6 +922,116 @@ async function run(ctx, h) {
     settings.update({ aiProvider: 'gemini', aiModel: '', aiBaseUrl: '', apiKeys: {}, searchKey: '' });
     quiet();
 
+    section('Opening apps & PC controls (fake Start menu - nothing really runs)');
+    const launched = [];
+    const ran = [];
+    const ext = [];
+    const paths2 = [];
+    const fakeStart = ['Spotify', 'Uninstall Spotify', 'Visual Studio Code', 'WhatsApp', 'Google Chrome', 'Microsoft Edge', 'Microsoft Store', 'Microsoft Teams', 'Calculator'].map((name, i) => ({ name, id: `App.${i}!${name.replace(/ /g, '')}` }));
+    ctx.apps.hooks = {
+      listApps: async () => fakeStart,
+      launch: async (a) => (launched.push(a.id), ''),
+      run: async (file, args) => (ran.push([file, ...args].join(' ')), { err: null, stdout: '' }),
+      openExternal: async (u) => ext.push(u),
+      openPath: async (p) => (paths2.push(p), ''),
+    };
+    ctx.apps.apps = [];
+    ctx.apps.loadedAt = 0;
+    ctx.apps.screenshotDir = path.join(process.env.SHADOW_TEST_DIR, 'shots');
+    settings.update({ pcControl: true, aiProvider: 'gemini', aiModel: '', aiBaseUrl: '', apiKeys: {} });
+    quiet();
+    brain.rest(60000);
+    const chatA = h.openChatPanel();
+    await waitFor(() => chatA.isVisible(), 3000);
+    await waitFor(() => js('document.querySelectorAll(".msg.pet").length > 0', chatA.webContents), 3000);
+    const askA = (text) =>
+      js(`(async () => { const n = document.querySelectorAll('.msg.pet').length; const i = document.getElementById('msg'); i.value = ${JSON.stringify(text)};
+        document.getElementById('composer').requestSubmit();
+        for (let k = 0; k < 120 && document.querySelectorAll('.msg.pet:not(.typing)').length <= n; k++) await new Promise(r => setTimeout(r, 50));
+        return [...document.querySelectorAll('.msg.pet')].pop().firstChild.textContent; })()`, chatA.webContents);
+    let ar = await askA('open spotify');
+    check('"open spotify" opens the Start-menu app (not its uninstaller)', ar === 'Opening Spotify 🚀' && launched.pop() === 'App.0!Spotify', ar);
+    ar = await askA('launch vs code');
+    check('"launch vs code" understands the nickname', ar === 'Opening Visual Studio Code 🚀' && launched.pop() === 'App.2!VisualStudioCode', ar);
+    ar = await askA('start whatsap');
+    check('small typos are fine ("whatsap")', ar === 'Opening WhatsApp 🚀' && launched.pop() === 'App.3!WhatsApp', ar);
+    ar = await askA('open microsoft');
+    check('unclear name -> asks which one', ar.startsWith('Which one, Prince? 1. Microsoft Edge · 2. Microsoft Store') && launched.length === 0, ar);
+    ar = await askA('2');
+    check('...answering "2" opens that one', ar === 'Opening Microsoft Store 🚀' && launched.pop() === 'App.6!MicrosoftStore', ar);
+    ar = await askA('open notarealapp');
+    check('unknown app -> says so, opens nothing', ar.includes("couldn't find") && launched.length === 0, ar);
+    ar = await askA('open my downloads folder');
+    check('"open downloads" opens the Downloads folder', paths2.pop() === app.getPath('downloads') && ar.includes('downloads'), ar);
+    ar = await askA('open documents');
+    check('"open documents" opens Documents', paths2.pop() === app.getPath('documents'), ar);
+    ar = await askA('open wifi settings');
+    check('"open wifi settings" opens that Settings page', ext.pop() === 'ms-settings:network-wifi', ar);
+    ar = await askA('open settings');
+    check('"open settings" opens Windows Settings', ext.pop() === 'ms-settings:', ar);
+    ar = await askA('open google');
+    check('"open google" opens google.com', ext.pop() === 'https://www.google.com/', ar);
+    ar = await askA('lock my pc');
+    check('"lock my pc" locks with the fixed Windows command', ran.pop() === 'rundll32.exe user32.dll,LockWorkStation', ar);
+    ar = await askA('sleep my pc');
+    check('"sleep my pc" waits 5 s so you can cancel', ar.includes('5 seconds') && ctx.apps.pendingSleep);
+    ar = await askA('cancel');
+    await sleep(5500);
+    check('..."cancel" stops it', ar.includes('Cancelled') && !ran.some((r) => r.includes('SetSuspendState')), ar);
+    await askA('put my laptop to sleep');
+    await sleep(5500);
+    check('...otherwise it sleeps after 5 s', ran.some((r) => r.includes("SetSuspendState('Suspend'")));
+    ar = await askA('volume up');
+    check('"volume up" presses the volume key', ar.startsWith('Volume up') && ran.pop().includes('[char]175'), ar);
+    ar = await askA('brightness 60');
+    check('"brightness 60" sets brightness', ar.startsWith('Brightness set to 60%') && ran.pop().includes('$b = 60;'), ar);
+    ar = await askA('take a screenshot');
+    const shots2 = fs.existsSync(ctx.apps.screenshotDir) ? fs.readdirSync(ctx.apps.screenshotDir) : [];
+    const shotOk = shots2.length === 1 && fs.statSync(path.join(ctx.apps.screenshotDir, shots2[0])).size > 1000;
+    check('"take a screenshot" saves a PNG to Pictures › Screenshots', ar.startsWith('📸 Saved') && shotOk, `${ar} ${shots2.join()}`);
+    check('...and Shadow comes back after the photo', pet.win.isVisible() && chatA.isVisible());
+    ar = await askA('open screenshots');
+    check('"open screenshots" opens that folder', paths2.pop() === ctx.apps.screenshotDir, ar);
+    // the AI path
+    const aiCallsA = [];
+    const aiMockA = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (d) => (body += d));
+      req.on('end', () => {
+        const j = JSON.parse(body);
+        aiCallsA.push(j);
+        const user = j.messages[j.messages.length - 1].content;
+        const content = /study/.test(user) ? 'Chalo, study mode! [[open | vs code]]\n[[open | spotify]]' : 'Nope. [[pc | shutdown]] [[run | format c:]]';
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ choices: [{ message: { content } }] }));
+      });
+    });
+    await new Promise((r) => aiMockA.listen(0, '127.0.0.1', r));
+    settings.update({ aiProvider: 'custom', aiBaseUrl: `http://127.0.0.1:${aiMockA.address().port}/v1`, aiModel: 'mock', apiKeys: { custom: 'k' }, webSearch: false });
+    launched.length = 0;
+    ar = await askA('I want to study, set things up');
+    check('AI can open apps for you ([[open | …]])', ar === 'Chalo, study mode! Opening Visual Studio Code 🚀 · Opening Spotify 🚀' && launched.slice(-2).join() === 'App.2!VisualStudioCode,App.0!Spotify', ar);
+    check('...the AI is told it cannot close apps / shut down / run commands', aiCallsA[0].messages[0].content.includes('cannot close apps, shut down'));
+    const ranBefore = ran.length;
+    ar = await askA('shut everything down');
+    check('AI asking for shutdown or a command does nothing', ar === 'Nope.' && ran.length === ranBefore, ar);
+    settings.update({ pcControl: false });
+    ar = await askA('open spotify');
+    check('PC control can be switched off in Settings', ar.includes('switched off') && launched.length === 2);
+    aiCallsA.length = 0;
+    await askA('I want to study, set things up');
+    check('...then the AI is not offered it either', !aiCallsA[0].messages[0].content.includes('[[open |') && launched.length === 2);
+    chatA.close();
+    await waitFor(() => !h.getChatWindow(), 2000);
+    await new Promise((r) => aiMockA.close(r));
+    settings.update({ pcControl: true, webSearch: true, aiProvider: 'gemini', aiModel: '', aiBaseUrl: '', apiKeys: {} });
+    h.openSettings();
+    const sw7 = await waitFor(() => require('./windows').getSettingsWindow(), 3000);
+    await waitFor(() => js('!!document.getElementById("pcControl")', sw7.webContents), 3000);
+    check('Settings has the "open apps & PC controls" switch (on)', await js('document.getElementById("pcControl").checked', sw7.webContents));
+    sw7.close();
+    quiet();
+
     section('Morning briefing & to-do nudges');
     quiet();
     brain.rest(60000);

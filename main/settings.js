@@ -25,6 +25,7 @@ const DEFAULTS = Object.freeze({
   morningBriefing: true, // first time at the PC each day: today's events, to-dos, reminders
   todoNudges: true, // idle quips sometimes nudge about an open to-do
   webSearch: true, // chat may look things up (Tavily with searchKey, otherwise Wikipedia)
+  pcControl: true, // chat may open apps/folders/settings and lock/sleep/screenshot/volume (apps.js)
   searchKey: '', // free Tavily key (app.tavily.com)
   position: null, // last pet position {x, y}
 });
@@ -72,6 +73,7 @@ function validate(raw) {
     morningBriefing: s.morningBriefing === undefined ? DEFAULTS.morningBriefing : Boolean(s.morningBriefing),
     todoNudges: s.todoNudges === undefined ? DEFAULTS.todoNudges : Boolean(s.todoNudges),
     webSearch: s.webSearch === undefined ? DEFAULTS.webSearch : Boolean(s.webSearch),
+    pcControl: s.pcControl === undefined ? DEFAULTS.pcControl : Boolean(s.pcControl),
     searchKey: typeof s.searchKey === 'string' && /^[\w-]{0,200}$/.test(s.searchKey.trim()) ? s.searchKey.trim() : '',
     position:
       s.position && Number.isFinite(s.position.x) && Number.isFinite(s.position.y)

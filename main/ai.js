@@ -122,6 +122,7 @@ function nowAndCalendar(context) {
   }
   if (context.tasks) lines.push('', context.tasks); // to-do list, chat reminders + how to change them (tasks.js)
   if (context.search) lines.push('', context.search); // how to ask for a web search (search.js)
+  if (context.pc) lines.push('', context.pc); // how to open apps / lock / screenshot (apps.js)
   if (context.searchResults) {
     lines.push(
       '',

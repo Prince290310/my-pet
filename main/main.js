@@ -4,7 +4,7 @@
  * Main process entry: creates the pet window, brain, tray, reminders, calendar and IPC wiring.
  */
 
-const { app, ipcMain, screen, Menu, shell, nativeTheme, powerMonitor } = require('electron');
+const { app, ipcMain, screen, Menu, shell, nativeTheme, powerMonitor, desktopCapturer } = require('electron');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -26,6 +26,7 @@ const { CalendarSync, GCAL_SETTINGS_URL } = require('./calendar');
 const { Updater } = require('./updater');
 const { TaskStore, parseCommand } = require('./tasks');
 const search = require('./search');
+const { AppLauncher, parsePcCommand, pcRequests } = require('./apps');
 const { PetWindow } = require('./petWindow');
 const { Brain } = require('./brain');
 const { createTray } = require('./tray');
@@ -333,12 +334,62 @@ function init() {
     }
   });
 
+  // ---- opening apps / folders / settings + lock, sleep, screenshot, volume, brightness (apps.js)
+  const apps = (ctx.apps = new AppLauncher({ shell, getPath: (k) => app.getPath(k), openExternal: openUrl, hooks: ctx.appHooks || {} }));
+  if (apps.windows) setTimeout(() => apps.refresh(), 8000); // read the Start menu once Shadow has settled
+  const screenshotHelpers = {
+    // Shadow and the chat panel step out of the picture for a moment
+    beforeScreenshot: async () => {
+      ctx.screenshotHidden = [pet.win, getChatWindow()].filter((w) => w && !w.isDestroyed() && w.isVisible());
+      ctx.screenshotHidden.forEach((w) => w.hide());
+      await new Promise((r) => setTimeout(r, 250));
+    },
+    afterScreenshot: () => {
+      (ctx.screenshotHidden || []).forEach((w) => !w.isDestroyed() && w.showInactive());
+      ctx.screenshotHidden = null;
+    },
+    capture: async () => {
+      const d = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+      const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: { width: Math.round(d.size.width * d.scaleFactor), height: Math.round(d.size.height * d.scaleFactor) },
+      });
+      const src = sources.find((s) => String(s.display_id) === String(d.id)) || sources[0];
+      if (!src) throw new Error('no screen found');
+      return src.thumbnail.toPNG();
+    },
+  };
+  /** Runs a parsed PC command; returns Shadow's reply, or null if it isn't one right now. */
+  async function runPcCommand(cmd) {
+    if (cmd.type === 'cancel') return apps.cancel();
+    if (cmd.type === 'choose') return apps.choose(cmd.n);
+    if (!settings.get('pcControl')) return 'Opening apps and PC controls are switched off, Prince. Turn them on in Settings → Behaviour.';
+    if (cmd.type === 'open') return apps.open(cmd.target);
+    return apps.system(cmd, screenshotHelpers);
+  }
+
   ipcMain.handle('chat:ask', async (_e, message) => {
     const text = String(message || '').trim().slice(0, 2000);
     if (!text) return { text: '' };
     const history = ctx.chatHistory;
     history.push({ role: 'user', text });
     let reply;
+    const pcCmd = parsePcCommand(text);
+    if (pcCmd) {
+      let out = null;
+      try {
+        out = await runPcCommand(pcCmd);
+      } catch (err) {
+        console.warn('[apps]', err);
+        out = `That didn't work, Prince (${err.message}).`;
+      }
+      if (out) {
+        history.push({ role: 'pet', text: out });
+        brain.chatReply(out);
+        return { text: out, sources: [] };
+      }
+      // "cancel"/"2" with nothing pending -> just chat
+    }
     const searchCmd = search.parseSearchCommand(text);
     if (searchCmd) {
       if (searchCmd.type === 'wiki' || searchCmd.type === 'search') searchingBubble();
@@ -363,7 +414,12 @@ function init() {
       return { text: reply, sources: [] };
     }
     const searchOn = settings.get('webSearch');
-    const context = { ...aiContext(), search: searchOn ? search.aiInstructions(!!settings.get('searchKey')) : '', history: history.slice(-20) };
+    const context = {
+      ...aiContext(),
+      search: searchOn ? search.aiInstructions(!!settings.get('searchKey')) : '',
+      pc: settings.get('pcControl') ? apps.aiInstructions() : '',
+      history: history.slice(-20),
+    };
     let sources = [];
     try {
       const raw = await ai.chat(text, context);
@@ -383,8 +439,15 @@ function init() {
           sources = showSources(found.results);
         }
       } else {
-        // the AI may end its reply with hidden [[remind | ...]] / [[todo ...]] commands
-        reply = ctx.tasks.applyTags(raw).text || '😼';
+        // the AI may end its reply with hidden commands: [[open | spotify]], [[pc | lock]] (apps.js),
+        // [[remind | ...]] / [[todo ...]] (tasks.js)
+        const done = [];
+        if (settings.get('pcControl')) {
+          for (const req of pcRequests(raw)) done.push(await runPcCommand(req));
+        }
+        reply = ctx.tasks.applyTags(raw).text;
+        if (done.length) reply = `${reply ? `${reply} ` : ''}${done.filter(Boolean).join(' · ')}`;
+        reply = reply || '😼';
       }
       history.push({ role: 'pet', text: reply });
     } catch (err) {
@@ -421,7 +484,7 @@ function init() {
   // settings window
   ipcMain.handle('settings:load', () => settingsPayload());
   ipcMain.handle('settings:save', async (_e, patch = {}) => {
-    const allowed = ['petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat', 'morningBriefing', 'todoNudges', 'webSearch', 'searchKey'];
+    const allowed = ['petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat', 'morningBriefing', 'todoNudges', 'webSearch', 'searchKey', 'pcControl'];
     const clean = Object.fromEntries(Object.entries(patch).filter(([k]) => allowed.includes(k)));
     const before = settings.get('calendarUrl');
     settings.update(clean);

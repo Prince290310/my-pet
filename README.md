@@ -148,7 +148,7 @@ Windows SmartScreen may warn "unknown publisher" because the installer isn't cod
 npm test
 ```
 
-Runs 207 automated end-to-end checks against the real app (~1.5 min) in a **throw-away profile**.
+Runs 233 automated end-to-end checks against the real app (~1.5 min) in a **throw-away profile**.
 Your settings, config and Start-with-Windows setting are never touched. The checks cover window
 properties, every animation frame, click-through hit-testing, click/double-click/Ctrl+Click, dragging and
 clamping, wandering and pouncing, sleep and wake, the right-click menu, the chat → `askPet()` round trip,
@@ -187,6 +187,7 @@ main/            Electron main process
   updater.js       self-update from GitHub Releases
   tasks.js         "remind me…" reminders, to-do list, morning briefing
   search.js        internet search (Tavily / Wikipedia) + "google …"/"youtube …" commands
+  apps.js          opens apps/folders/settings; lock, sleep, screenshot, volume, brightness
   settings.js      settings.json load/validate/save
   tray.js          tray icon + menu
   windows.js       chat panel + settings window
@@ -402,3 +403,33 @@ Shadow can look things up. Ctrl+Click and:
 - Web pages are treated as untrusted: anything they say only informs the answer. They can't make Shadow
   set reminders or change your list.
 - Your searches are sent to Tavily or Wikipedia. Untick **Let Shadow look things up on the internet** to turn it off.
+
+---
+
+## 12. Opening apps and controlling the PC
+
+Ctrl+Click Shadow and:
+
+| Say | What happens |
+| --- | --- |
+| `open spotify` · `launch vs code` · `start whatsapp` | opens any app in your Start menu (nicknames and small typos are fine) |
+| `open microsoft` | if several apps match, Shadow asks *"Which one? 1. … 2. …"*. Reply with the number |
+| `open downloads` · `documents` · `desktop` · `pictures` · `music` · `videos` · `screenshots` · `recycle bin` · `this pc` | opens the folder |
+| `open settings` · `wifi settings` · `bluetooth settings` · `display/sound/battery settings` · `windows update` | opens that Settings page |
+| `open google` / `open youtube` (no app with that exact name) | opens the website |
+| `lock my pc` | locks right away |
+| `sleep my pc` | sleeps after 5 seconds. Say `cancel` to stop it |
+| `take a screenshot` | saves the screen to *Pictures › Screenshots* (Shadow steps out of the picture) |
+| `snip` | opens the Windows snipping overlay (copies to the clipboard) |
+| `volume up` · `volume down` · `mute` | sound |
+| `brightness 60` · `brightness up` / `down` | laptop screen brightness |
+
+With an AI brain you can also say things in your own words, like *"I want to study, set things up"*, and the
+AI can open apps for you.
+
+**Safety:**
+- Apps come only from Windows' own Start-menu list and open through Explorer. Nothing you, the AI or a
+  web page types is ever run as a command.
+- System actions are a fixed list of built-in commands.
+- Shadow can't close apps, shut down, restart or delete anything.
+- Switch it all off in **Settings → Behaviour → Let Shadow open apps & folders…**
