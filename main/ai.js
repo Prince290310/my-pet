@@ -123,6 +123,7 @@ function nowAndCalendar(context) {
   if (context.tasks) lines.push('', context.tasks); // to-do list, chat reminders + how to change them (tasks.js)
   if (context.search) lines.push('', context.search); // how to ask for a web search (search.js)
   if (context.pc) lines.push('', context.pc); // how to open apps / lock / screenshot (apps.js)
+  if (context.music) lines.push('', context.music); // how to control music (music.js)
   if (context.searchResults) {
     lines.push(
       '',
@@ -266,7 +267,9 @@ async function chatClaude(r, system, messages) {
 async function chat(message, context = {}) {
   const r = resolve(context);
   if (r.p.needsKey && !r.apiKey) throw new AiError('no-key');
-  const system = `${context.personality || ''}\n${bubbleRules(context.petName || 'Shadow')}\n${nowAndCalendar(context)}`;
+  // context.long: Sage's lessons/quizzes go to the chat panel and may be longer than a bubble (tutor.js)
+  const rules = context.long ? require('./tutor').LONG_RULES : bubbleRules(context.petName || 'Shadow');
+  const system = `${context.personality || ''}\n${rules}\n${context.tutor ? `${context.tutor}\n` : ''}${nowAndCalendar(context)}`;
   const messages = toMessages(String(message), context.history);
   return r.id === 'claude' ? chatClaude(r, system, messages) : chatOpenAICompatible(r, system, messages);
 }

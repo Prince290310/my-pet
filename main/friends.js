@@ -59,6 +59,41 @@ const DEFS = [
     hello: ['Bolt here! Need an app opened? ⚡', 'Say "open spotify" and watch me go 🐒', 'Lightning-fast launcher, reporting!'],
     play: ['Ooh ooh aah aah! 🐒', 'Tag, Shadow - you\'re it!', 'Banana break!'],
   },
+  {
+    id: 'sage',
+    name: 'Sage',
+    animal: 'owl',
+    job: 'Tutor',
+    blurb: 'teaches you step by step, quizzes you and checks homework',
+    flies: true,
+    perch: true, // sits on Shadow's head while teaching
+    slot: 2,
+    speed: 200,
+    hello: ['Hoo! Sage here. Say "teach me ..." or "quiz me on ..." 🦉', 'Knowledge is power, Prince. What shall we learn? 📚', 'Hoo hoo! Homework trouble? Say "check my answer: ..."'],
+    play: ['Hoo hoo! 🦉', 'Did you know owls can turn their heads 270°?', 'Wise AND fun!'],
+  },
+  {
+    id: 'zen',
+    name: 'Zen',
+    animal: 'turtle',
+    job: 'PC caretaker',
+    blurb: 'watches battery, storage, RAM and internet, and tidies your Downloads',
+    slot: -3,
+    speed: 90,
+    hello: ['Zen here. Slow and steady keeps your PC healthy 🐢', 'Say "pc health" for a checkup, Prince.', 'Messy Downloads? Say "tidy my downloads".'],
+    play: ['Slow... and... steady 🐢', 'Race you, Shadow! ...eventually.', 'Zen mode: on.'],
+  },
+  {
+    id: 'tempo',
+    name: 'Tempo',
+    animal: 'penguin',
+    job: 'Music DJ',
+    blurb: 'plays, pauses and skips your music and finds playlists',
+    slot: 3,
+    speed: 140,
+    hello: ['Tempo on the decks! Say "play something chill" 🎧', 'DJ Tempo in the house! 🐧🎵', 'Say "next song" or "what\'s playing" anytime.'],
+    play: ['🎵 Untz untz untz 🎵', 'Dance with me, Shadow!', 'Drop the beat! 🐧'],
+  },
 ];
 
 class Friend {
@@ -123,6 +158,13 @@ class Friend {
     if (this.ready) this.win.send('pet:anim', { name, facing: this.facing });
   }
 
+  /** Say it now, or as soon as the friend has arrived. */
+  sayWhenHere(text, ms) {
+    if (this.state === 'here') return this.say(text, ms);
+    this.pendingSay = { text, ms };
+    return 0;
+  }
+
   say(text, ms) {
     if (!text || !this.ready || this.state === 'away') return 0;
     const dur = ms || Math.min(7000, 2200 + text.length * 50);
@@ -130,6 +172,11 @@ class Friend {
     clearTimeout(this.bubbleTimer);
     this.bubbleTimer = setTimeout(() => this.ready && this.win && this.win.alive() && this.win.send('pet:bubble-hide'), dur);
     return dur;
+  }
+
+  floorY() {
+    const wa = this.mgr.display().workArea;
+    return wa.y + wa.height - (this.win ? this.win.S : CELL * this.mgr.scale());
   }
 
   stopMove() {
@@ -176,10 +223,11 @@ class Friend {
     const w = this.ensureWindow();
     const d = this.mgr.display();
     const wa = d.workArea;
-    const target = this.mgr.slotX(this);
+    const perch = this.def.perch && this.jobs > 0;
+    const target = perch ? this.mgr.perchX(this) : this.mgr.slotX(this);
     const fromLeft = target < wa.x + wa.width / 2;
     const startX = fromLeft ? wa.x - w.S - 10 : wa.x + wa.width + 10;
-    const floor = wa.y + wa.height - w.S;
+    const floor = perch ? this.mgr.perchY(this) : wa.y + wa.height - w.S;
     this.place(startX, this.def.flies ? floor - 220 : floor);
     this.state = 'arriving';
     this.arrived = then;
@@ -235,9 +283,19 @@ class Friend {
       this.clearTimers();
       this.facing = this.mgr.shadowX() >= this.pos.x ? 'right' : 'left';
       this.play('work', true);
-      this.say(line, 60000);
+      const later = this.pendingSay; // something to say that arrived while flying in
+      this.pendingSay = null;
+      if (later) this.say(later.text, later.ms);
+      else this.say(line, 60000);
     };
-    if (this.state === 'here') start();
+    const toPerch = () => {
+      // Sage teaches from Shadow's head
+      const px = this.mgr.perchX(this);
+      const py = this.mgr.perchY(this);
+      if (Math.hypot(this.pos.x - px, this.pos.y - py) < 4) return start();
+      this.moveTo(px, py, start);
+    };
+    if (this.state === 'here') (this.def.perch ? toPerch() : start());
     else this.appear(start);
     return (doneLine) => {
       if (finished) return;
@@ -273,9 +331,13 @@ class Friend {
         this.play('sleep');
         return this.scheduleIdle();
       }
+      if (this.dancing) {
+        this.play('play');
+        return this.scheduleIdle();
+      }
       const want = this.mgr.slotX(this);
-      if (Math.abs(this.pos.x - want) > 140) {
-        return this.moveTo(want, this.pos.y, () => {
+      if (Math.abs(this.pos.x - want) > 140 || Math.abs(this.pos.y - this.floorY()) > 2) {
+        return this.moveTo(want, this.floorY(), () => {
           this.play('idle', true);
           this.scheduleIdle();
         });
@@ -284,7 +346,7 @@ class Friend {
       if (r < 0.2) {
         const wa = this.mgr.display().workArea;
         const nx = Math.max(wa.x, Math.min(wa.x + wa.width - this.win.S, this.pos.x + rand(-60, 60)));
-        return this.moveTo(nx, this.pos.y, () => {
+        return this.moveTo(nx, this.floorY(), () => {
           this.play('idle', true);
           this.scheduleIdle();
         });
@@ -395,6 +457,17 @@ class FriendsManager extends EventEmitter {
     return Math.max(wa.x, Math.min(wa.x + wa.width - S, x));
   }
 
+  /** Sage's perch: on top of Shadow's head. */
+  perchX(friend) {
+    const S = friend.win ? friend.win.S : CELL * this.scale();
+    return this.shadowX() - S / 2 + 4 * this.scale();
+  }
+
+  perchY(friend) {
+    const S = friend.win ? friend.win.S : CELL * this.scale();
+    return this.pet.pos.y - S + 12 * this.scale();
+  }
+
   forSender(wc) {
     return this.list.find((f) => f.win && f.win.alive() && f.win.win.webContents === wc) || null;
   }
@@ -459,9 +532,10 @@ class FriendsManager extends EventEmitter {
     if (!out.length || this.brain.state === 'hidden') return 0;
     this.gangUntil = Date.now() + ms;
     let arrived = 0;
-    out.forEach((f, i) => {
+    this.gangTimers = (this.gangTimers || []).concat(out.map((f, i) =>
       setTimeout(
         () =>
+          Date.now() < this.gangUntil &&
           f.appear(() => {
             arrived++;
             f.after(i * 1500, () => {
@@ -472,8 +546,8 @@ class FriendsManager extends EventEmitter {
             if (arrived === out.length) this.shadowJoins();
           }),
         i * 500
-      );
-    });
+      )
+    ));
     clearTimeout(this.gangTimer);
     this.gangTimer = setTimeout(() => this.apply(), ms + 500);
     return out.length;
@@ -481,6 +555,8 @@ class FriendsManager extends EventEmitter {
 
   sendHome() {
     this.gangUntil = 0;
+    (this.gangTimers || []).forEach(clearTimeout); // friends who hadn't set off yet stay home
+    this.gangTimers = [];
     // friends still on a job finish it first, then leave (afterJob)
     this.list.forEach((f) => {
       f.stayUntil = 0;

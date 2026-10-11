@@ -148,6 +148,7 @@ function fill({ settings: s, providers: list, startWithWindows, configDir, calen
   $('morningBriefing').checked = s.morningBriefing;
   $('todoNudges').checked = s.todoNudges;
   $('pcControl').checked = s.pcControl;
+  $('pcCare').checked = s.pcCare;
   $('webSearch').checked = s.webSearch;
   $('searchKey').value = s.searchKey;
   $('configDir').textContent = configDir;
@@ -237,6 +238,7 @@ form.addEventListener('submit', async (e) => {
       morningBriefing: $('morningBriefing').checked,
       todoNudges: $('todoNudges').checked,
       pcControl: $('pcControl').checked,
+      pcCare: $('pcCare').checked,
       friendsMode: (form.querySelector('input[name="friendsMode"]:checked') || {}).value,
       friends: Object.fromEntries([...document.querySelectorAll('input[data-friend]')].map((b) => [b.dataset.friend, b.checked])),
       webSearch: $('webSearch').checked,

@@ -1037,7 +1037,7 @@ async function run(ctx, h) {
     const fr = (id) => friends.get(id);
     const allAway = () => friends.list.every((f) => f.state === 'away');
     const allHere = () => friends.list.every((f) => f.state === 'here');
-    check('three friends with jobs', friends.list.map((f) => `${f.def.name}:${f.def.job}`).join() === 'Atlas:Researcher,Dash:Messenger,Bolt:Launcher');
+    check('six friends with jobs', friends.list.map((f) => `${f.def.name}:${f.def.job}`).join() === 'Atlas:Researcher,Dash:Messenger,Bolt:Launcher,Sage:Tutor,Zen:PC caretaker,Tempo:Music DJ');
     friends.sendHome(); // earlier tests called them for jobs
     await waitFor(allAway, 12000);
     check('default: "now & then" mode, nobody left on screen after jobs', settings.get('friendsMode') === 'occasional' && allAway(), friends.list.map((f) => f.state).join());
@@ -1046,14 +1046,14 @@ async function run(ctx, h) {
     // put Shadow mid-screen so there's room on both sides
     const dF = pet.display();
     pet.moveTo(dF.workArea.x + Math.round(dF.workArea.width / 2) - Math.round(pet.S / 2), pet.floorY(dF));
-    check('"Call the gang" brings everyone', friends.callGang() === 3);
+    check('"Call the gang" brings everyone', friends.callGang() === 6);
     await waitFor(allHere, 9000);
     check('...they all arrive', allHere(), friends.list.map((f) => f.state).join());
     const floorOk = friends.list.every((f) => Math.abs(f.pos.y - (dF.workArea.y + dF.workArea.height - f.win.S)) < 2);
     const nearOk = friends.list.every((f) => Math.abs(f.pos.x + f.win.S / 2 - (pet.pos.x + pet.S / 2)) < 400);
     check('...standing on the floor next to Shadow', floorOk && nearOk, friends.list.map((f) => `${f.id}@${Math.round(f.pos.x)},${Math.round(f.pos.y)}`).join(' '));
     const xs = friends.list.map((f) => f.pos.x).sort((a, b) => a - b);
-    check('...not standing on top of each other', xs[1] - xs[0] > 20 && xs[2] - xs[1] > 20, xs.map(Math.round).join());
+    check('...not standing on top of each other', xs.every((x, i) => i === 0 || x - xs[i - 1] > 20), xs.map(Math.round).join());
     const fstate = (f) => f.win.win.webContents.executeJavaScript('window.__shadowTest.state()');
     const fs1 = await fstate(fr('dash'));
     check('friend sprites are 32px and animating', fs1.canvas.width === 32 * settings.get('scale') && fs1.ticking, JSON.stringify(fs1.canvas));
@@ -1136,7 +1136,7 @@ async function run(ctx, h) {
     brain.dismissReminder();
     await waitFor(() => !brain.activeReminder, 4000);
     await waitFor(allAway, 12000);
-    settings.update({ friends: { atlas: true, dash: false, bolt: true } });
+    settings.update({ friends: { atlas: true, dash: false, bolt: true, sage: true, zen: true, tempo: true } });
     brain.reminder({ time: '', message: 'No Dash please' });
     await sleep(1500);
     check('a switched-off friend stays home', fr('dash').state === 'away');
@@ -1145,7 +1145,7 @@ async function run(ctx, h) {
     await waitFor(() => !brain.activeReminder, 4000);
 
     // "always" mode
-    settings.update({ friendsMode: 'always', friends: { atlas: true, dash: true, bolt: true } });
+    settings.update({ friendsMode: 'always', friends: { atlas: true, dash: true, bolt: true, sage: true, zen: true, tempo: true } });
     await waitFor(allHere, 9000);
     check('"always" mode: the gang stays on screen', allHere());
     brain.tuck();
@@ -1159,13 +1159,164 @@ async function run(ctx, h) {
     check('switching back to "now & then" sends them home', allAway());
     h.openSettings();
     const sw8 = await waitFor(() => require('./windows').getSettingsWindow(), 3000);
-    await waitFor(() => js('document.querySelectorAll("input[data-friend]").length === 3', sw8.webContents), 3000);
+    await waitFor(() => js('document.querySelectorAll("input[data-friend]").length === 6', sw8.webContents), 3000);
     const fui = await js(`(() => ({ mode: document.querySelector('input[name="friendsMode"]:checked').value, boxes: [...document.querySelectorAll('input[data-friend]')].map(b => b.dataset.friend + ':' + b.checked).join(), help: document.getElementById('friendsModeHelp').textContent, btn: !!document.getElementById('callGang') }))()`, sw8.webContents);
-    check('Settings: mode switch, a switch per friend, Call the Gang button', fui.mode === 'occasional' && fui.boxes === 'atlas:true,dash:true,bolt:true' && fui.btn, JSON.stringify(fui));
+    check('Settings: mode switch, a switch per friend, Call the Gang button', fui.mode === 'occasional' && fui.boxes === 'atlas:true,dash:true,bolt:true,sage:true,zen:true,tempo:true' && fui.btn, JSON.stringify(fui));
     await js("document.querySelector('.friends').scrollIntoView()", sw8.webContents);
     await sleep(300);
     await shot('settings-friends', sw8.webContents);
     sw8.close();
+    quiet();
+
+    section('Round 2: Tempo (music), Zen (PC care), Sage (tutor) - all faked');
+    settings.update({ friendsMode: 'working', aiProvider: 'gemini', aiModel: '', aiBaseUrl: '', apiKeys: {} });
+    await waitFor(allAway, 9000);
+    const chatR = h.openChatPanel();
+    await waitFor(() => chatR.isVisible(), 3000);
+    await waitFor(() => js('document.querySelectorAll(".msg.pet").length > 0', chatR.webContents), 3000);
+    const askR = (text) =>
+      js(`(async () => { const n = document.querySelectorAll('.msg.pet').length; const i = document.getElementById('msg'); i.value = ${JSON.stringify(text)};
+        document.getElementById('composer').requestSubmit();
+        for (let k = 0; k < 160 && document.querySelectorAll('.msg.pet:not(.typing)').length <= n; k++) await new Promise(r => setTimeout(r, 50));
+        return [...document.querySelectorAll('.msg.pet')].pop().firstChild.textContent; })()`, chatR.webContents);
+    // --- Tempo
+    const player = { on: true, title: 'Kesariya', artist: 'Arijit Singh', app: 'Spotify.exe', status: 'Paused' };
+    const mediaCalls = [];
+    ctx.music.hooks = {
+      media: async (action) => {
+        mediaCalls.push(action);
+        if (!player.on) return { ok: false };
+        if (action === 'play') player.status = 'Playing';
+        if (action === 'pause') player.status = 'Paused';
+        if (action === 'next') player.title = 'Apna Bana Le';
+        return { ok: true, title: player.title, artist: player.artist, app: player.app, status: player.status };
+      },
+    };
+    let rr = await askR('play');
+    check('"play" plays the music', rr === '▶️ Playing: Kesariya – Arijit Singh' && mediaCalls.pop() === 'play', rr);
+    check('...and Tempo the penguin comes to DJ', fr('tempo').state !== 'away');
+    rr = await askR("what's playing?");
+    check('"what\'s playing" names the song + app', rr === '🎵 Kesariya – Arijit Singh (Spotify)', rr);
+    rr = await askR('next song');
+    check('"next song" skips', rr === '⏭️ Next up: Apna Bana Le – Arijit Singh', rr);
+    rr = await askR('pause the music');
+    check('"pause the music" pauses', rr.startsWith('⏸️ Paused'), rr);
+    player.on = false;
+    rr = await askR('play');
+    check('nothing playing -> friendly hint', rr.startsWith("Nothing's playing"), rr);
+    rr = await askR('play something chill');
+    check('"play something chill" opens a Spotify search (Spotify installed)', opened2.pop() === 'spotify:search:chill%20lofi', rr);
+    rr = await askR('play arijit singh on youtube');
+    check('"play … on youtube" opens YouTube', opened2.pop() === 'https://www.youtube.com/results?search_query=arijit%20singh', rr);
+    // --- Zen
+    const pcState = { battery: { percent: 18, charging: false }, disk: { free: 5 * 1024 ** 3, total: 256 * 1024 ** 3 }, online: true };
+    ctx.care.hooks = {
+      battery: async () => pcState.battery,
+      disk: async () => pcState.disk,
+      mem: async () => ({ free: 6 * 1024 ** 3, total: 16 * 1024 ** 3 }),
+      cpu: async () => 12,
+      online: async () => pcState.online,
+      top: async () => [{ name: 'chrome', mb: 3000 }],
+      uptime: () => 3 * 86400,
+    };
+    rr = await askR('pc health');
+    check('"pc health" gives a one-line checkup', /^🔋 18% · 💾 5\.0 GB free of 256 GB · 🧠 RAM 63% · ⚙️ CPU 12% · 🌐 Online · ⏱️ up 3 days/.test(rr), rr);
+    check('...and Zen the turtle comes over', fr('zen').state !== 'away');
+    chatR.hide();
+    quiet();
+    brain.rest(60000);
+    const al = await ctx.care.check();
+    check('low battery + full storage -> alerts', al.map((a) => a.key).join() === 'battery-20,disk', al.map((a) => a.text).join(' | '));
+    await waitFor(() => brain.state === 'reminder', 9000);
+    check('...shown in a sticky PC CARE bubble', brain.bubble && brain.bubble.text.includes('Battery at 18%'));
+    for (let k = 0; k < 4 && brain.activeReminder; k++) {
+      await waitFor(() => brain.state === 'reminder', 9000);
+      brain.dismissReminder();
+      await waitFor(() => !brain.activeReminder || brain.state === 'reminder', 9000);
+    }
+    await waitFor(() => !brain.activeReminder, 4000);
+    check('...and not repeated every check', (await ctx.care.check()).length === 0);
+    pcState.battery = { percent: 9, charging: false };
+    check('battery 10% -> urgent alert', (await ctx.care.check()).some((a) => a.key === 'battery-10'));
+    pcState.battery = { percent: 100, charging: true };
+    check('plugged in + 100% -> "fully charged"', (await ctx.care.check()).some((a) => a.key === 'battery-full'));
+    pcState.online = false;
+    await ctx.care.check();
+    check('internet down (twice in a row) -> alert', (await ctx.care.check()).some((a) => a.key === 'offline'));
+    pcState.online = true;
+    check('internet back -> alert', (await ctx.care.check()).some((a) => a.key === 'online'));
+    for (let k = 0; k < 4 && brain.activeReminder; k++) {
+      await waitFor(() => brain.state === 'reminder', 9000);
+      brain.dismissReminder();
+      await waitFor(() => !brain.activeReminder || brain.state === 'reminder', 9000);
+    }
+    await waitFor(() => !brain.activeReminder, 4000);
+    // tidy Downloads (in a temp folder)
+    const dl = path.join(process.env.SHADOW_TEST_DIR, 'Downloads');
+    fs.mkdirSync(dl, { recursive: true });
+    const old = (Date.now() - 3600 * 1000) / 1000;
+    for (const n of ['photo.jpg', 'notes.pdf', 'setup.exe', 'song.mp3', 'mystery.xyz', 'big.zip.crdownload']) {
+      fs.writeFileSync(path.join(dl, n), 'x');
+      fs.utimesSync(path.join(dl, n), old, old);
+    }
+    fs.writeFileSync(path.join(dl, 'just-downloaded.png'), 'x');
+    const realGetPath = ctx.care.getPath;
+    ctx.care.getPath = (k) => (k === 'downloads' ? dl : realGetPath(k));
+    chatR.showInactive();
+    rr = await askR('tidy my downloads');
+    check('"tidy my downloads" shows a plan first (nothing moved yet)', rr.startsWith('🐢 I can sort 4 files into folders') && fs.existsSync(path.join(dl, 'photo.jpg')), rr);
+    rr = await askR('yes');
+    const tidyOk = ['Images/photo.jpg', 'Documents/notes.pdf', 'Installers/setup.exe', 'Music/song.mp3'].every((f) => fs.existsSync(path.join(dl, f)));
+    check('..."yes" sorts them into folders', rr.startsWith('✨ Done! Sorted 4 files') && tidyOk, rr);
+    check('...unknown types, unfinished downloads and brand-new files are left alone', ['mystery.xyz', 'big.zip.crdownload', 'just-downloaded.png'].every((f) => fs.existsSync(path.join(dl, f))));
+    rr = await askR('undo tidy');
+    check('"undo tidy" puts everything back', rr.startsWith('↩️ Put 4 files back') && fs.existsSync(path.join(dl, 'photo.jpg')) && !fs.existsSync(path.join(dl, 'Images', 'photo.jpg')), rr);
+    ctx.care.getPath = realGetPath;
+    // --- Sage
+    rr = await askR('teach me photosynthesis');
+    check('Sage without an AI brain -> explains how to add one', rr.includes('Sage needs an AI brain'), rr);
+    const aiCallsT = [];
+    const tutorAI = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (d) => (body += d));
+      req.on('end', () => {
+        const j = JSON.parse(body);
+        aiCallsT.push(j);
+        const sys = j.messages[0].content;
+        const content = sys.includes('Quiz Prince on') ? 'Question 1: When did the French Revolution begin?\nA) 1789\nB) 1776\nC) 1804\nD) 1815' : sys.includes('Teach Prince') ? '1. Plants make food from sunlight.\n2. They use water and CO2.\n3. Oxygen comes out.\nQuick check: what gas do plants release?' : 'Hmm.';
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ choices: [{ message: { content } }] }));
+      });
+    });
+    await new Promise((r) => tutorAI.listen(0, '127.0.0.1', r));
+    settings.update({ aiProvider: 'custom', aiBaseUrl: `http://127.0.0.1:${tutorAI.address().port}/v1`, aiModel: 'mock', apiKeys: { custom: 'k' } });
+    rr = await askR('teach me photosynthesis');
+    const sysT = aiCallsT[0] ? aiCallsT[0].messages[0].content : '';
+    check('"teach me …" -> a step-by-step lesson in the chat', rr.startsWith('1. Plants make food') && rr.includes('Quick check'), rr);
+    check('...Sage gets tutor instructions + room for longer answers', sysT.includes('SAGE the wise owl') && sysT.includes('Teach Prince: photosynthesis') && sysT.includes('up to about 12 short lines') && !sysT.includes('1-2 short sentences'));
+    await waitFor(() => fr('sage').state === 'here', 8000);
+    check('...Sage the owl perches on Shadow\'s head', fr('sage').pos.y < pet.pos.y && Math.abs(fr('sage').pos.x + fr('sage').win.S / 2 - (pet.pos.x + pet.S / 2)) < 30, `sage@${Math.round(fr('sage').pos.x)},${Math.round(fr('sage').pos.y)} shadow@${Math.round(pet.pos.x)},${Math.round(pet.pos.y)}`);
+    await sleep(300);
+    check('...and says the lesson in his own bubble', ((await fstate(fr('sage'))).bubble || {}).text === '🦉 1. Plants make food from sunlight.');
+    rr = await askR('oxygen');
+    check('replies during a lesson go to Sage', aiCallsT.length === 2 && aiCallsT[1].messages[0].content.includes('Teach Prince: photosynthesis') && aiCallsT[1].messages.some((m) => m.content === 'oxygen'));
+    rr = await askR('quiz me on the french revolution');
+    check('"quiz me on …" asks one multiple-choice question', rr.startsWith('Question 1:') && rr.includes('A) 1789') && aiCallsT[2].messages[0].content.includes('Quiz Prince on: the french revolution'), rr);
+    rr = await askR('stop the quiz');
+    check('"stop the quiz" ends class', rr.startsWith('Class dismissed') && !ctx.tutor.active(), rr);
+    await waitFor(() => fr('sage').state === 'away', 12000);
+    check('...and Sage flies home', fr('sage').state === 'away');
+    chatR.close();
+    await waitFor(() => !h.getChatWindow(), 2000);
+    await new Promise((r) => tutorAI.close(r));
+    settings.update({ aiProvider: 'gemini', aiModel: '', aiBaseUrl: '', apiKeys: {}, friendsMode: 'occasional' });
+    h.openSettings();
+    const sw9 = await waitFor(() => require('./windows').getSettingsWindow(), 3000);
+    await waitFor(() => js('!!document.getElementById("pcCare")', sw9.webContents), 3000);
+    check('Settings has the Zen PC-care switch (on)', await js('document.getElementById("pcCare").checked', sw9.webContents));
+    sw9.close();
+    friends.sendHome();
+    await waitFor(allAway, 12000);
     quiet();
 
     section('Morning briefing & to-do nudges');

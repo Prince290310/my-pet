@@ -26,8 +26,9 @@ const DEFAULTS = Object.freeze({
   todoNudges: true, // idle quips sometimes nudge about an open to-do
   webSearch: true, // chat may look things up (Tavily with searchKey, otherwise Wikipedia)
   pcControl: true, // chat may open apps/folders/settings and lock/sleep/screenshot/volume (apps.js)
+  pcCare: true, // Zen warns about battery, storage, RAM/CPU and internet (care.js)
   friendsMode: 'occasional', // always | working | occasional (friends.js)
-  friends: { atlas: true, dash: true, bolt: true }, // which friends are switched on
+  friends: { atlas: true, dash: true, bolt: true, sage: true, zen: true, tempo: true }, // which friends are switched on
   searchKey: '', // free Tavily key (app.tavily.com)
   position: null, // last pet position {x, y}
 });
@@ -76,6 +77,7 @@ function validate(raw) {
     todoNudges: s.todoNudges === undefined ? DEFAULTS.todoNudges : Boolean(s.todoNudges),
     webSearch: s.webSearch === undefined ? DEFAULTS.webSearch : Boolean(s.webSearch),
     pcControl: s.pcControl === undefined ? DEFAULTS.pcControl : Boolean(s.pcControl),
+    pcCare: s.pcCare === undefined ? DEFAULTS.pcCare : Boolean(s.pcCare),
     friendsMode: ['always', 'working', 'occasional'].includes(s.friendsMode) ? s.friendsMode : DEFAULTS.friendsMode,
     friends: Object.fromEntries(Object.keys(DEFAULTS.friends).map((id) => [id, s.friends && typeof s.friends[id] === 'boolean' ? s.friends[id] : true])),
     searchKey: typeof s.searchKey === 'string' && /^[\w-]{0,200}$/.test(s.searchKey.trim()) ? s.searchKey.trim() : '',

@@ -28,6 +28,9 @@ const { TaskStore, parseCommand } = require('./tasks');
 const search = require('./search');
 const { AppLauncher, parsePcCommand, pcRequests } = require('./apps');
 const { FriendsManager } = require('./friends');
+const { MusicControl, parseMusicCommand, musicRequests } = require('./music');
+const { PcCare, parseCareCommand } = require('./care');
+const { Tutor, parseTutorCommand, bubbleLine } = require('./tutor');
 const { PetWindow } = require('./petWindow');
 const { Brain } = require('./brain');
 const { createTray } = require('./tray');
@@ -399,6 +402,85 @@ function init() {
     return out;
   }
 
+  // ---- Tempo the penguin: music (music.js)
+  const music = (ctx.music = new MusicControl({
+    openExternal: (u) => openUrl(u),
+    hasSpotify: async () => {
+      if (!apps.windows) return false;
+      await apps.refresh();
+      return apps.find('spotify').some((x) => x.s === 100);
+    },
+    hooks: ctx.musicHooks || {},
+  }));
+  const TEMPO_LINES = { play: '▶️ Hit it!', pause: '⏸️ Pausing!', next: '⏭️ Next track!', previous: '⏮️ Rewind!', status: '🎵 Let me listen…', search: '🎧 Digging the crates…' };
+  async function runMusic(cmd) {
+    const done = friends.job('tempo', TEMPO_LINES[cmd.action]);
+    let out;
+    try {
+      out = await music.run(cmd);
+    } catch (err) {
+      out = `The music didn't listen to me, Prince (${err.message}).`;
+    }
+    done();
+    return out;
+  }
+  // Tempo dances while music is playing (when he's on screen)
+  setInterval(async () => {
+    const t = friends.get('tempo');
+    if (SELF_TEST || t.state !== 'here' || t.jobs || !music.available) return;
+    t.dancing = await music.playing();
+  }, 30 * 1000);
+
+  // ---- Zen the turtle: PC care (care.js)
+  const care = (ctx.care = new PcCare({ getPath: (k) => app.getPath(k), logFile: path.join(app.getPath('userData'), 'tidy-log.json'), hooks: ctx.careHooks || {} }));
+  care.on('alert', (a) => {
+    if (!settings.get('pcCare')) return;
+    friends.quickJob('zen', '🩺 Heads up!', 6000);
+    if (a.sticky) brain.reminder({ time: '', kind: 'care', key: `care|${a.key}`, icon: '🐢', head: 'PC CARE', hint: 'click to close ✓', message: a.text });
+    else if (!brain.activeReminder && brain.state !== 'hidden') brain.say(a.text, { ms: 6000 });
+  });
+  if (!SELF_TEST) care.start();
+  async function runCare(cmd) {
+    friends.quickJob('zen', cmd.type === 'report' ? '🩺 Checkup time!' : cmd.type === 'undo' ? '↩️ Putting it back…' : '🧹 Let me look…', 5000);
+    if (cmd.type === 'report') return care.report();
+    if (cmd.type === 'undo') return care.undo();
+    return care.tidy();
+  }
+
+  // ---- Sage the owl: tutor (tutor.js)
+  const tutor = (ctx.tutor = new Tutor());
+  let sageDone = null;
+  const endClass = (line) => {
+    if (sageDone) sageDone(line);
+    sageDone = null;
+  };
+  setInterval(() => sageDone && !tutor.active() && endClass('Class over - good job! 🦉'), 60 * 1000);
+  /** One tutor turn (a new lesson/quiz, or Prince's reply inside one). Returns the reply. */
+  async function tutorTurn(text, cmd, history) {
+    if (cmd && cmd.type === 'stop') {
+      const was = tutor.stop();
+      endClass('Class dismissed! 🦉');
+      return was ? 'Class dismissed! Great work today, Prince 🦉' : "There's no class going on, Prince.";
+    }
+    const c = aiContext();
+    const p = ai.PROVIDERS[c.provider];
+    if (p.needsKey && !c.apiKey) return 'Sage needs an AI brain to teach, Prince - add a free key in Settings → AI Brain (2 minutes) 🦉';
+    if (cmd) {
+      tutor.start(cmd);
+      if (!sageDone) sageDone = friends.job('sage', cmd.type === 'quiz' ? '📝 Pop quiz time!' : '📚 Class is on!');
+      history[history.length - 1].text = tutor.firstMessage(cmd); // what the AI should answer
+    }
+    tutor.touch();
+    const answer = await ai.chat(history[history.length - 1].text, { ...c, ...tutor.context(), history: history.slice(-20) });
+    return search.stripCommands(answer) || 'Hoo? Ask me that again, Prince 🦉';
+  }
+  /** Sage says tutor replies in his own bubble (Shadow just listens). */
+  function tutorBubble(reply) {
+    const sage = friends.get('sage');
+    if (friends.enabled('sage') && sage.state !== 'away') sage.sayWhenHere(`🦉 ${bubbleLine(reply)}`, 9000);
+    else brain.chatReply(`🦉 ${bubbleLine(reply)}`);
+  }
+
   /** "call the gang", "send the gang home", "call atlas" */
   function gangCommand(text) {
     const l = text.trim().toLowerCase().replace(/[?.!]+$/, '');
@@ -410,7 +492,7 @@ function init() {
       friends.sendHome();
       return 'Bye gang! 👋';
     }
-    const m = /^(?:call|bring|summon) (atlas|dash|bolt)$/.exec(l);
+    const m = /^(?:call|bring|summon) (atlas|dash|bolt|sage|zen|tempo)$/.exec(l);
     if (m) {
       const f = friends.get(m[1]);
       if (!friends.enabled(f.id)) return `${f.def.name} is switched off, Prince. Turn them on in Settings → Friends.`;
@@ -450,6 +532,33 @@ function init() {
       }
       // "cancel"/"2" with nothing pending -> just chat
     }
+    const done1 = (out) => {
+      history.push({ role: 'pet', text: out });
+      brain.chatReply(out);
+      return { text: out, sources: [] };
+    };
+    const tidied = care.confirm(text); // "yes" to a pending Downloads tidy-up
+    if (tidied) {
+      friends.quickJob('zen', '🧹 Tidying!', 5000);
+      return done1(tidied);
+    }
+    const musicCmd = parseMusicCommand(text);
+    if (musicCmd) return done1(await runMusic(musicCmd));
+    const careCmd = parseCareCommand(text);
+    if (careCmd) return done1(await runCare(careCmd));
+    const tutorCmd = parseTutorCommand(text);
+    if (tutorCmd || (tutor.active() && !parseCommand(text) && !search.parseSearchCommand(text))) {
+      let out;
+      try {
+        out = await tutorTurn(text, tutorCmd, history);
+      } catch (err) {
+        if (!(err instanceof ai.AiError)) console.warn('[tutor]', err);
+        out = err instanceof ai.AiError ? ai.friendly(err, aiContext()) : 'Sage lost his notes, Prince. Try again? 🦉';
+      }
+      history.push({ role: 'pet', text: out });
+      tutorBubble(out);
+      return { text: out, sources: [] };
+    }
     const searchCmd = search.parseSearchCommand(text);
     if (searchCmd) {
       const atlasDone = searchCmd.type === 'wiki' || searchCmd.type === 'search' ? searchingBubble() : null;
@@ -480,6 +589,7 @@ function init() {
       ...aiContext(),
       search: searchOn ? search.aiInstructions(!!settings.get('searchKey')) : '',
       pc: settings.get('pcControl') ? apps.aiInstructions() : '',
+      music: music.available ? music.aiInstructions() : '',
       history: history.slice(-20),
     };
     let sources = [];
@@ -508,6 +618,7 @@ function init() {
         if (settings.get('pcControl')) {
           for (const req of pcRequests(raw)) done.push(await runPcCommand(req));
         }
+        for (const req of musicRequests(raw)) done.push(await runMusic(req));
         const tagged = ctx.tasks.applyTags(raw);
         reply = tagged.text;
         if (tagged.actions.some((a) => a.ok)) dashFor(tagged.actions.some((a) => a.note.startsWith('⏰')) ? 'remind' : 'todo-add', '');
@@ -539,7 +650,7 @@ function init() {
   }
   // Dash also delivers reminders as they fire (not update notices or the morning briefing)
   brain.on('reminder-start', (r) => {
-    if (!['update', 'briefing'].includes(r.kind) && !brain.reminderClosing) friends.quickJob('dash', '📨 Delivery for Prince!', 7000);
+    if (!['update', 'briefing', 'care'].includes(r.kind) && !brain.reminderClosing) friends.quickJob('dash', '📨 Delivery for Prince!', 7000);
   });
   ipcMain.handle('ai:test', (_e, form = {}) => {
     const over = {};
@@ -561,7 +672,7 @@ function init() {
   // settings window
   ipcMain.handle('settings:load', () => settingsPayload());
   ipcMain.handle('settings:save', async (_e, patch = {}) => {
-    const allowed = ['petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat', 'morningBriefing', 'todoNudges', 'webSearch', 'searchKey', 'pcControl', 'friendsMode', 'friends'];
+    const allowed = ['petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat', 'morningBriefing', 'todoNudges', 'webSearch', 'searchKey', 'pcControl', 'pcCare', 'friendsMode', 'friends'];
     const clean = Object.fromEntries(Object.entries(patch).filter(([k]) => allowed.includes(k)));
     const before = settings.get('calendarUrl');
     settings.update(clean);
@@ -705,7 +816,7 @@ if (!SELF_TEST && !app.requestSingleInstanceLock()) {
     /* keep running in the tray */
   });
   app.on('before-quit', () => {
-    const { brain, config, reminders, calendar, updater, friends } = ctx;
+    const { brain, config, reminders, calendar, updater, friends, care } = ctx;
     try {
       if (brain && !['off', 'hidden'].includes(brain.state)) brain.savePosition();
     } catch {
@@ -717,6 +828,7 @@ if (!SELF_TEST && !app.requestSingleInstanceLock()) {
     if (calendar) calendar.stop();
     if (updater) updater.stop();
     if (friends) friends.stop();
+    if (care) care.stop();
   });
 }
 

@@ -148,7 +148,7 @@ Windows SmartScreen may warn "unknown publisher" because the installer isn't cod
 npm test
 ```
 
-Runs 261 automated end-to-end checks against the real app (~1.5 min) in a **throw-away profile**.
+Runs 292 automated end-to-end checks against the real app (~1.5 min) in a **throw-away profile**.
 Your settings, config and Start-with-Windows setting are never touched. The checks cover window
 properties, every animation frame, click-through hit-testing, click/double-click/Ctrl+Click, dragging and
 clamping, wandering and pouncing, sleep and wake, the right-click menu, the chat → `askPet()` round trip,
@@ -188,7 +188,10 @@ main/            Electron main process
   tasks.js         "remind me…" reminders, to-do list, morning briefing
   search.js        internet search (Tavily / Wikipedia) + "google …"/"youtube …" commands
   apps.js          opens apps/folders/settings; lock, sleep, screenshot, volume, brightness
-  friends.js       Shadow's gang (Atlas, Dash, Bolt): windows, jobs, playdates, display modes
+  friends.js       Shadow's gang: windows, jobs, playdates, display modes
+  tutor.js         Sage: lessons, quizzes, flashcards, homework checks
+  care.js          Zen: battery/storage/RAM/CPU/internet watch, pc health, tidy Downloads
+  music.js         Tempo: play/pause/next, what's playing, play-a-mood searches
   settings.js      settings.json load/validate/save
   tray.js          tray icon + menu
   windows.js       chat panel + settings window
@@ -446,6 +449,9 @@ Shadow has a gang. Each friend is a small pixel animal with one job, and shows u
 | 🦜 **Atlas** the parrot | Researcher | flies in with a magnifying glass while Shadow searches the internet, then says "Found it!" |
 | 🐇 **Dash** the rabbit | Messenger | hops in with a letter when a reminder fires or your to-do list / reminders change |
 | 🐒 **Bolt** the monkey | Launcher | swings in with a lightning bolt when Shadow opens an app or folder, locks the PC, takes a screenshot… |
+| 🦉 **Sage** the owl | Tutor | perches on Shadow's head with glasses and a book while teaching |
+| 🐢 **Zen** the turtle | PC caretaker | walks over with a wrench for health checks, PC warnings and tidying Downloads |
+| 🐧 **Tempo** the penguin | Music DJ | spins his DJ deck when you control music, and dances while music plays (when on screen) |
 
 **Settings → Friends:**
 - **Always**: the enabled friends hang around Shadow all the time (and still jump in for jobs).
@@ -457,4 +463,43 @@ Shadow has a gang. Each friend is a small pixel animal with one job, and shows u
 Click a friend and it introduces itself. Double-click to play, right-click for a small menu. Tuck Shadow
 away and the friends hide too. Friends that aren't on screen use no CPU.
 
-Coming next: 🦉 **Sage** the owl (tutor), 🐢 **Zen** the turtle (PC caretaker), 🐧 **Tempo** the penguin (music DJ).
+### 🦉 Sage: tutor (needs the AI brain)
+
+| Say | What happens |
+| --- | --- |
+| `teach me photosynthesis` · `explain newton's laws step by step` | a short step-by-step lesson in the chat, ending with a check question |
+| `quiz me on the french revolution` | 5 multiple-choice questions, one at a time, with ✅/❌ and a final score |
+| `flashcards on trigonometry` | 8 Q/A flashcards |
+| `check my answer: 2x + 3 = 11 so x = 4` | marks it and explains any mistake |
+| `stop the quiz` · `thanks sage` | ends the class (it also ends after 10 quiet minutes) |
+
+While a lesson or quiz is running, your replies (like `B`) go straight to Sage.
+
+### 🐢 Zen: PC caretaker
+
+Every 2 minutes Zen quietly checks your PC and only speaks up when it matters:
+battery at 20% / 10% (and "fully charged" when plugged in), storage almost full, RAM or CPU maxed
+out for a few minutes (naming the biggest app), and internet down / back.
+Switch off in **Settings → Behaviour → Zen warns me…**
+
+| Say | What happens |
+| --- | --- |
+| `pc health` · `how is my pc` · `battery` · `storage` | one-line checkup: battery, free space, RAM, CPU, internet, uptime (+ a tip) |
+| `tidy my downloads` | shows a plan (Images, Documents, Installers, Archives, Videos, Music, Code). Say `yes` to sort |
+| `undo tidy` | puts every file back where it was |
+
+Tidying only *moves* files and never deletes. Unknown file types, unfinished downloads and files
+from the last 10 minutes are left alone.
+
+### 🐧 Tempo: music DJ
+
+| Say | What happens |
+| --- | --- |
+| `play` · `pause` · `next song` · `previous song` | controls whatever is playing: Spotify, YouTube in the browser, VLC… |
+| `what's playing` | "🎵 Kesariya – Arijit Singh (Spotify)" |
+| `play something chill` (also study, gym, party, sad, happy, sleep, romantic, bollywood, punjabi, lofi) | opens a matching search in Spotify (if installed) or YouTube |
+| `play arijit singh` · `play lofi on youtube` | opens that search |
+
+Music control uses Windows' own media controls (the same ones behind the volume pop-up), so it works with
+most players. Spotify can't be told to play one exact song without a Spotify developer login, so Tempo
+opens the search and you pick.
