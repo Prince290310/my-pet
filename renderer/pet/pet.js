@@ -6,7 +6,7 @@
  */
 
 const api = window.shadow;
-const CELL = 48;
+let CELL = 48; // sprite cell size from the sheet's metadata (Shadow 48, friends 32)
 const MAX_FPS = 12;
 
 const canvas = document.getElementById('pet');
@@ -247,6 +247,10 @@ bubble.addEventListener('click', (e) => {
 // ------------------------------------------------------------------ main -> renderer
 api.onInit(async (init) => {
   meta = init.meta;
+  CELL = meta.frameWidth || 48;
+  canvas.width = CELL;
+  canvas.height = CELL;
+  ctx.imageSmoothingEnabled = false;
   scale = init.scale;
   workArea = init.workArea;
   testMode = !!init.test;

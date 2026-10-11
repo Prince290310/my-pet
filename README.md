@@ -148,7 +148,7 @@ Windows SmartScreen may warn "unknown publisher" because the installer isn't cod
 npm test
 ```
 
-Runs 233 automated end-to-end checks against the real app (~1.5 min) in a **throw-away profile**.
+Runs 261 automated end-to-end checks against the real app (~1.5 min) in a **throw-away profile**.
 Your settings, config and Start-with-Windows setting are never touched. The checks cover window
 properties, every animation frame, click-through hit-testing, click/double-click/Ctrl+Click, dragging and
 clamping, wandering and pouncing, sleep and wake, the right-click menu, the chat → `askPet()` round trip,
@@ -188,6 +188,7 @@ main/            Electron main process
   tasks.js         "remind me…" reminders, to-do list, morning briefing
   search.js        internet search (Tavily / Wikipedia) + "google …"/"youtube …" commands
   apps.js          opens apps/folders/settings; lock, sleep, screenshot, volume, brightness
+  friends.js       Shadow's gang (Atlas, Dash, Bolt): windows, jobs, playdates, display modes
   settings.js      settings.json load/validate/save
   tray.js          tray icon + menu
   windows.js       chat panel + settings window
@@ -433,3 +434,27 @@ AI can open apps for you.
 - System actions are a fixed list of built-in commands.
 - Shadow can't close apps, shut down, restart or delete anything.
 - Switch it all off in **Settings → Behaviour → Let Shadow open apps & folders…**
+
+---
+
+## 13. Shadow's friends
+
+Shadow has a gang. Each friend is a small pixel animal with one job, and shows up to do it:
+
+| Friend | Job | When you see them |
+| --- | --- | --- |
+| 🦜 **Atlas** the parrot | Researcher | flies in with a magnifying glass while Shadow searches the internet, then says "Found it!" |
+| 🐇 **Dash** the rabbit | Messenger | hops in with a letter when a reminder fires or your to-do list / reminders change |
+| 🐒 **Bolt** the monkey | Launcher | swings in with a lightning bolt when Shadow opens an app or folder, locks the PC, takes a screenshot… |
+
+**Settings → Friends:**
+- **Always**: the enabled friends hang around Shadow all the time (and still jump in for jobs).
+- **When working**: a friend only comes out for its job, then goes home.
+- **Now & then** (default): jobs, plus a short playdate with Shadow every hour or so.
+- A switch for each friend, and **CALL THE GANG** to bring everyone out together (also in the tray,
+  Shadow's right-click menu, or say `call the gang` / `send the gang home` / `call atlas` in chat).
+
+Click a friend and it introduces itself. Double-click to play, right-click for a small menu. Tuck Shadow
+away and the friends hide too. Friends that aren't on screen use no CPU.
+
+Coming next: 🦉 **Sage** the owl (tutor), 🐢 **Zen** the turtle (PC caretaker), 🐧 **Tempo** the penguin (music DJ).

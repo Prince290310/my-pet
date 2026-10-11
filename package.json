@@ -9,10 +9,10 @@
   "main": "main/main.js",
   "scripts": {
     "start": "electron .",
-    "sprites": "node scripts/generate-sprites.js",
+    "sprites": "node scripts/generate-sprites.js && node scripts/generate-friends.js",
     "fonts": "node scripts/copy-fonts.js",
     "test": "electron . --self-test",
-    "prebuild": "node scripts/generate-sprites.js",
+    "prebuild": "node scripts/generate-sprites.js && node scripts/generate-friends.js",
     "build": "electron-builder --win nsis"
   },
   "build": {

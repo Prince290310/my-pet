@@ -61,6 +61,22 @@
         <label class="check"><input id="pcControl" type="checkbox" /><i></i>Let Shadow open apps &amp; folders and lock / sleep / screenshot my PC</label>
       </section>
 
+      <section class="friends">
+        <h2>Friends</h2>
+        <p class="note">Shadow's gang - each one has a job and shows up to do it.</p>
+        <div class="field">
+          <span>Show them</span>
+          <div class="seg seg-wide" role="radiogroup" aria-label="Show friends">
+            <label><input type="radio" name="friendsMode" value="always" /><b>ALWAYS</b></label>
+            <label><input type="radio" name="friendsMode" value="working" /><b>WHEN WORKING</b></label>
+            <label><input type="radio" name="friendsMode" value="occasional" /><b>NOW &amp; THEN</b></label>
+          </div>
+        </div>
+        <p class="note" id="friendsModeHelp"></p>
+        <div id="friendList"></div>
+        <button type="button" id="callGang" class="ghost">CALL THE GANG 🐾</button>
+      </section>
+
       <section class="calendar">
         <h2>Google Calendar</h2>
         <p class="note">

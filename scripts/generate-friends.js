@@ -1,0 +1,364 @@
+'use strict';
+/*
+ * Generates the pixel-art sprite sheets for Shadow's friends (same toolkit + style as the panther).
+ *
+ *   node scripts/generate-friends.js
+ *
+ * Outputs assets/friends/<id>.png + <id>.json (32x32 cells, one animation per row, facing right;
+ * the renderer mirrors them for "left") and assets/preview/friends.png (big preview for humans).
+ *
+ * Every friend has the same animations: idle, move, work, talk, sleep, play.
+ */
+
+const fs = require('fs');
+const path = require('path');
+const { Bitmap, Mask, paint } = require('./lib/raster');
+const { encodePNG } = require('./lib/png');
+
+const CELL = 32;
+const COLS = 8;
+const OUT = path.join(__dirname, '..', 'assets', 'friends');
+const OUTLINE = '#07050c';
+const R = Math.round;
+
+const pal = (base, rim, rim2, dark) => ({ base, rim, rim2, dark, seam: dark, outline: OUTLINE });
+
+// little shared bits ----------------------------------------------------------
+function zee(b, x, y, big) {
+  const rows = big ? ['ZZZ', '..Z', '.Z.', 'Z..', 'ZZZ'] : ['ZZ', '.Z', 'ZZ'];
+  b.stamp(R(x), R(y), rows, { Z: '#d2e3ff' }, '#1b2650');
+}
+function sparkle(b, x, y, color = '#fff3a0') {
+  b.set(x, y, color);
+  b.set(x - 1, y, color);
+  b.set(x + 1, y, color);
+  b.set(x, y - 1, color);
+  b.set(x, y + 1, color);
+}
+function note(b, x, y) {
+  b.stamp(R(x), R(y), ['.NN', '.N.', 'NN.'], { N: '#ffd21f' }, '#4a2c00');
+}
+
+// ============================================================================ ATLAS - parrot (researcher)
+const PARROT = {
+  body: pal('#2fa84f', '#7be38f', '#4cc768', '#1d6e33'),
+  wing: pal('#1f8a45', '#56c46f', '#2fa84f', '#135a2b'),
+  tail: pal('#2a7fd4', '#7cc0ff', '#4a9ae6', '#184f8a'),
+  beak: pal('#ff5a36', '#ffb199', '#ff8566', '#b8321a'),
+  ring: '#ff5c8a',
+  ringDark: '#2b1030',
+  eye: '#fff8e7',
+  pupil: '#120a00',
+  foot: '#8a8296',
+};
+
+function parrot(o = {}) {
+  const b = new Bitmap(CELL, CELL);
+  const dy = o.dy || 0;
+  const fly = !!o.fly;
+  const sleepy = o.eye === 'closed';
+  if (fly) {
+    // horizontal flight pose
+    const tail = new Mask(CELL, CELL).spline([[11, 16 + dy], [6, 18 + dy], [2, 19 + dy]], 2.2, 0.8);
+    paint(b, tail, PARROT.tail);
+    const body = new Mask(CELL, CELL).capsule(11, 16 + dy, 19, 14 + dy, 4.2, 3.8);
+    paint(b, body, PARROT.body);
+    const head = new Mask(CELL, CELL).ellipse(22, 12 + dy, 3.8, 3.4);
+    paint(b, head, PARROT.body, { cover: body });
+    const beak = new Mask(CELL, CELL).poly([[24.5, 11 + dy], [28, 12.5 + dy], [25, 15 + dy]]);
+    paint(b, beak, PARROT.beak, { cover: head });
+    b.set(23, 11 + dy, PARROT.pupil);
+    b.set(22, 10 + dy, PARROT.eye);
+    b.line(19, 14 + dy, 20, 16 + dy, PARROT.ring);
+    const up = o.wing === 'up';
+    const mid = o.wing === 'mid';
+    const wing = new Mask(CELL, CELL);
+    if (up) wing.poly([[11, 14 + dy], [18, 13 + dy], [13, 3 + dy], [9, 5 + dy]]);
+    else if (mid) wing.poly([[10, 15 + dy], [18, 14 + dy], [12, 9 + dy], [6, 10 + dy]]);
+    else wing.poly([[11, 15 + dy], [18, 15 + dy], [13, 25 + dy], [9, 23 + dy]]);
+    paint(b, wing, PARROT.wing, { cover: body });
+    return b;
+  }
+  // standing, facing right
+  const tail = new Mask(CELL, CELL).spline([[12, 22 + dy], [9, 26 + dy], [6.5, 30.5]], 2.3, 0.9);
+  paint(b, tail, PARROT.tail);
+  const air = Math.min(0, dy); // jumping: feet leave the ground with the body
+  const feet = (x) => {
+    b.line(x, 27 + dy, x, 29 + air, PARROT.foot);
+    b.line(x - 1, 30 + air, x + 1, 30 + air, PARROT.foot);
+  };
+  feet(14);
+  feet(17);
+  const hy = (o.headDy || 0) + dy;
+  const body = new Mask(CELL, CELL).capsule(14, 23 + dy, 17, 15 + dy, 5, 4.2);
+  paint(b, body, PARROT.body);
+  const head = new Mask(CELL, CELL).ellipse(19 + (o.headDx || 0), 11 + hy, 4.3, 4);
+  paint(b, head, PARROT.body, { cover: body });
+  const hx = 19 + (o.headDx || 0);
+  // hooked beak (lower part opens when talking)
+  const beak = new Mask(CELL, CELL).poly([[hx + 3, 9.5 + hy], [hx + 6.5, 11 + hy], [hx + 5, 14 + hy], [hx + 3, 13 + hy]]);
+  paint(b, beak, PARROT.beak, { cover: head });
+  if (o.beak === 'open') {
+    b.set(hx + 4, 14 + hy, '#5c1030');
+    b.set(hx + 5, 15 + hy, PARROT.beak.base);
+    b.set(hx + 4, 15 + hy, OUTLINE);
+  }
+  // eye + neck ring
+  if (sleepy) b.line(hx, 10 + hy, hx + 1, 10 + hy, PARROT.body.dark);
+  else {
+    b.pattern(hx, 9 + hy, ['EE', 'EK'], { E: PARROT.eye, K: PARROT.pupil });
+  }
+  b.line(hx - 3, 14 + hy, hx + 1, 15 + hy, PARROT.ringDark);
+  b.line(hx - 3, 15 + hy, hx, 16 + hy, PARROT.ring);
+  // wing on the side
+  const w = o.wingUp || 0;
+  const wing = new Mask(CELL, CELL).capsule(13, 22 + dy, 15, 16 + dy - w, 2.6, 3.4);
+  paint(b, wing, PARROT.wing, { cover: body });
+  b.set(12, 23 + dy, PARROT.tail.base);
+  b.set(13, 24 + dy, PARROT.tail.rim2);
+  if (o.glass) {
+    // magnifying glass held in front of the face
+    const [gx, gy] = o.glass;
+    const lens = new Mask(CELL, CELL).ellipse(gx, gy, 3.2, 3.2);
+    const hole = new Mask(CELL, CELL).ellipse(gx, gy, 2, 2);
+    for (let y = 0; y < CELL; y++) for (let x = 0; x < CELL; x++) if (lens.get(x, y) && !hole.get(x, y)) b.set(x, y, '#c9a24a');
+    for (let y = 0; y < CELL; y++) for (let x = 0; x < CELL; x++) if (hole.get(x, y)) b.set(x, y, '#bfe8ff');
+    b.set(gx - 1, gy - 1, '#ffffff');
+    b.line(gx - 2, gy + 3, gx - 4, gy + 6, '#6b4a1e');
+  }
+  return b;
+}
+
+const ATLAS = {
+  idle: [parrot(), parrot({ wingUp: 1 }), parrot(), parrot({ eye: 'closed' })],
+  move: [parrot({ fly: true, wing: 'up' }), parrot({ fly: true, wing: 'mid', dy: 1 }), parrot({ fly: true, wing: 'down', dy: 2 }), parrot({ fly: true, wing: 'mid', dy: 1 })],
+  work: [
+    parrot({ glass: [26, 12], headDx: 1 }),
+    (() => { const b = parrot({ glass: [26, 11], headDx: 1, headDy: -1 }); sparkle(b, 29, 6); return b; })(),
+    parrot({ glass: [25, 13], headDx: 1 }),
+    (() => { const b = parrot({ glass: [26, 12], headDx: 1, wingUp: 2 }); sparkle(b, 30, 9); return b; })(),
+  ],
+  talk: [parrot(), parrot({ beak: 'open' }), parrot({ wingUp: 1 }), parrot({ beak: 'open', wingUp: 1 })],
+  sleep: [0, 1, 2, 3].map((f) => {
+    const b = parrot({ eye: 'closed', headDy: 2, headDx: -1, dy: f % 2 ? 0 : 1 });
+    zee(b, 25 + (f % 2), 4 - f, f > 1);
+    return b;
+  }),
+  play: [parrot({ dy: 0, wingUp: 3 }), parrot({ dy: -3, wingUp: 5, beak: 'open' }), parrot({ dy: -4, wingUp: 3 }), parrot({ dy: -1, wingUp: 1 })],
+};
+
+// ============================================================================ DASH - rabbit (messenger)
+const RABBIT = {
+  body: pal('#e9e5f5', '#ffffff', '#f6f3ff', '#a9a1c2'),
+  inner: '#ff9bbb',
+  eye: '#1a1024',
+  nose: '#ff6f91',
+  tail: pal('#ffffff', '#ffffff', '#ffffff', '#cfc8e6'),
+};
+
+function rabbit(o = {}) {
+  const b = new Bitmap(CELL, CELL);
+  const dy = o.dy || 0;
+  const stretch = o.stretch || 0; // hop pose: body longer, feet back
+  const ear = o.ears || 'up'; // up | back | flat | perk
+  const hx = 21 + stretch;
+  const hy = 18 + dy + (o.headDy || 0);
+  const tail = new Mask(CELL, CELL).ellipse(7 - stretch * 0.5, 22 + dy, 2.4, 2.2);
+  paint(b, tail, RABBIT.tail);
+  const body = new Mask(CELL, CELL);
+  body.ellipse(13, 23 + dy, 6.5 + stretch * 0.6, 5.2);
+  body.ellipse(17 + stretch * 0.6, 21 + dy, 4, 4);
+  paint(b, body, RABBIT.body);
+  // feet
+  const feet = new Mask(CELL, CELL);
+  const air = Math.min(0, dy); // in the air the feet come along
+  feet.ellipse(13 - stretch * 1.5, 28.6 + air, 4.2, 1.5);
+  feet.capsule(19 + stretch, 24 + dy, 19.5 + stretch * 1.8, 28.5 + air, 1.3, 1.2);
+  paint(b, feet, RABBIT.body, { cover: body });
+  // ears
+  const ears = new Mask(CELL, CELL);
+  if (ear === 'flat') {
+    ears.capsule(hx - 1, hy - 2, hx - 9, hy - 1, 1.6, 1.2);
+  } else if (ear === 'back') {
+    ears.capsule(hx - 1, hy - 3, hx - 7, hy - 10, 1.7, 1.2);
+    ears.capsule(hx + 1, hy - 3, hx - 4, hy - 11, 1.7, 1.2);
+  } else {
+    const tw = ear === 'perk' ? 1 : 0;
+    ears.capsule(hx - 1, hy - 3, hx - 3, hy - 12 - tw, 1.7, 1.3);
+    ears.capsule(hx + 1, hy - 3, hx + 1 + tw, hy - 12, 1.7, 1.3);
+  }
+  paint(b, ears, RABBIT.body);
+  if (ear === 'up' || ear === 'perk') {
+    b.line(hx + 1, hy - 5, hx + 1 + (ear === 'perk' ? 1 : 0), hy - 10, RABBIT.inner);
+  }
+  // head
+  const head = new Mask(CELL, CELL).ellipse(hx, hy, 4.3, 3.8);
+  head.ellipse(hx + 3, hy + 1.2, 2.2, 1.9);
+  paint(b, head, RABBIT.body, { cover: body });
+  if (o.eye === 'closed') b.line(hx, hy - 1, hx + 1, hy - 1, RABBIT.body.dark);
+  else b.pattern(hx, hy - 2, ['KW', 'KK'], { K: RABBIT.eye, W: '#ffffff' });
+  b.set(hx + 5, hy + 1, RABBIT.nose);
+  if (o.mouth === 'open') b.pattern(hx + 3, hy + 3, ['RR'], { R: '#c2305a' });
+  else b.set(hx + 4, hy + 3, RABBIT.body.dark);
+  b.set(hx + 2, hy + 1, '#ffd0de'); // cheek
+  if (o.letter) {
+    const [lx, ly] = o.letter;
+    b.stamp(R(lx), R(ly), ['WWWWWW', 'WFWWFW', 'WWFFWW', 'WWWHWW', 'WWWWWW'], { W: '#fffaf0', F: '#d8d0e8', H: '#ff3d6e' }, OUTLINE);
+  }
+  return b;
+}
+
+const DASH = {
+  idle: [rabbit(), rabbit({ ears: 'perk' }), rabbit(), rabbit({ eye: 'closed' })],
+  move: [rabbit({ dy: 1 }), rabbit({ dy: -2, stretch: 2, ears: 'back' }), rabbit({ dy: -4, stretch: 2, ears: 'back' }), rabbit({ dy: -2, stretch: 1, ears: 'back' }), rabbit({ dy: 1, ears: 'perk' }), rabbit()],
+  work: [
+    rabbit({ letter: [22, 22], ears: 'perk' }),
+    rabbit({ letter: [22, 21], ears: 'up', dy: -1 }),
+    (() => { const b = rabbit({ letter: [22, 22], ears: 'perk' }); sparkle(b, 30, 18, '#ff9bbb'); return b; })(),
+    rabbit({ letter: [22, 21], ears: 'up', dy: -1 }),
+  ],
+  talk: [rabbit(), rabbit({ mouth: 'open', ears: 'perk' }), rabbit(), rabbit({ mouth: 'open' })],
+  sleep: [0, 1, 2, 3].map((f) => {
+    const b = rabbit({ ears: 'flat', eye: 'closed', dy: f % 2 ? 1 : 0, headDy: 2 });
+    zee(b, 25 + (f % 2), 6 - f, f > 1);
+    return b;
+  }),
+  play: [rabbit({ dy: 0 }), rabbit({ dy: -5, stretch: 1, ears: 'back', mouth: 'open' }), rabbit({ dy: -7, ears: 'perk' }), rabbit({ dy: -2, ears: 'back' })],
+};
+
+// ============================================================================ BOLT - monkey (launcher)
+const MONKEY = {
+  body: pal('#8a5a33', '#c48a55', '#a8723f', '#5a3a1f'),
+  face: pal('#f2c99a', '#ffe6c7', '#f7d8b3', '#c99a66'),
+  eye: '#1a0d05',
+  bolt: '#ffd21f',
+  boltOut: '#4a2c00',
+};
+
+function monkey(o = {}) {
+  const b = new Bitmap(CELL, CELL);
+  const dy = o.dy || 0;
+  const step = o.step || 0; // walk phase -1..1
+  const hy = 11 + dy + (o.headDy || 0);
+  const hx = 17;
+  // tail curl
+  const tail = new Mask(CELL, CELL).spline([[10, 24 + dy], [5, 24 + dy], [3, 19 + dy], [5, 15 + dy], [8, 16 + dy + (o.tailFlick || 0)]], 1.4, 1);
+  paint(b, tail, MONKEY.body);
+  // legs
+  const legs = new Mask(CELL, CELL);
+  const air = Math.min(0, dy);
+  legs.capsule(12, 25 + dy, 11 - step * 2, 29.5 + air, 1.7, 1.5);
+  legs.capsule(16, 25 + dy, 17 + step * 2, 29.5 + air, 1.7, 1.5);
+  paint(b, legs, MONKEY.body);
+  // body + belly
+  const body = new Mask(CELL, CELL).ellipse(14, 21 + dy, 5, 6);
+  paint(b, body, MONKEY.body, { cover: legs });
+  const belly = new Mask(CELL, CELL).ellipse(16, 22 + dy, 2.6, 3.8);
+  paint(b, belly, MONKEY.face, { outline: false, rim: false });
+  // arms
+  const arms = new Mask(CELL, CELL);
+  const hand = o.hand || [20 + step, 23 + dy];
+  arms.capsule(16, 17 + dy, hand[0], hand[1], 1.6, 1.4);
+  if (o.hand2) arms.capsule(12, 17 + dy, o.hand2[0], o.hand2[1], 1.6, 1.4);
+  paint(b, arms, MONKEY.body, { cover: body });
+  // head: ear, head, face mask
+  const ear = new Mask(CELL, CELL).ellipse(hx - 4.6, hy, 2.2, 2.2);
+  paint(b, ear, MONKEY.body);
+  b.set(hx - 5, hy, MONKEY.face.dark);
+  const head = new Mask(CELL, CELL).ellipse(hx, hy, 5, 4.6);
+  paint(b, head, MONKEY.body, { cover: body });
+  const face = new Mask(CELL, CELL);
+  face.ellipse(hx + 2, hy - 0.6, 1.8, 1.8);
+  face.ellipse(hx + 4.2, hy - 0.6, 1.6, 1.8);
+  face.ellipse(hx + 3.2, hy + 2, 2.8, 2);
+  paint(b, face, MONKEY.face, { outline: false, rim: false });
+  if (o.eye === 'closed') {
+    b.line(hx + 2, hy - 1, hx + 3, hy - 1, MONKEY.eye);
+    b.set(hx + 5, hy - 1, MONKEY.eye);
+  } else {
+    b.set(hx + 2, hy - 1, MONKEY.eye);
+    b.set(hx + 5, hy - 1, MONKEY.eye);
+    b.set(hx + 2, hy - 2, '#ffffff');
+  }
+  if (o.mouth === 'open') b.pattern(hx + 3, hy + 2, ['RRR', '.R.'], { R: '#7a1f2a' });
+  else if (o.mouth === 'grin') b.line(hx + 2, hy + 2, hx + 5, hy + 3, '#7a1f2a');
+  else b.line(hx + 3, hy + 2, hx + 4, hy + 2, MONKEY.face.dark);
+  if (o.bolt) {
+    const [bx, by] = o.bolt;
+    b.stamp(R(bx), R(by), ['..YY', '.YY.', 'YYYY', '.YY.', 'YY..'], { Y: MONKEY.bolt }, MONKEY.boltOut);
+  }
+  return b;
+}
+
+const BOLT = {
+  idle: [monkey(), monkey({ tailFlick: -1 }), monkey({ headDy: 1 }), monkey({ eye: 'closed' })],
+  move: [
+    monkey({ step: 1, dy: 0 }),
+    monkey({ step: 0.4, dy: -1, hand: [21, 22] }),
+    monkey({ step: -1, dy: 0 }),
+    monkey({ step: -0.4, dy: -1, hand: [19, 22] }),
+  ],
+  work: [
+    monkey({ hand: [21, 8], bolt: [20, 2], mouth: 'grin' }),
+    (() => { const b = monkey({ hand: [22, 9], bolt: [21, 3], mouth: 'open' }); sparkle(b, 27, 4); return b; })(),
+    monkey({ hand: [23, 18], bolt: [23, 13], mouth: 'grin', dy: 1 }),
+    (() => { const b = monkey({ hand: [24, 22], bolt: [24, 18], mouth: 'open', dy: 1 }); sparkle(b, 29, 18); sparkle(b, 27, 14, '#ffffff'); return b; })(),
+  ],
+  talk: [monkey(), monkey({ mouth: 'open' }), monkey({ hand: [21, 18] }), monkey({ mouth: 'open', hand: [21, 18] })],
+  sleep: [0, 1, 2, 3].map((f) => {
+    const b = monkey({ eye: 'closed', headDy: 3, hand: [18, 22], dy: f % 2 ? 1 : 0 });
+    zee(b, 24 + (f % 2), 3 - (f % 2), f > 1);
+    return b;
+  }),
+  play: [
+    monkey({ hand: [21, 9], hand2: [10, 9], mouth: 'open', dy: 0 }),
+    monkey({ hand: [22, 8], hand2: [9, 8], mouth: 'open', dy: -4, tailFlick: -2 }),
+    monkey({ hand: [21, 10], hand2: [10, 10], mouth: 'grin', dy: -2 }),
+    monkey({ hand: [20, 14], hand2: [11, 14], mouth: 'grin', dy: 0 }),
+  ],
+};
+
+// ============================================================================ sheets
+const FRIENDS = {
+  atlas: { anims: ATLAS, fps: { idle: 4, move: 10, work: 6, talk: 8, sleep: 3, play: 7 } },
+  dash: { anims: DASH, fps: { idle: 4, move: 10, work: 5, talk: 8, sleep: 3, play: 7 } },
+  bolt: { anims: BOLT, fps: { idle: 4, move: 8, work: 6, talk: 8, sleep: 3, play: 7 } },
+};
+const ORDER = ['idle', 'move', 'work', 'talk', 'sleep', 'play'];
+
+function build(id) {
+  const f = FRIENDS[id];
+  const sheet = new Bitmap(COLS * CELL, ORDER.length * CELL);
+  const meta = { frameWidth: CELL, frameHeight: CELL, columns: COLS, animations: {} };
+  ORDER.forEach((name, row) => {
+    const frames = f.anims[name];
+    if (!frames || frames.length < 4 || frames.length > COLS) throw new Error(`${id}.${name}: needs 4-${COLS} frames`);
+    frames.forEach((bmp, col) => sheet.blit(bmp, col * CELL, row * CELL));
+    meta.animations[name] = { row, frames: frames.length, fps: f.fps[name], loop: true, flip: true };
+  });
+  return { sheet, meta };
+}
+
+function main() {
+  fs.mkdirSync(OUT, { recursive: true });
+  const built = {};
+  for (const id of Object.keys(FRIENDS)) {
+    const { sheet, meta } = build(id);
+    built[id] = { sheet, meta };
+    fs.writeFileSync(path.join(OUT, `${id}.png`), encodePNG(sheet.w, sheet.h, sheet.px));
+    fs.writeFileSync(path.join(OUT, `${id}.json`), JSON.stringify(meta, null, 2) + '\n');
+  }
+  // preview: every friend's frames on a dark checker, 6x
+  const ids = Object.keys(built);
+  const rows = ids.length * ORDER.length;
+  const prev = new Bitmap(COLS * CELL, rows * CELL);
+  for (let y = 0; y < prev.h; y++) for (let x = 0; x < prev.w; x++) prev.set(x, y, ((x >> 3) + (y >> 3)) % 2 ? '#2e2e38' : '#3b3b48');
+  ids.forEach((id, i) => prev.blit(built[id].sheet, 0, i * ORDER.length * CELL));
+  const dir = path.join(__dirname, '..', 'assets', 'preview');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'friends.png'), (() => { const big = prev.scaled(4); return encodePNG(big.w, big.h, big.px); })());
+  console.log(`friends: ${ids.join(', ')} -> assets/friends/`);
+}
+
+if (require.main === module) main();
+module.exports = { build, FRIENDS, ORDER, CELL };

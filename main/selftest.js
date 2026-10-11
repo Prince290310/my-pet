@@ -1032,6 +1032,142 @@ async function run(ctx, h) {
     sw7.close();
     quiet();
 
+    section("Shadow's friends: Atlas, Dash, Bolt");
+    const friends = ctx.friends;
+    const fr = (id) => friends.get(id);
+    const allAway = () => friends.list.every((f) => f.state === 'away');
+    const allHere = () => friends.list.every((f) => f.state === 'here');
+    check('three friends with jobs', friends.list.map((f) => `${f.def.name}:${f.def.job}`).join() === 'Atlas:Researcher,Dash:Messenger,Bolt:Launcher');
+    friends.sendHome(); // earlier tests called them for jobs
+    await waitFor(allAway, 12000);
+    check('default: "now & then" mode, nobody left on screen after jobs', settings.get('friendsMode') === 'occasional' && allAway(), friends.list.map((f) => f.state).join());
+    quiet();
+    brain.rest(60000);
+    // put Shadow mid-screen so there's room on both sides
+    const dF = pet.display();
+    pet.moveTo(dF.workArea.x + Math.round(dF.workArea.width / 2) - Math.round(pet.S / 2), pet.floorY(dF));
+    check('"Call the gang" brings everyone', friends.callGang() === 3);
+    await waitFor(allHere, 9000);
+    check('...they all arrive', allHere(), friends.list.map((f) => f.state).join());
+    const floorOk = friends.list.every((f) => Math.abs(f.pos.y - (dF.workArea.y + dF.workArea.height - f.win.S)) < 2);
+    const nearOk = friends.list.every((f) => Math.abs(f.pos.x + f.win.S / 2 - (pet.pos.x + pet.S / 2)) < 400);
+    check('...standing on the floor next to Shadow', floorOk && nearOk, friends.list.map((f) => `${f.id}@${Math.round(f.pos.x)},${Math.round(f.pos.y)}`).join(' '));
+    const xs = friends.list.map((f) => f.pos.x).sort((a, b) => a - b);
+    check('...not standing on top of each other', xs[1] - xs[0] > 20 && xs[2] - xs[1] > 20, xs.map(Math.round).join());
+    const fstate = (f) => f.win.win.webContents.executeJavaScript('window.__shadowTest.state()');
+    const fs1 = await fstate(fr('dash'));
+    check('friend sprites are 32px and animating', fs1.canvas.width === 32 * settings.get('scale') && fs1.ticking, JSON.stringify(fs1.canvas));
+    await sleep(3000);
+    check('...each says hello', (await Promise.all(friends.list.map(fstate))).filter((st) => st.bubble).length >= 1);
+    await sleep(4500);
+    {
+      // whole-screen photo of the gang for the report
+      const { desktopCapturer } = require('electron');
+      const srcs = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: dF.size });
+      if (srcs[0]) {
+        const img = srcs[0].thumbnail;
+        const y0 = Math.max(0, dF.workArea.y + dF.workArea.height - 260);
+        const x0 = Math.max(0, Math.round(pet.pos.x + pet.S / 2 - 330));
+        fs.writeFileSync(path.join(outDir, 'gang.png'), img.crop({ x: x0, y: y0, width: 660, height: Math.min(260, dF.size.height - y0) }).toPNG());
+      }
+    }
+    // hovering a friend makes it clickable (same Windows fix as Shadow)
+    const fd = fr('bolt');
+    const fpt = await fd.win.win.webContents.executeJavaScript(`(() => { const c = document.getElementById('pet'); const r = c.getBoundingClientRect();
+      const d = c.getContext('2d').getImageData(0, 0, 32, 32).data; for (let y = 14; y < 28; y++) for (let x = 8; x < 24; x++) if (d[(y * 32 + x) * 4 + 3]) return { x: r.left + (x + 0.5) * r.width / 32, y: r.top + (y + 0.5) * r.height / 32 }; return null; })()`);
+    const fb = fd.win.bounds();
+    fake.cursor = { x: Math.round(fb.x + fpt.x), y: Math.round(fb.y + fpt.y) };
+    await waitFor(() => fd.win.interactive === true, 1500);
+    check('hovering a friend makes it clickable', fd.win.interactive === true);
+    fake.cursor = { x: -99999, y: -99999 };
+    await waitFor(() => fd.win.interactive === false, 1500);
+    fd.clicked();
+    await sleep(300);
+    const fs2 = await fstate(fd);
+    check('clicking a friend: it introduces itself', fs2.bubble && fs2.bubble.text.includes('Bolt the monkey · Launcher'), fs2.bubble && fs2.bubble.text);
+    const tm = ctx.trayCtl.menu().getMenuItemById('gang');
+    check('tray + right-click menu have "Call the Gang"', !!tm && h.petMenuTemplate().some((i) => i.label === 'Call the Gang 🐾'));
+    friends.sendHome();
+    await waitFor(allAway, 8000);
+    check('"send home": they leave and hide', allAway() && friends.list.every((f) => !f.win.win.isVisible()));
+    await sleep(300);
+    check('...and their animation stops (no CPU)', !(await fstate(fr('atlas'))).ticking);
+
+    // jobs ("when working" mode: appear, work, leave)
+    settings.update({ friendsMode: 'working' });
+    const doneA = friends.job('atlas', '🔍 On it, Prince!');
+    await waitFor(() => fr('atlas').state === 'here', 6000);
+    check('Atlas flies in to research', fr('atlas').state === 'here' && fr('atlas').anim.name === 'work');
+    doneA('Found it! 📰');
+    await sleep(200);
+    check('...says "Found it!"', ((await fstate(fr('atlas'))).bubble || {}).text === 'Found it! 📰');
+    await waitFor(() => fr('atlas').state === 'away', 9000);
+    check('...then goes home ("when working" mode)', fr('atlas').state === 'away');
+    const chatF = h.openChatPanel();
+    await waitFor(() => chatF.isVisible(), 3000);
+    await waitFor(() => js('document.querySelectorAll(".msg.pet").length > 0', chatF.webContents), 3000);
+    const askF = (text) =>
+      js(`(async () => { const n = document.querySelectorAll('.msg.pet').length; const i = document.getElementById('msg'); i.value = ${JSON.stringify(text)};
+        document.getElementById('composer').requestSubmit();
+        for (let k = 0; k < 120 && document.querySelectorAll('.msg.pet:not(.typing)').length <= n; k++) await new Promise(r => setTimeout(r, 50));
+        return [...document.querySelectorAll('.msg.pet')].pop().firstChild.textContent; })()`, chatF.webContents);
+    await askF('open spotify');
+    await waitFor(() => fr('bolt').state !== 'away', 2000);
+    check('Bolt comes to launch apps', fr('bolt').state !== 'away');
+    await waitFor(() => fr('bolt').state === 'here', 6000);
+    check('...with the lightning-bolt work animation', fr('bolt').anim.name === 'work' || fr('bolt').anim.name === 'talk');
+    await askF('todo: feed the cat');
+    await waitFor(() => fr('dash').state !== 'away', 2000);
+    check('Dash comes when the to-do list changes', fr('dash').state !== 'away');
+    let gr = await askF('call the gang');
+    check('saying "call the gang" in chat works', gr === 'Gang, assemble! 🐾', gr);
+    gr = await askF('send the gang home');
+    await waitFor(allAway, 15000);
+    check('"send the gang home" works (busy ones finish their job first)', gr === 'Bye gang! 👋' && allAway(), friends.list.map((f) => `${f.id}:${f.state}:${f.jobs}`).join());
+    await askF('remove 3'); // tidy up the to-do this test added
+    chatF.close();
+    await waitFor(() => !h.getChatWindow(), 2000);
+    quiet();
+    brain.rest(60000);
+    brain.reminder({ time: '', message: 'Friend test reminder' });
+    await waitFor(() => fr('dash').state !== 'away', 3000);
+    check('Dash delivers reminders', fr('dash').state !== 'away');
+    await waitFor(() => brain.state === 'reminder', 9000);
+    brain.dismissReminder();
+    await waitFor(() => !brain.activeReminder, 4000);
+    await waitFor(allAway, 12000);
+    settings.update({ friends: { atlas: true, dash: false, bolt: true } });
+    brain.reminder({ time: '', message: 'No Dash please' });
+    await sleep(1500);
+    check('a switched-off friend stays home', fr('dash').state === 'away');
+    await waitFor(() => brain.state === 'reminder', 9000);
+    brain.dismissReminder();
+    await waitFor(() => !brain.activeReminder, 4000);
+
+    // "always" mode
+    settings.update({ friendsMode: 'always', friends: { atlas: true, dash: true, bolt: true } });
+    await waitFor(allHere, 9000);
+    check('"always" mode: the gang stays on screen', allHere());
+    brain.tuck();
+    await sleep(500);
+    check('Tuck Away hides the friends too', allAway());
+    brain.untuck();
+    await waitFor(allHere, 9000);
+    check('...and Wake brings them back', allHere());
+    settings.update({ friendsMode: 'occasional' });
+    await waitFor(allAway, 9000);
+    check('switching back to "now & then" sends them home', allAway());
+    h.openSettings();
+    const sw8 = await waitFor(() => require('./windows').getSettingsWindow(), 3000);
+    await waitFor(() => js('document.querySelectorAll("input[data-friend]").length === 3', sw8.webContents), 3000);
+    const fui = await js(`(() => ({ mode: document.querySelector('input[name="friendsMode"]:checked').value, boxes: [...document.querySelectorAll('input[data-friend]')].map(b => b.dataset.friend + ':' + b.checked).join(), help: document.getElementById('friendsModeHelp').textContent, btn: !!document.getElementById('callGang') }))()`, sw8.webContents);
+    check('Settings: mode switch, a switch per friend, Call the Gang button', fui.mode === 'occasional' && fui.boxes === 'atlas:true,dash:true,bolt:true' && fui.btn, JSON.stringify(fui));
+    await js("document.querySelector('.friends').scrollIntoView()", sw8.webContents);
+    await sleep(300);
+    await shot('settings-friends', sw8.webContents);
+    sw8.close();
+    quiet();
+
     section('Morning briefing & to-do nudges');
     quiet();
     brain.rest(60000);

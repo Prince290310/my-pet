@@ -16,8 +16,12 @@ const MIN_WIDTH = 320;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
 class PetWindow {
-  constructor({ scale = 2, isolated = false } = {}) {
+  constructor({ scale = 2, isolated = false, cell = CELL, bubbleSpace = BUBBLE_SPACE, minWidth = MIN_WIDTH, title = 'Shadow' } = {}) {
     this.scale = scale;
+    this.cell = cell; // sprite cell size (Shadow 48, friends 32)
+    this.bubbleSpace = bubbleSpace;
+    this.minWidth = minWidth;
+    this.title = title;
     this.pos = { x: 0, y: 0 };
     this.win = null;
     this.interactive = false;
@@ -28,13 +32,13 @@ class PetWindow {
   }
 
   get S() {
-    return CELL * this.scale;
+    return this.cell * this.scale;
   }
   get W() {
-    return Math.max(MIN_WIDTH, this.S + 40);
+    return Math.max(this.minWidth, this.S + 40);
   }
   get H() {
-    return this.S + BUBBLE_SPACE;
+    return this.S + this.bubbleSpace;
   }
 
   create() {
@@ -53,7 +57,7 @@ class PetWindow {
       hasShadow: false,
       alwaysOnTop: true,
       focusable: false, // clicking the pet never steals focus from your work
-      title: 'Shadow',
+      title: this.title,
       webPreferences: {
         preload: path.join(PRELOAD, 'pet.js'),
         contextIsolation: true,

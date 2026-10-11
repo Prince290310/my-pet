@@ -12,7 +12,7 @@ const { ASSETS } = require('./paths');
  * @param {{get(): boolean, set(on: boolean): void}} o.loginItem
  * @param {object} o.actions { openSettings, openConfigFolder, openChat, quit }
  */
-function createTray({ brain, settings, loginItem, actions, getUpdater = () => null }) {
+function createTray({ brain, settings, loginItem, actions, getUpdater = () => null, callGang = null }) {
   const icon = nativeImage.createFromPath(path.join(ASSETS, 'tray.png')); // tray@2x.png picked up automatically
   const tray = new Tray(icon);
 
@@ -39,6 +39,7 @@ function createTray({ brain, settings, loginItem, actions, getUpdater = () => nu
         : { id: 'toggle', label: 'Tuck Away Pet', click: () => brain.command('tuck') }
     );
     if (sleeping) items.push({ id: 'wake', label: 'Wake Pet', click: () => brain.command('wake') });
+    if (callGang) items.push({ id: 'gang', label: 'Call the Gang 🐾', click: () => callGang() });
     items.push(
       { id: 'chat', label: 'Chat… (Ctrl+Click pet)', click: () => actions.openChat() },
       {

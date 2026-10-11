@@ -108,7 +108,36 @@ function showUpdate(u) {
   }
 }
 
-function fill({ settings: s, providers: list, startWithWindows, configDir, calendar, update }) {
+const MODE_HELP = {
+  always: 'They hang around Shadow all the time, and jump in to do their jobs.',
+  working: 'A friend only comes out while it is doing its job, then goes home.',
+  occasional: 'They come out for their jobs, plus a short playdate with Shadow now and then.',
+};
+const ICON = { atlas: '🦜', dash: '🐇', bolt: '🐒', sage: '🦉', zen: '🐢', tempo: '🐧' };
+function showFriends(list, s) {
+  form.querySelectorAll('input[name="friendsMode"]').forEach((r) => (r.checked = r.value === s.friendsMode));
+  $('friendsModeHelp').textContent = MODE_HELP[s.friendsMode];
+  $('friendList').replaceChildren(
+    ...(list || []).map((f) => {
+      const label = document.createElement('label');
+      label.className = 'check';
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.dataset.friend = f.id;
+      box.checked = f.enabled;
+      const i = document.createElement('i');
+      const text = document.createElement('span');
+      text.textContent = `${ICON[f.id] || '🐾'} ${f.name} the ${f.animal} - ${f.job}: ${f.blurb}`;
+      label.append(box, i, text);
+      return label;
+    })
+  );
+}
+form.addEventListener('change', (e) => {
+  if (e.target.name === 'friendsMode') $('friendsModeHelp').textContent = MODE_HELP[e.target.value];
+});
+
+function fill({ settings: s, providers: list, startWithWindows, configDir, calendar, update, friends }) {
   $('petName').value = s.petName;
   form.querySelectorAll('input[name="scale"]').forEach((r) => (r.checked = Number(r.value) === s.scale));
   $('quipMinMinutes').value = s.quipMinMinutes;
@@ -128,6 +157,7 @@ function fill({ settings: s, providers: list, startWithWindows, configDir, calen
   $('calendarInChat').checked = s.calendarInChat;
   showCalendarStatus(calendar);
   showUpdate(update);
+  showFriends(friends, s);
 
   providers = list;
   keys = { ...s.apiKeys };
@@ -207,6 +237,8 @@ form.addEventListener('submit', async (e) => {
       morningBriefing: $('morningBriefing').checked,
       todoNudges: $('todoNudges').checked,
       pcControl: $('pcControl').checked,
+      friendsMode: (form.querySelector('input[name="friendsMode"]:checked') || {}).value,
+      friends: Object.fromEntries([...document.querySelectorAll('input[data-friend]')].map((b) => [b.dataset.friend, b.checked])),
       webSearch: $('webSearch').checked,
       searchKey: $('searchKey').value.trim(),
       aiProvider: brain.provider,
@@ -232,6 +264,8 @@ $('reveal').addEventListener('click', () => {
   k.type = show ? 'text' : 'password';
   $('reveal').textContent = show ? 'HIDE' : 'SHOW';
 });
+
+$('callGang').addEventListener('click', () => window.settingsApi.callGang());
 
 $('getSearchKey').addEventListener('click', () => window.settingsApi.openLink('https://app.tavily.com/home'));
 $('revealSearch').addEventListener('click', () => {

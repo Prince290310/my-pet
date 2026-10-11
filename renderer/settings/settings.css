@@ -270,3 +270,14 @@ footer {
   font-size: 12px;
   box-shadow: 0 5px 0 #8a5a00;
 }
+
+.seg-wide b {
+  padding: 8px 10px;
+  font-size: 9px;
+}
+#friendList .check span {
+  font-size: 13px;
+}
+#callGang {
+  margin-top: 6px;
+}

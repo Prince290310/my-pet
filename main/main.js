@@ -27,6 +27,7 @@ const { Updater } = require('./updater');
 const { TaskStore, parseCommand } = require('./tasks');
 const search = require('./search');
 const { AppLauncher, parsePcCommand, pcRequests } = require('./apps');
+const { FriendsManager } = require('./friends');
 const { PetWindow } = require('./petWindow');
 const { Brain } = require('./brain');
 const { createTray } = require('./tray');
@@ -89,6 +90,7 @@ function petMenuTemplate() {
     items.push({ label: later ? 'Update Later' : 'Dismiss Reminder', click: () => brain.dismissReminder('menu') });
   }
   if (items.length) items.push({ type: 'separator' });
+  if (ctx.friends) items.push({ label: 'Call the Gang 🐾', click: () => ctx.friends.callGang() }, { type: 'separator' });
   return [
     ...items,
     { label: 'Sit', click: () => brain.command('sit') },
@@ -113,6 +115,7 @@ function settingsPayload() {
     providers: ai.publicProviders(),
     calendar: ctx.calendar ? ctx.calendar.status() : null,
     update: ctx.updater ? ctx.updater.status() : null,
+    friends: ctx.friends ? ctx.friends.info() : [],
     startWithWindows: ctx.loginItem.get(),
     configDir: paths.configDir(),
     settingsFile: paths.settingsFile(),
@@ -190,8 +193,23 @@ function init() {
   // renderer -> main
   const fromPet = (e) => pet.alive() && e.sender === pet.win.webContents;
   const validPt = (p) => p && Number.isFinite(p.x) && Number.isFinite(p.y);
+  // Shadow's friends (friends.js) use the same renderer in their own windows
+  const friends = (ctx.friends = new FriendsManager({ settings, brain, pet, assets: paths.ASSETS, isolated: SELF_TEST }));
+  const friendOf = (e) => friends.forSender(e.sender);
+  const friendMenu = (f) =>
+    Menu.buildFromTemplate([
+      { label: `${f.def.name} the ${f.def.animal} · ${f.def.job}`, enabled: false },
+      { type: 'separator' },
+      { label: 'Call the Gang 🐾', click: () => friends.callGang() },
+      { label: `Send ${f.def.name} Home`, click: () => f.leave() },
+      { label: 'Chat with Shadow…', click: () => openChatPanel() },
+    ]).popup({ window: f.win.win });
   ipcMain.on('pet:ready', (e) => {
-    if (!fromPet(e)) return;
+    if (!fromPet(e)) {
+      const f = friendOf(e);
+      if (f) f.onReady();
+      return;
+    }
     pet.send('pet:init', {
       meta,
       sheet: sheetDataUrl(),
@@ -202,6 +220,7 @@ function init() {
     });
     if (brain.state === 'off') {
       brain.start();
+      friends.start();
       syncDisplay(true);
       pet.win.showInactive();
       if (ctx.onStarted) ctx.onStarted();
@@ -209,11 +228,15 @@ function init() {
       pet.send('pet:anim', { name: brain.anim, facing: brain.facing });
     }
   });
-  ipcMain.on('pet:interactive', (e, on) => fromPet(e) && pet.setInteractive(on));
-  ipcMain.on('pet:click', (e) => fromPet(e) && brain.click());
-  ipcMain.on('pet:dblclick', (e) => fromPet(e) && brain.dblclick());
-  ipcMain.on('pet:ctrl-click', (e) => fromPet(e) && openChatPanel());
-  ipcMain.on('pet:context-menu', (e) => fromPet(e) && showPetMenu());
+  const onFriend = (fn) => (e, ...a) => {
+    const f = friendOf(e);
+    if (f) fn(f, ...a);
+  };
+  ipcMain.on('pet:interactive', (e, on) => (fromPet(e) ? pet.setInteractive(on) : onFriend((f) => f.win.setInteractive(on))(e)));
+  ipcMain.on('pet:click', (e) => (fromPet(e) ? brain.click() : onFriend((f) => f.clicked())(e)));
+  ipcMain.on('pet:dblclick', (e) => (fromPet(e) ? brain.dblclick() : onFriend((f) => f.playdate(3000))(e)));
+  ipcMain.on('pet:ctrl-click', (e) => (fromPet(e) || friendOf(e)) && openChatPanel());
+  ipcMain.on('pet:context-menu', (e) => (fromPet(e) ? showPetMenu() : onFriend(friendMenu)(e)));
   // Press & drag: follow the real cursor from here while the button is held (a non-focusable
   // window gets no mouse-move events mid-press on Windows). Polls only during a press.
   let press = null;
@@ -245,20 +268,23 @@ function init() {
   });
   // Hover check that doesn't depend on Windows forwarding mouse moves (see pet.js onCursor).
   // Only talks to the renderer while the cursor is over the pet's window, so it costs ~nothing.
-  let cursorWasInside = false;
-  setInterval(() => {
-    if (!pet.alive() || pet.tucked || press || brain.dragging) return;
+  const hover = (w) => {
     const c = ctx.sensors.cursor();
-    const b = pet.bounds();
+    const b = w.bounds();
     const inside = c.x >= b.x && c.x < b.x + b.width && c.y >= b.y && c.y < b.y + b.height;
-    if (inside || cursorWasInside || pet.interactive) {
-      pet.send('pet:cursor', { inside, x: c.x - b.x, y: c.y - b.y, interactive: pet.interactive });
+    if (inside || w.cursorWasInside || w.interactive) {
+      w.send('pet:cursor', { inside, x: c.x - b.x, y: c.y - b.y, interactive: w.interactive });
     }
-    cursorWasInside = inside;
+    w.cursorWasInside = inside;
+  };
+  setInterval(() => {
+    if (press || brain.dragging) return;
+    if (pet.alive() && !pet.tucked) hover(pet);
+    friends.windows().forEach(hover); // the friends get the same fix
   }, 60);
   powerMonitor.on('unlock-screen', () => pet.setInteractive(pet.interactive)); // re-arm click-through after locking
 
-  ipcMain.on('pet:bubble-click', (e) => fromPet(e) && brain.bubbleClicked());
+  ipcMain.on('pet:bubble-click', (e) => (fromPet(e) ? brain.bubbleClicked() : onFriend((f) => f.win.send('pet:bubble-hide'))(e)));
   ipcMain.on('pet:test-frame', (e, info) => fromPet(e) && ctx.onTestFrame && ctx.onTestFrame(info));
 
   // chat panel -> ai.js (all AI provider logic lives there)
@@ -340,7 +366,7 @@ function init() {
   const screenshotHelpers = {
     // Shadow and the chat panel step out of the picture for a moment
     beforeScreenshot: async () => {
-      ctx.screenshotHidden = [pet.win, getChatWindow()].filter((w) => w && !w.isDestroyed() && w.isVisible());
+      ctx.screenshotHidden = [pet.win, getChatWindow(), ...friends.windows().map((w) => w.win)].filter((w) => w && !w.isDestroyed() && w.isVisible());
       ctx.screenshotHidden.forEach((w) => w.hide());
       await new Promise((r) => setTimeout(r, 250));
     },
@@ -364,8 +390,36 @@ function init() {
     if (cmd.type === 'cancel') return apps.cancel();
     if (cmd.type === 'choose') return apps.choose(cmd.n);
     if (!settings.get('pcControl')) return 'Opening apps and PC controls are switched off, Prince. Turn them on in Settings → Behaviour.';
-    if (cmd.type === 'open') return apps.open(cmd.target);
-    return apps.system(cmd, screenshotHelpers);
+    const out = cmd.type === 'open' ? await apps.open(cmd.target) : await apps.system(cmd, screenshotHelpers);
+    // Bolt the monkey handles launches (not failures, questions or the countdown before sleep)
+    if (out && /^(Opening|Locking|Snip|📸|Volume|Toggled|Brightness)/.test(out)) {
+      const line = { lock: '🔒 Locked tight!', screenshot: '📸 Click!', snip: '✂️ Snip snip!', mute: '🔇 Shh!' }[cmd.action] || (cmd.type === 'open' ? '⚡ Launching!' : '⚡ Done!');
+      friends.quickJob('bolt', line, 3500);
+    }
+    return out;
+  }
+
+  /** "call the gang", "send the gang home", "call atlas" */
+  function gangCommand(text) {
+    const l = text.trim().toLowerCase().replace(/[?.!]+$/, '');
+    if (/^(?:call|bring|summon|show)(?: out)? (?:the |my )?(?:gang|friends|everyone|squad|team)(?: out)?$/.test(l)) {
+      const n = friends.callGang();
+      return n ? 'Gang, assemble! 🐾' : 'All my friends are switched off, Prince. Turn them on in Settings → Friends.';
+    }
+    if (/^(?:send|tell) (?:the |my )?(?:gang|friends|everyone) (?:home|away)$|^(?:bye|goodbye) (?:gang|friends|everyone)$/.test(l)) {
+      friends.sendHome();
+      return 'Bye gang! 👋';
+    }
+    const m = /^(?:call|bring|summon) (atlas|dash|bolt)$/.exec(l);
+    if (m) {
+      const f = friends.get(m[1]);
+      if (!friends.enabled(f.id)) return `${f.def.name} is switched off, Prince. Turn them on in Settings → Friends.`;
+      f.stayUntil = Date.now() + 30000;
+      f.appear(() => f.clicked());
+      setTimeout(() => !f.jobs && friends.afterJob(f), 32000);
+      return `${f.def.name}! Come here 🐾`;
+    }
+    return null;
   }
 
   ipcMain.handle('chat:ask', async (_e, message) => {
@@ -374,6 +428,12 @@ function init() {
     const history = ctx.chatHistory;
     history.push({ role: 'user', text });
     let reply;
+    const gang = gangCommand(text);
+    if (gang) {
+      history.push({ role: 'pet', text: gang });
+      brain.chatReply(gang);
+      return { text: gang, sources: [] };
+    }
     const pcCmd = parsePcCommand(text);
     if (pcCmd) {
       let out = null;
@@ -392,7 +452,7 @@ function init() {
     }
     const searchCmd = search.parseSearchCommand(text);
     if (searchCmd) {
-      if (searchCmd.type === 'wiki' || searchCmd.type === 'search') searchingBubble();
+      const atlasDone = searchCmd.type === 'wiki' || searchCmd.type === 'search' ? searchingBubble() : null;
       let out;
       try {
         out = await runSearchCommand(searchCmd, text, history);
@@ -400,6 +460,7 @@ function init() {
         if (!(err instanceof ai.AiError)) console.warn('[search]', err);
         out = { text: err instanceof ai.AiError ? ai.friendly(err, aiContext()) : 'Search glitched, Prince. Try again?' };
       }
+      if (atlasDone) atlasDone(out.sources && out.sources.length ? 'Found it! 📰' : 'Hmm, nothing good 😕');
       history.push({ role: 'pet', text: out.text });
       brain.chatReply(out.text);
       return { text: out.text, sources: out.sources || [] };
@@ -409,6 +470,7 @@ function init() {
     const cmd = parseCommand(text);
     if (cmd) {
       reply = ctx.tasks.run(cmd);
+      dashFor(cmd.type, reply);
       history.push({ role: 'pet', text: reply });
       brain.chatReply(reply);
       return { text: reply, sources: [] };
@@ -426,13 +488,14 @@ function init() {
       const q = searchOn ? search.searchRequest(raw) : null;
       if (q) {
         // the AI wants to look something up: search, then ask again with the results
-        searchingBubble();
+        const atlasDone = searchingBubble();
         let found = null;
         try {
           found = await search.webSearch(q, searchOpts());
         } catch (err) {
           reply = search.friendly(err, { hasKey: !!settings.get('searchKey') });
         }
+        atlasDone(found && found.results.length ? 'Found it! 📰' : 'Hmm, nothing good 😕');
         if (found) {
           const answer = await ai.chat(text, { ...context, tasks: '', search: '', searchResults: search.resultsForAi(found) });
           reply = search.stripCommands(answer) || 'The internet had nothing useful on that, Prince 🤔';
@@ -445,7 +508,9 @@ function init() {
         if (settings.get('pcControl')) {
           for (const req of pcRequests(raw)) done.push(await runPcCommand(req));
         }
-        reply = ctx.tasks.applyTags(raw).text;
+        const tagged = ctx.tasks.applyTags(raw);
+        reply = tagged.text;
+        if (tagged.actions.some((a) => a.ok)) dashFor(tagged.actions.some((a) => a.note.startsWith('⏰')) ? 'remind' : 'todo-add', '');
         if (done.length) reply = `${reply ? `${reply} ` : ''}${done.filter(Boolean).join(' · ')}`;
         reply = reply || '😼';
       }
@@ -461,9 +526,21 @@ function init() {
     brain.chatReply(reply);
     return { text: reply, sources };
   });
+  /** Shadow says it's searching and Atlas the parrot flies in. Returns Atlas's done(line). */
   function searchingBubble() {
     if (!brain.activeReminder && brain.state !== 'hidden') brain.say('🔍 Searching the internet…', { ms: 20000 });
+    return friends.job('atlas', '🔍 On it, Prince!');
   }
+  /** Dash the rabbit handles reminders and the to-do list. */
+  function dashFor(type, reply) {
+    if (/^(?:That time|I didn't|There's no|Your list is empty|No reminders|Too many|That's too far|Add what)/.test(reply)) return;
+    const line = { remind: '📨 Noted - I\'ll deliver it!', 'todo-add': '📝 On the list!', 'todo-done': '✓ Crossed off!', 'todo-remove': '🗑️ Gone!', 'reminder-cancel': '✓ Cancelled!' }[type];
+    if (line) friends.quickJob('dash', line, 3500);
+  }
+  // Dash also delivers reminders as they fire (not update notices or the morning briefing)
+  brain.on('reminder-start', (r) => {
+    if (!['update', 'briefing'].includes(r.kind) && !brain.reminderClosing) friends.quickJob('dash', '📨 Delivery for Prince!', 7000);
+  });
   ipcMain.handle('ai:test', (_e, form = {}) => {
     const over = {};
     if (typeof form.provider === 'string' && ai.PROVIDERS[form.provider]) over.provider = form.provider;
@@ -484,7 +561,7 @@ function init() {
   // settings window
   ipcMain.handle('settings:load', () => settingsPayload());
   ipcMain.handle('settings:save', async (_e, patch = {}) => {
-    const allowed = ['petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat', 'morningBriefing', 'todoNudges', 'webSearch', 'searchKey', 'pcControl'];
+    const allowed = ['petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat', 'morningBriefing', 'todoNudges', 'webSearch', 'searchKey', 'pcControl', 'friendsMode', 'friends'];
     const clean = Object.fromEntries(Object.entries(patch).filter(([k]) => allowed.includes(k)));
     const before = settings.get('calendarUrl');
     settings.update(clean);
@@ -496,12 +573,15 @@ function init() {
     return settingsPayload();
   });
   ipcMain.on('settings:open-config', () => openConfigFolder());
+  ipcMain.on('friends:call', () => ctx.friends.callGang());
   ipcMain.handle('update:check', () => ctx.updater.check());
   ipcMain.handle('update:status', () => ctx.updater.status());
   ipcMain.handle('update:install', () => ctx.updater.install());
 
   settings.on('change', (all, changed) => {
+    if (changed.includes('friendsMode') || changed.includes('friends')) friends.apply();
     if (changed.includes('scale')) {
+      friends.setScale(all.scale);
       pet.setScale(all.scale);
       pet.send('pet:scale', { scale: all.scale });
       syncDisplay(true);
@@ -532,6 +612,7 @@ function init() {
     loginItem: { get: () => ctx.loginItem.get(), set: (on) => ctx.loginItem.set(on) },
     actions: { openSettings, openConfigFolder, openChat: openChatPanel, quit },
     getUpdater: () => ctx.updater,
+    callGang: () => ctx.friends.callGang(),
   });
   ctx.updater.on('status', () => ctx.trayCtl.rebuild());
   ctx.updater.start();
@@ -624,7 +705,7 @@ if (!SELF_TEST && !app.requestSingleInstanceLock()) {
     /* keep running in the tray */
   });
   app.on('before-quit', () => {
-    const { brain, config, reminders, calendar, updater } = ctx;
+    const { brain, config, reminders, calendar, updater, friends } = ctx;
     try {
       if (brain && !['off', 'hidden'].includes(brain.state)) brain.savePosition();
     } catch {
@@ -635,6 +716,7 @@ if (!SELF_TEST && !app.requestSingleInstanceLock()) {
     if (reminders) reminders.stop();
     if (calendar) calendar.stop();
     if (updater) updater.stop();
+    if (friends) friends.stop();
   });
 }
 
