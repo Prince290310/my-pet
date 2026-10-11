@@ -53,6 +53,7 @@ class Brain extends EventEmitter {
     this.chatOpen = false;
     this.reminderQueue = [];
     this.activeReminder = null;
+    this.reminderClosing = false;
     this.bubble = null;
     this.sleepInfo = null;
   }
@@ -520,6 +521,15 @@ class Brain extends EventEmitter {
 
   // ------------------------------------------------------------------ reminders
   reminder(r) {
+    // a newer reminder for the same calendar event replaces the old one instead of piling up
+    if (r.key) this.reminderQueue = this.reminderQueue.filter((q) => q.key !== r.key);
+    const cur = this.activeReminder;
+    if (r.key && cur && cur.key === r.key && !this.reminderClosing) {
+      this.activeReminder = r;
+      if (this.state === 'reminder') this.say(`⏰ ${r.message}`, { sticky: true });
+      this.emit('reminder-start', r);
+      return;
+    }
     this.reminderQueue.push(r);
     if (!this.activeReminder) this.nextReminder();
   }
@@ -531,6 +541,7 @@ class Brain extends EventEmitter {
       return;
     }
     this.activeReminder = r;
+    this.reminderClosing = false;
     this.interrupt();
     this.hideBubble();
     this.sleepInfo = null;
@@ -556,7 +567,8 @@ class Brain extends EventEmitter {
 
   dismissReminder() {
     const r = this.activeReminder;
-    if (!r) return;
+    if (!r || this.reminderClosing) return;
+    this.reminderClosing = true;
     this.emit('reminder-dismissed', r);
     this.interrupt();
     this.hideBubble();
@@ -565,6 +577,8 @@ class Brain extends EventEmitter {
     this.say(this.quip('reminderDone'), { ms: 2600 });
     this.after(2600, () => {
       this.activeReminder = null;
+      this.reminderClosing = false;
+      this.emit('reminder-done', r);
       if (this.reminderQueue.length) this.nextReminder();
       else if (this.chatOpen) this.chatIdle();
       else this.rest();

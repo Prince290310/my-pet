@@ -175,6 +175,16 @@ document.addEventListener('mousemove', (e) => {
 document.addEventListener('mouseleave', () => {
   if (!press) setInteractive(false);
 });
+// The main process also reports the cursor ~16x/s while it's over this window, because Windows
+// can stop forwarding mouse moves to a click-through window (after sleep, locking the PC or a long
+// idle) - that used to leave Shadow and its reminder bubble unclickable. Each report carries the
+// window's real clickable state too, so if the two ever disagree the next report fixes it.
+api.onCursor((c) => {
+  if (press || paused) return;
+  const want = !!c.inside && (hitPet(c.x, c.y) || hitBubble(c.x, c.y));
+  if (c.interactive !== want) interactive = !want; // force setInteractive() to tell main again
+  setInteractive(want);
+});
 
 canvas.addEventListener('pointerdown', (e) => {
   if (e.button !== 0 || !hitPet(e.clientX, e.clientY)) return;

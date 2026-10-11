@@ -163,6 +163,22 @@ async function run(ctx, h) {
     mouse('mouseMove', 8, 8);
     await waitFor(() => pet.interactive === false, 1000);
     check('leaving the panther makes it click-through again', pet.interactive === false);
+    // Windows sometimes stops forwarding mouse moves to a click-through window (after sleep/lock/
+    // long idle). Move ONLY the cursor (no mouse events at all): Shadow must still notice it.
+    const gx = (p) => ({ x: wb().x + Math.round(p.x), y: wb().y + Math.round(p.y) });
+    fake.cursor = gx(pp);
+    await waitFor(() => pet.interactive === true, 1000);
+    check('clickable even when Windows stops sending mouse moves', pet.interactive === true);
+    fake.cursor = gx({ x: 8, y: 8 });
+    await waitFor(() => pet.interactive === false, 1000);
+    check('...and click-through again when the cursor leaves', pet.interactive === false);
+    fake.cursor = gx(pp);
+    await waitFor(() => pet.interactive === true, 1000);
+    pet.setInteractive(false); // window and page now disagree (what used to happen after hide/show)
+    await waitFor(() => pet.interactive === true, 1000);
+    check('a stuck "not clickable" window heals itself', pet.interactive === true);
+    fake.cursor = { x: -99999, y: -99999 };
+    await waitFor(() => pet.interactive === false, 1000);
 
     section('Single click / double click');
     quiet();
@@ -380,6 +396,23 @@ async function run(ctx, h) {
     check('clicking the bubble dismisses it', brain.state === 'happy' && !brain.bubble.sticky);
     await waitFor(() => !brain.activeReminder, 4000);
     check('back to normal after the reminder', !brain.activeReminder);
+    // fallbacks: right-click menu and tray can always dismiss a reminder
+    brain.reminder({ time: hhmm, days: [day], message: 'Menu test' });
+    await waitFor(() => brain.state === 'reminder', 9000);
+    const rmenu = h.petMenuTemplate();
+    check('right-click menu offers Dismiss Reminder', rmenu[0].label === 'Dismiss Reminder');
+    const trayDismiss = ctx.trayCtl.menu().getMenuItemById('dismiss');
+    check('tray menu offers Dismiss Reminder', !!trayDismiss);
+    trayDismiss.click();
+    await waitFor(() => !brain.activeReminder, 4000);
+    check('Dismiss Reminder from the tray works', !brain.activeReminder && !ctx.trayCtl.menu().getMenuItemById('dismiss'));
+    brain.reminder({ time: hhmm, days: [day], message: '"X" in 10 mins', key: 'evt|1' });
+    await waitFor(() => brain.state === 'reminder', 9000);
+    brain.reminder({ time: hhmm, days: [day], message: '"X" is starting now', key: 'evt|1' });
+    check('"starting now" replaces the open "in 10 mins" (no pile-up)', brain.bubble.text.includes('starting now') && brain.reminderQueue.length === 0);
+    const rmenu2 = h.petMenuTemplate();
+    rmenu2[0].click();
+    await waitFor(() => !brain.activeReminder, 4000);
     // hidden pet still delivers reminders
     brain.tuck();
     brain.reminder({ time: hhmm, days: [day], message: 'Hidden test' });
@@ -627,7 +660,8 @@ async function run(ctx, h) {
     const leadMsg = calFired.find((r) => r.message.includes('Self-test class'));
     check('10 min before -> "in 10 mins" reminder', leadMsg && leadMsg.message === 'Prince! "Self-test class" in 10 mins (Room 4)', leadMsg && leadMsg.message);
     await waitFor(() => brain.state === 'reminder', 9000);
-    check('calendar reminder uses the reminder bubble + alert animation', brain.state === 'reminder' && brain.anim === 'alert' && brain.bubble.text.includes('Self-test class'), brain.bubble && brain.bubble.text);
+    const shownOrQueued = [brain.activeReminder, ...brain.reminderQueue].some((r) => r && r.message.includes('Self-test class')); // after 9:00 the all-day one may come first
+    check('calendar reminder uses the reminder bubble + alert animation', brain.state === 'reminder' && brain.anim === 'alert' && brain.bubble.text.startsWith('⏰') && shownOrQueued, brain.bubble && brain.bubble.text);
     check('calendar reminder fires only once', cal.check().filter((r) => r.message.includes('in 10')).length === 0);
     const ai2 = require('./ai');
     const chatCtx = ctx.aiContext();

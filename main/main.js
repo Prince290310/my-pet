@@ -78,7 +78,9 @@ function openChatPanel() {
 
 function petMenuTemplate() {
   const { brain } = ctx;
+  const reminder = brain.activeReminder && !brain.reminderClosing ? [{ label: 'Dismiss Reminder', click: () => brain.dismissReminder() }, { type: 'separator' }] : [];
   return [
+    ...reminder,
     { label: 'Sit', click: () => brain.command('sit') },
     { label: 'Sleep', click: () => brain.command('sleep') },
     { label: 'Pounce', click: () => brain.command('pounce') },
@@ -230,6 +232,21 @@ function init() {
     }
     return { dragged };
   });
+  // Hover check that doesn't depend on Windows forwarding mouse moves (see pet.js onCursor).
+  // Only talks to the renderer while the cursor is over the pet's window, so it costs ~nothing.
+  let cursorWasInside = false;
+  setInterval(() => {
+    if (!pet.alive() || pet.tucked || press || brain.dragging) return;
+    const c = ctx.sensors.cursor();
+    const b = pet.bounds();
+    const inside = c.x >= b.x && c.x < b.x + b.width && c.y >= b.y && c.y < b.y + b.height;
+    if (inside || cursorWasInside || pet.interactive) {
+      pet.send('pet:cursor', { inside, x: c.x - b.x, y: c.y - b.y, interactive: pet.interactive });
+    }
+    cursorWasInside = inside;
+  }, 60);
+  powerMonitor.on('unlock-screen', () => pet.setInteractive(pet.interactive)); // re-arm click-through after locking
+
   ipcMain.on('pet:bubble-click', (e) => fromPet(e) && brain.bubbleClicked());
   ipcMain.on('pet:test-frame', (e, info) => fromPet(e) && ctx.onTestFrame && ctx.onTestFrame(info));
 
@@ -332,7 +349,7 @@ function init() {
   const calendar = (ctx.calendar = new CalendarSync({ settings, cacheFile: path.join(app.getPath('userData'), 'calendar-cache.json') }));
   calendar.on('fire', (r) => {
     console.log(`[calendar] ${r.time} reminder`); // titles stay out of the log
-    brain.reminder(r);
+    brain.reminder(r); // "starting now" replaces a still-open "in 10 mins" for the same event
   });
   calendar.start();
 

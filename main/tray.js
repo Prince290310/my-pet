@@ -23,10 +23,15 @@ function createTray({ brain, settings, loginItem, actions }) {
     const items = [
       { label: `🐾 ${settings.get('petName')}`, enabled: false },
       { type: 'separator' },
+    ];
+    if (brain.activeReminder && !brain.reminderClosing) {
+      items.push({ id: 'dismiss', label: '⏰ Dismiss Reminder', click: () => brain.dismissReminder() }, { type: 'separator' });
+    }
+    items.push(
       hidden
         ? { id: 'toggle', label: 'Wake Pet', click: () => brain.command('wake') }
-        : { id: 'toggle', label: 'Tuck Away Pet', click: () => brain.command('tuck') },
-    ];
+        : { id: 'toggle', label: 'Tuck Away Pet', click: () => brain.command('tuck') }
+    );
     if (sleeping) items.push({ id: 'wake', label: 'Wake Pet', click: () => brain.command('wake') });
     items.push(
       { id: 'chat', label: 'Chat… (Ctrl+Click pet)', click: () => actions.openChat() },
@@ -79,6 +84,9 @@ function createTray({ brain, settings, loginItem, actions }) {
   brain.on('state', (s, prev) => {
     if (['hidden', 'sleep'].includes(s) || ['hidden', 'sleep'].includes(prev)) rebuild();
   });
+  brain.on('reminder-start', rebuild);
+  brain.on('reminder-dismissed', rebuild);
+  brain.on('reminder-done', rebuild);
   settings.on('change', (_all, changed) => {
     if (changed.some((k) => ['muteQuips', 'scale', 'petName'].includes(k))) rebuild();
   });

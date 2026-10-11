@@ -27,4 +27,5 @@ contextBridge.exposeInMainWorld('shadow', {
   onDisplay: on('pet:display'),
   onPause: on('pet:pause'),
   onResume: on('pet:resume'),
+  onCursor: on('pet:cursor'),
 });
