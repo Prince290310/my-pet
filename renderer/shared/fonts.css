@@ -24,3 +24,11 @@
   --font-pixel: 'Pixelify Sans', 'Segoe UI Emoji', 'Segoe UI', sans-serif;
   --font-arcade: 'Press Start 2P', 'Pixelify Sans', monospace;
 }
+
+/* Pixelify Sans' "fi"/"fl" ligatures look like other letters at this size ("final" read as "Anal") */
+*,
+input,
+button {
+  font-variant-ligatures: none;
+  font-feature-settings: 'liga' 0, 'clig' 0;
+}

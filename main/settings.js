@@ -24,6 +24,8 @@ const DEFAULTS = Object.freeze({
   calendarInChat: true, // chat AI can see upcoming events ("what's on tomorrow?")
   morningBriefing: true, // first time at the PC each day: today's events, to-dos, reminders
   todoNudges: true, // idle quips sometimes nudge about an open to-do
+  webSearch: true, // chat may look things up (Tavily with searchKey, otherwise Wikipedia)
+  searchKey: '', // free Tavily key (app.tavily.com)
   position: null, // last pet position {x, y}
 });
 
@@ -69,6 +71,8 @@ function validate(raw) {
     calendarInChat: s.calendarInChat === undefined ? DEFAULTS.calendarInChat : Boolean(s.calendarInChat),
     morningBriefing: s.morningBriefing === undefined ? DEFAULTS.morningBriefing : Boolean(s.morningBriefing),
     todoNudges: s.todoNudges === undefined ? DEFAULTS.todoNudges : Boolean(s.todoNudges),
+    webSearch: s.webSearch === undefined ? DEFAULTS.webSearch : Boolean(s.webSearch),
+    searchKey: typeof s.searchKey === 'string' && /^[\w-]{0,200}$/.test(s.searchKey.trim()) ? s.searchKey.trim() : '',
     position:
       s.position && Number.isFinite(s.position.x) && Number.isFinite(s.position.y)
         ? { x: Math.round(s.position.x), y: Math.round(s.position.y) }

@@ -122,6 +122,28 @@
         <p class="note">Keys stay on this PC only (in your settings file, never in the project folder).</p>
       </section>
 
+      <section class="search">
+        <h2>Internet search</h2>
+        <label class="check"><input id="webSearch" type="checkbox" /><i></i>Let Shadow look things up on the internet</label>
+        <p class="note">
+          Works with Wikipedia right away. For news, scores, weather and everything else, add a free
+          <b>Tavily</b> key (1,000 searches a month, no card).
+        </p>
+        <button type="button" id="getSearchKey" class="ghost">GET A FREE TAVILY KEY ↗</button>
+        <label class="field">
+          <span>Tavily key <em>(optional)</em></span>
+          <div class="inline">
+            <input id="searchKey" type="password" placeholder="tvly-…" spellcheck="false" />
+            <button type="button" id="revealSearch" class="ghost">SHOW</button>
+          </div>
+        </label>
+        <div class="inline">
+          <button type="button" id="testSearch" class="ghost">TEST SEARCH</button>
+          <span id="searchResult" class="test-result" role="status"></span>
+        </div>
+        <p class="note">Your searches go to Tavily (or Wikipedia). Chat commands: "google …", "youtube …", "wiki …", "open whatsapp".</p>
+      </section>
+
       <section class="updates">
         <h2>Updates</h2>
         <p class="note" id="updStatus"></p>

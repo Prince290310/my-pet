@@ -25,6 +25,7 @@ const { ReminderScheduler } = require('./reminders');
 const { CalendarSync, GCAL_SETTINGS_URL } = require('./calendar');
 const { Updater } = require('./updater');
 const { TaskStore, parseCommand } = require('./tasks');
+const search = require('./search');
 const { PetWindow } = require('./petWindow');
 const { Brain } = require('./brain');
 const { createTray } = require('./tray');
@@ -280,12 +281,78 @@ function init() {
     const p = ai.PROVIDERS[c.provider];
     return { petName: c.petName, provider: p.label, ready: !p.needsKey || !!c.apiKey };
   });
+  // links Shadow may open: our own search URLs and the sources it just showed in chat
+  const openUrl = (url) => (ctx.stubOpenExternal ? ctx.stubOpenExternal(url) : shell.openExternal(url));
+  const sourceUrls = new Set();
+  const searchOpts = () => ({ tavilyKey: settings.get('searchKey'), ...(ctx.searchBases || {}) });
+  const showSources = (results) => {
+    const list = results.slice(0, 3).map((r) => ({ title: r.title, url: r.url }));
+    list.forEach((r) => sourceUrls.add(r.url));
+    return list;
+  };
+
+  /** "google …", "youtube …", "open whatsapp", "wiki …", "search for …" */
+  async function runSearchCommand(cmd, text, history) {
+    if (cmd.type === 'open' || cmd.type === 'open-site') {
+      openUrl(cmd.url);
+      return { text: cmd.type === 'open' ? `Opening ${cmd.label} for "${cmd.query}" 🔍` : `Opening ${cmd.name} 🐾` };
+    }
+    if (!settings.get('webSearch')) return { text: 'Internet search is switched off, Prince. Turn it on in Settings → Internet search.' };
+    let found;
+    try {
+      found = await search.webSearch(cmd.query, cmd.type === 'wiki' ? { ...searchOpts(), tavilyKey: '' } : searchOpts());
+    } catch (err) {
+      return { text: search.friendly(err, { hasKey: !!settings.get('searchKey') }) };
+    }
+    if (!found.results.length) return { text: `Couldn't find anything for "${found.query}", Prince 🤔` };
+    if (cmd.type === 'wiki') {
+      const first = found.results[0];
+      const sentences = first.content.match(/[^.!?]+[.!?]+/g) || [first.content];
+      return { text: sentences.slice(0, 2).join('').trim().slice(0, 300), sources: showSources(found.results) };
+    }
+    const c = aiContext();
+    const p = ai.PROVIDERS[c.provider];
+    if (p.needsKey && !c.apiKey) {
+      // no AI brain: just show the top results
+      return { text: `Top results: ${found.results.slice(0, 3).map((r, i) => `${i + 1}. ${r.title}`).join(' · ')}`, sources: showSources(found.results) };
+    }
+    const answer = await ai.chat(text, { ...c, tasks: '', searchResults: search.resultsForAi(found), history: history.slice(-20) });
+    return { text: search.stripCommands(answer) || 'The internet had nothing useful on that, Prince 🤔', sources: showSources(found.results) };
+  }
+
+  ipcMain.on('chat:open-link', (_e, url) => {
+    if (sourceUrls.has(url) && /^https?:\/\//i.test(url)) openUrl(url);
+  });
+  ipcMain.handle('search:test', async (_e, key) => {
+    const k = typeof key === 'string' ? key.trim().slice(0, 200) : '';
+    try {
+      const found = await search.webSearch(k ? 'latest news India today' : 'Black panther', { ...searchOpts(), tavilyKey: k });
+      return { ok: true, engine: found.engine, count: found.results.length, first: found.results[0] ? found.results[0].title : '' };
+    } catch (err) {
+      return { ok: false, kind: err.kind || 'error', message: search.friendly(err, { hasKey: !!k }) };
+    }
+  });
+
   ipcMain.handle('chat:ask', async (_e, message) => {
     const text = String(message || '').trim().slice(0, 2000);
-    if (!text) return '';
+    if (!text) return { text: '' };
     const history = ctx.chatHistory;
     history.push({ role: 'user', text });
     let reply;
+    const searchCmd = search.parseSearchCommand(text);
+    if (searchCmd) {
+      if (searchCmd.type === 'wiki' || searchCmd.type === 'search') searchingBubble();
+      let out;
+      try {
+        out = await runSearchCommand(searchCmd, text, history);
+      } catch (err) {
+        if (!(err instanceof ai.AiError)) console.warn('[search]', err);
+        out = { text: err instanceof ai.AiError ? ai.friendly(err, aiContext()) : 'Search glitched, Prince. Try again?' };
+      }
+      history.push({ role: 'pet', text: out.text });
+      brain.chatReply(out.text);
+      return { text: out.text, sources: out.sources || [] };
+    }
     // "remind me at 6 pm to call Mom", "todo: buy milk", "done 2", ... - handled right here,
     // so they work instantly, offline and without an AI key
     const cmd = parseCommand(text);
@@ -293,12 +360,32 @@ function init() {
       reply = ctx.tasks.run(cmd);
       history.push({ role: 'pet', text: reply });
       brain.chatReply(reply);
-      return reply;
+      return { text: reply, sources: [] };
     }
-    const context = { ...aiContext(), history: history.slice(-20) };
+    const searchOn = settings.get('webSearch');
+    const context = { ...aiContext(), search: searchOn ? search.aiInstructions(!!settings.get('searchKey')) : '', history: history.slice(-20) };
+    let sources = [];
     try {
-      // the AI may end its reply with hidden [[remind | ...]] / [[todo ...]] commands
-      reply = ctx.tasks.applyTags(await ai.chat(text, context)).text || '😼';
+      const raw = await ai.chat(text, context);
+      const q = searchOn ? search.searchRequest(raw) : null;
+      if (q) {
+        // the AI wants to look something up: search, then ask again with the results
+        searchingBubble();
+        let found = null;
+        try {
+          found = await search.webSearch(q, searchOpts());
+        } catch (err) {
+          reply = search.friendly(err, { hasKey: !!settings.get('searchKey') });
+        }
+        if (found) {
+          const answer = await ai.chat(text, { ...context, tasks: '', search: '', searchResults: search.resultsForAi(found) });
+          reply = search.stripCommands(answer) || 'The internet had nothing useful on that, Prince 🤔';
+          sources = showSources(found.results);
+        }
+      } else {
+        // the AI may end its reply with hidden [[remind | ...]] / [[todo ...]] commands
+        reply = ctx.tasks.applyTags(raw).text || '😼';
+      }
       history.push({ role: 'pet', text: reply });
     } catch (err) {
       history.pop(); // keep error lines out of the conversation the AI sees
@@ -309,8 +396,11 @@ function init() {
       }
     }
     brain.chatReply(reply);
-    return reply;
+    return { text: reply, sources };
   });
+  function searchingBubble() {
+    if (!brain.activeReminder && brain.state !== 'hidden') brain.say('🔍 Searching the internet…', { ms: 20000 });
+  }
   ipcMain.handle('ai:test', (_e, form = {}) => {
     const over = {};
     if (typeof form.provider === 'string' && ai.PROVIDERS[form.provider]) over.provider = form.provider;
@@ -319,7 +409,7 @@ function init() {
   });
   // "Get a free key" / "Open Google Calendar settings" buttons: only ever open these known pages
   ipcMain.on('settings:open-link', (_e, url) => {
-    if (url === GCAL_SETTINGS_URL || ai.publicProviders().some((p) => p.keyUrl && p.keyUrl === url)) shell.openExternal(url);
+    if (url === GCAL_SETTINGS_URL || url === search.TAVILY_KEY_URL || ai.publicProviders().some((p) => p.keyUrl && p.keyUrl === url)) shell.openExternal(url);
   });
   ipcMain.handle('calendar:test', (_e, url) => ctx.calendar.test(typeof url === 'string' ? url.slice(0, 1000) : ''));
   ipcMain.handle('calendar:sync', () => ctx.calendar.sync());
@@ -331,7 +421,7 @@ function init() {
   // settings window
   ipcMain.handle('settings:load', () => settingsPayload());
   ipcMain.handle('settings:save', async (_e, patch = {}) => {
-    const allowed = ['petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat', 'morningBriefing', 'todoNudges'];
+    const allowed = ['petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat', 'morningBriefing', 'todoNudges', 'webSearch', 'searchKey'];
     const clean = Object.fromEntries(Object.entries(patch).filter(([k]) => allowed.includes(k)));
     const before = settings.get('calendarUrl');
     settings.update(clean);

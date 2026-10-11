@@ -6,10 +6,28 @@ const form = document.getElementById('composer');
 const input = document.getElementById('msg');
 const send = document.getElementById('send');
 
-function addMsg(who, text) {
+function addMsg(who, text, sources = []) {
   const el = document.createElement('div');
   el.className = `msg ${who}`;
   el.textContent = text;
+  if (sources.length) {
+    // web search sources - open in your browser
+    const box = document.createElement('div');
+    box.className = 'sources';
+    for (const s of sources) {
+      const a = document.createElement('a');
+      a.href = '#';
+      a.className = 'source';
+      a.textContent = `🔗 ${s.title}`;
+      a.title = s.url;
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        window.chat.openLink(s.url);
+      });
+      box.appendChild(a);
+    }
+    el.appendChild(box);
+  }
   log.appendChild(el);
   log.scrollTop = log.scrollHeight;
   return el;
@@ -26,7 +44,7 @@ form.addEventListener('submit', async (e) => {
   try {
     const reply = await window.chat.ask(text);
     typing.remove();
-    addMsg('pet', reply);
+    addMsg('pet', reply.text, reply.sources || []);
   } catch (err) {
     typing.remove();
     addMsg('pet', `Something went wrong: ${err.message}`);

@@ -148,7 +148,7 @@ Windows SmartScreen may warn "unknown publisher" because the installer isn't cod
 npm test
 ```
 
-Runs 190 automated end-to-end checks against the real app (~1.5 min) in a **throw-away profile**.
+Runs 207 automated end-to-end checks against the real app (~1.5 min) in a **throw-away profile**.
 Your settings, config and Start-with-Windows setting are never touched. The checks cover window
 properties, every animation frame, click-through hit-testing, click/double-click/Ctrl+Click, dragging and
 clamping, wandering and pouncing, sleep and wake, the right-click menu, the chat → `askPet()` round trip,
@@ -186,6 +186,7 @@ main/            Electron main process
   calendar.js      Google Calendar reminders (reads the secret iCal link)
   updater.js       self-update from GitHub Releases
   tasks.js         "remind me…" reminders, to-do list, morning briefing
+  search.js        internet search (Tavily / Wikipedia) + "google …"/"youtube …" commands
   settings.js      settings.json load/validate/save
   tray.js          tray icon + menu
   windows.js       chat panel + settings window
@@ -377,3 +378,27 @@ Ctrl+Click Shadow and just say it. These commands work instantly, **even without
 **To-do nudges:** now and then (at most every 2 hours) an idle quip becomes a nudge about an open to-do.
 
 Both can be switched off in **Settings → Behaviour**.
+
+---
+
+## 11. Internet search
+
+Shadow can look things up. Ctrl+Click and:
+
+| Say | What happens |
+| --- | --- |
+| `google best laptops under 50k` | opens the Google search in your browser |
+| `youtube lofi music` · `play arijit singh songs` | opens YouTube search |
+| `open whatsapp` (also youtube, gmail, maps, instagram, github, spotify, netflix, amazon, flipkart, …) | opens the site |
+| `wiki black panther` | answers from Wikipedia, with a link |
+| `search for IPL 2026 final` · `look up weather in Delhi` | searches and answers with sources |
+| any question, e.g. *"who won yesterday's match?"* | the AI decides when it needs to search, then answers from the results |
+
+- **Wikipedia works without any key.** For news, scores, weather and everything else, add a free
+  **Tavily** key in **Settings → Internet search** (1,000 searches a month, no card). Click
+  **GET A FREE TAVILY KEY**, sign up, copy the key (starts with `tvly-`), paste it, then click **TEST SEARCH** and **SAVE**.
+- Sources show as 🔗 links under the answer in the chat panel. Click to open them in your browser.
+- Answers need an AI brain (Settings → AI Brain). Without one, `search for …` lists the top results.
+- Web pages are treated as untrusted: anything they say only informs the answer. They can't make Shadow
+  set reminders or change your list.
+- Your searches are sent to Tavily or Wikipedia. Untick **Let Shadow look things up on the internet** to turn it off.

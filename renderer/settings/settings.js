@@ -118,6 +118,8 @@ function fill({ settings: s, providers: list, startWithWindows, configDir, calen
   $('startWithWindows').checked = startWithWindows;
   $('morningBriefing').checked = s.morningBriefing;
   $('todoNudges').checked = s.todoNudges;
+  $('webSearch').checked = s.webSearch;
+  $('searchKey').value = s.searchKey;
   $('configDir').textContent = configDir;
   $('calendarUrl').value = s.calendarUrl;
   $('calendarLeadMinutes').value = s.calendarLeadMinutes;
@@ -203,6 +205,8 @@ form.addEventListener('submit', async (e) => {
       startWithWindows: $('startWithWindows').checked,
       morningBriefing: $('morningBriefing').checked,
       todoNudges: $('todoNudges').checked,
+      webSearch: $('webSearch').checked,
+      searchKey: $('searchKey').value.trim(),
       aiProvider: brain.provider,
       aiModel: brain.model,
       aiBaseUrl: brain.baseUrl,
@@ -225,6 +229,31 @@ $('reveal').addEventListener('click', () => {
   const show = k.type === 'password';
   k.type = show ? 'text' : 'password';
   $('reveal').textContent = show ? 'HIDE' : 'SHOW';
+});
+
+$('getSearchKey').addEventListener('click', () => window.settingsApi.openLink('https://app.tavily.com/home'));
+$('revealSearch').addEventListener('click', () => {
+  const k = $('searchKey');
+  const show = k.type === 'password';
+  k.type = show ? 'text' : 'password';
+  $('revealSearch').textContent = show ? 'HIDE' : 'SHOW';
+});
+$('testSearch').addEventListener('click', async () => {
+  const out = $('searchResult');
+  const btn = $('testSearch');
+  btn.disabled = true;
+  out.className = 'test-result';
+  out.textContent = 'Searching…';
+  try {
+    const r = await window.settingsApi.testSearch($('searchKey').value.trim());
+    out.classList.add(r.ok ? 'ok' : 'bad');
+    out.textContent = r.ok ? `✓ ${r.engine} works! Found "${r.first}"${r.engine === 'Wikipedia' ? ' (add a Tavily key for news & live info)' : ''}` : `✗ ${r.message}`;
+  } catch (err) {
+    out.classList.add('bad');
+    out.textContent = `✗ ${err.message}`;
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 $('checkUpd').addEventListener('click', async () => showUpdate(await window.settingsApi.checkUpdate()));
