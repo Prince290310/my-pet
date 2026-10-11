@@ -119,8 +119,13 @@ function positionBubble() {
   tail.style.left = `${tl}px`;
 }
 
-function showBubble({ text, sticky }) {
+const bubbleHead = document.getElementById('bubble-head');
+const bubbleHint = document.getElementById('bubble-hint');
+
+function showBubble({ text, sticky, head, hint }) {
   bubbleText.textContent = text;
+  bubbleHead.textContent = head || 'REMINDER';
+  bubbleHint.textContent = hint || 'click when done ✓';
   bubble.classList.toggle('sticky', !!sticky);
   bubble.classList.remove('hidden');
   positionBubble();

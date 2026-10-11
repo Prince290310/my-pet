@@ -107,8 +107,9 @@ function nowAndCalendar(context) {
     '',
     `Right now it is ${now.toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })} on Prince's PC.`,
   ];
-  if (context.calendar === undefined) return lines.join('\n');
-  if (!context.calendar) {
+  if (context.calendar === undefined) {
+    // calendar switched off for chat
+  } else if (!context.calendar) {
     lines.push(
       "Prince's calendar is NOT connected. If he asks about his schedule, tell him to paste his Google Calendar secret iCal link in Settings → Google Calendar."
     );
@@ -119,6 +120,7 @@ function nowAndCalendar(context) {
       'Answer schedule questions from this list. Mention times like "3:30 PM". If he asks about a day beyond these 2 weeks, say you can only see 2 weeks ahead.'
     );
   }
+  if (context.tasks) lines.push('', context.tasks); // to-do list, chat reminders + how to change them (tasks.js)
   return lines.join('\n');
 }
 

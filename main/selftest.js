@@ -711,6 +711,149 @@ async function run(ctx, h) {
     check('removing the link switches the calendar off', !cal.status().configured && cal.upcoming.length === 0 && calHits.length === hitsAfterOff);
     await new Promise((r) => calServer.close(r));
 
+    section('Reminders & to-do list from chat');
+    const tasks = ctx.tasks;
+    settings.update({ aiProvider: 'gemini', aiModel: '', aiBaseUrl: '', apiKeys: {} }); // no AI key: commands must still work
+    quiet();
+    brain.rest(60000);
+    const chatT = h.openChatPanel();
+    await waitFor(() => chatT.isVisible(), 3000);
+    await waitFor(() => js('document.querySelectorAll(".msg.pet").length > 0', chatT.webContents), 3000);
+    const welcome = await js('document.querySelector(".msg.pet").textContent', chatT.webContents);
+    check('chat welcome explains reminders/to-do work without a key', welcome.includes('remind me at 6 pm'), welcome);
+    const askChat = (text) =>
+      js(`(async () => { const n = document.querySelectorAll('.msg.pet').length; const i = document.getElementById('msg'); i.value = ${JSON.stringify(text)};
+        document.getElementById('composer').requestSubmit();
+        for (let k = 0; k < 100 && document.querySelectorAll('.msg.pet:not(.typing)').length <= n; k++) await new Promise(r => setTimeout(r, 50));
+        const m = [...document.querySelectorAll('.msg.pet')]; return m[m.length - 1].textContent; })()`, chatT.webContents);
+    let tr2 = await askChat('remind me in 20 min to drink water');
+    check('"remind me in 20 min to …" works with no AI key', tr2.startsWith("Done! ⏰ I'll remind you in 20 min") && tasks.pendingReminders().length === 1, tr2);
+    tr2 = await askChat('Remind me at 6 pm to call Mom');
+    check('"remind me at 6 pm to …" sets the right time', tasks.pendingReminders().some((r) => new Date(r.at).getHours() === 18 && r.text === 'call Mom'), tr2);
+    tr2 = await askChat('remind me to call mom');
+    check('reminder without a time -> tells how to say it', tr2.includes('remind me at 6 pm'), tr2);
+    await askChat('todo: physics homework');
+    tr2 = await askChat('add buy milk to my list');
+    check('adding to-dos', tasks.openTodos().length === 2 && tr2.includes('2 things'), tr2);
+    tr2 = await askChat('show my list');
+    check('"show my list" lists them numbered', tr2 === 'Your list: 1. physics homework · 2. buy milk', tr2);
+    tr2 = await askChat('done 1');
+    check('"done 1" ticks one off', tr2.startsWith('Shabash Prince! ✓ "physics homework"') && tasks.openTodos().length === 1, tr2);
+    tr2 = await askChat('done 7');
+    check('wrong number -> friendly line', tr2.includes('no number 7'), tr2);
+    tr2 = await askChat('my reminders');
+    check('"my reminders" lists them', tr2.startsWith('Your reminders: 1. in 20 min'), tr2);
+    tr2 = await askChat('cancel reminder 2');
+    check('"cancel reminder 2" cancels it', tasks.pendingReminders().length === 1 && tr2.includes('call Mom'), tr2);
+    const tasksFile = path.join(app.getPath('userData'), 'tasks.json');
+    const { TaskStore } = require('./tasks');
+    const reloaded2 = new TaskStore({ file: tasksFile });
+    check('to-dos and reminders are saved (survive a restart)', reloaded2.openTodos().length === 1 && reloaded2.pendingReminders().length === 1);
+    chatT.close();
+    await waitFor(() => !h.getChatWindow(), 2000);
+    quiet();
+    brain.rest(60000);
+    const dueAt = tasks.pendingReminders()[0].at;
+    const fired2 = tasks.check(dueAt + 1000);
+    check('chat reminder fires at its time', fired2.length === 1 && fired2[0].message === 'Prince! Drink water', fired2.map((r) => r.message).join());
+    await waitFor(() => brain.state === 'reminder', 9000);
+    check('...with the reminder bubble + alert', brain.state === 'reminder' && brain.bubble.text === '⏰ Prince! Drink water', brain.bubble && brain.bubble.text);
+    check('...and only once', tasks.check(dueAt + 60000).length === 0);
+    brain.dismissReminder();
+    await waitFor(() => !brain.activeReminder, 4000);
+    tasks.addReminder(Date.now() + 1000, 'stretch');
+    const late = tasks.check(Date.now() + 10 * 60 * 1000);
+    check('PC was asleep -> reminder still comes, marked late', late.length === 1 && /\(was due \d+:\d\d (AM|PM)\)$/.test(late[0].message), late[0] && late[0].message);
+    for (let k = 0; k < 3 && brain.activeReminder; k++) {
+      await waitFor(() => brain.state === 'reminder', 9000);
+      brain.dismissReminder();
+      await waitFor(() => !brain.activeReminder, 4000);
+    }
+
+    // the AI path: a fake AI that answers with a hidden command
+    const aiSeen = [];
+    const tomorrow7 = new Date();
+    tomorrow7.setDate(tomorrow7.getDate() + 1);
+    const t7 = `${tomorrow7.getFullYear()}-${String(tomorrow7.getMonth() + 1).padStart(2, '0')}-${String(tomorrow7.getDate()).padStart(2, '0')} 07:00`;
+    const aiMock = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (d) => (body += d));
+      req.on('end', () => {
+        aiSeen.push(JSON.parse(body));
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ choices: [{ message: { content: `Theek hai Prince, gym time pakka!\n[[remind | ${t7} | gym]]\n[[todo add | pack gym bag]]` } }] }));
+      });
+    });
+    await new Promise((r) => aiMock.listen(0, '127.0.0.1', r));
+    settings.update({ aiProvider: 'custom', aiBaseUrl: `http://127.0.0.1:${aiMock.address().port}/v1`, aiModel: 'mock', apiKeys: { custom: 'k' } });
+    const chatT2 = h.openChatPanel();
+    await waitFor(() => chatT2.isVisible(), 3000);
+    await waitFor(() => js('document.querySelectorAll(".msg.pet").length > 0', chatT2.webContents), 3000);
+    const sayAi = (text) =>
+      js(`(async () => { const n = document.querySelectorAll('.msg.pet').length; const i = document.getElementById('msg'); i.value = ${JSON.stringify(text)};
+        document.getElementById('composer').requestSubmit();
+        for (let k = 0; k < 100 && document.querySelectorAll('.msg.pet:not(.typing)').length <= n; k++) await new Promise(r => setTimeout(r, 50));
+        const m = [...document.querySelectorAll('.msg.pet')]; return m[m.length - 1].textContent; })()`, chatT2.webContents);
+    tr2 = await sayAi('wake me up for gym tomorrow at 7, and add packing my bag to my todos');
+    const sys2 = aiSeen.length ? aiSeen[0].messages[0].content : '';
+    check('AI is told the to-do list and how to set reminders', sys2.includes("Prince's to-do list") && sys2.includes('1. buy milk') && sys2.includes('[[remind |'));
+    check('AI reply commands run (reminder + to-do) and stay hidden', !tr2.includes('[[') && tr2.startsWith('Theek hai Prince') && tasks.pendingReminders().some((r) => r.text === 'gym' && new Date(r.at).getHours() === 7) && tasks.openTodos().some((t) => t.text === 'pack gym bag'), tr2);
+    check('...and the reply confirms the time', tr2.includes('tomorrow at 7:00 AM'), tr2);
+    chatT2.close();
+    await waitFor(() => !h.getChatWindow(), 2000);
+    await new Promise((r) => aiMock.close(r));
+    settings.update({ aiProvider: 'gemini', aiModel: '', aiBaseUrl: '', apiKeys: {} });
+
+    section('Morning briefing & to-do nudges');
+    quiet();
+    brain.rest(60000);
+    tasks.data.lastBriefing = '';
+    if (new Date().getHours() >= 5) {
+      check('briefing shows the first time Prince is at the PC today', ctx.tryBriefing(true) === true);
+      await waitFor(() => brain.state === 'reminder', 9000);
+      const bt = brain.bubble ? brain.bubble.text : '';
+      check('briefing bubble: greeting + to-dos + reminders', /^☀️ Good (morning|afternoon|evening), Prince!/.test(bt) && bt.includes('📝 2 to-dos'), bt);
+      const shownHead = await waitFor(() => js(`(() => { const b = document.getElementById('bubble'); return !b.classList.contains('hidden') && document.getElementById('bubble-head').textContent === 'YOUR DAY' && document.getElementById('bubble-text').textContent.startsWith('☀️'); })()`), 3000);
+      check('briefing bubble is on screen with a "YOUR DAY" heading', !!shownHead);
+      await sleep(300);
+      await shot('morning-briefing');
+      brain.dismissReminder();
+      await waitFor(() => !brain.activeReminder, 4000);
+      check('...only once a day', ctx.tryBriefing(true) === false);
+    } else {
+      check('no briefing before 5 AM', ctx.tryBriefing(true) === false);
+    }
+    tasks.data.lastBriefing = '';
+    settings.update({ morningBriefing: false });
+    check('briefing can be switched off in Settings', ctx.tryBriefing(true) === false);
+    settings.update({ morningBriefing: true });
+    const b2 = tasks.briefing(new Date(2026, 9, 12, 8, 0).getTime(), [{ title: 'Maths class', start: new Date(2026, 9, 12, 10, 0).getTime(), allDay: false }]);
+    check('briefing includes today\'s calendar events', b2.startsWith('Good morning, Prince! Today: Maths class 10 AM.'), b2);
+    tasks.data.lastNudge = 0;
+    const nudge = tasks.nudge(Date.now(), () => 0.9);
+    check('to-do nudge mentions an open item', !!nudge && /buy milk|pack gym bag/.test(nudge), nudge);
+    check('...but not again within 2 hours', tasks.nudge(Date.now(), () => 0.9) === null);
+    const realNudge = brain.nudge;
+    brain.nudge = () => 'NUDGE-LINE';
+    quiet();
+    brain.rest(60000);
+    brain.idleQuip();
+    check('idle quips can become to-do nudges', brain.bubble && brain.bubble.text === 'NUDGE-LINE');
+    settings.update({ todoNudges: false });
+    brain.nudge = realNudge;
+    check('nudges can be switched off in Settings', brain.nudge() === null);
+    settings.update({ todoNudges: true });
+    quiet();
+    tasks.data.todos = [];
+    tasks.data.reminders = [];
+    tasks.save();
+    h.openSettings();
+    const sw5 = await waitFor(() => require('./windows').getSettingsWindow(), 3000);
+    await waitFor(() => js('!!document.getElementById("morningBriefing")', sw5.webContents), 3000);
+    const boxes = await js('[document.getElementById("morningBriefing").checked, document.getElementById("todoNudges").checked]', sw5.webContents);
+    check('Settings has Morning briefing + to-do nudge switches (on)', boxes[0] === true && boxes[1] === true);
+    sw5.close();
+
     section('Auto-update (fake GitHub - nothing is downloaded)');
     const realUpdater = ctx.updater;
     check('dev/self-test copy never auto-updates', realUpdater.status().status === 'disabled' && (await realUpdater.check()).status === 'disabled');
@@ -734,6 +877,8 @@ async function run(ctx, h) {
     check('new version downloads in the background', us.status === 'ready' && us.version === '9.9.9' && fakeAU.autoInstallOnAppQuit === true);
     await waitFor(() => brain.state === 'reminder', 9000);
     check('Shadow announces the update in a bubble', brain.bubble && brain.bubble.text.startsWith('✨ Update 9.9.9 is ready'), brain.bubble && brain.bubble.text);
+    const updHead = await waitFor(() => js(`document.getElementById('bubble-head').textContent === 'UPDATE READY' && document.getElementById('bubble-hint').textContent.includes('restart')`), 3000);
+    check('update bubble says UPDATE READY / click to restart', !!updHead);
     check('tray offers Restart to Update', !!ctx.trayCtl.menu().getMenuItemById('update'));
     const um = h.petMenuTemplate();
     check('right-click menu offers Restart to Update + Update Later', um[0].label.includes('Restart to Update') && um[1].label === 'Update Later');

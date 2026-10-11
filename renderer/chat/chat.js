@@ -49,8 +49,8 @@ document.addEventListener('keydown', (e) => {
   addMsg(
     'pet',
     info.ready
-      ? `Hey Prince! ${info.petName} here. Kya scene hai? Ask me anything 😼`
-      : `Hey Prince! I need a brain first - open Settings → AI Brain and add a free key. Takes 2 minutes!`
+      ? `Hey Prince! ${info.petName} here. Kya scene hai? Ask me anything 😼 Try "remind me in 20 min to drink water" or "todo: physics homework".`
+      : `Hey Prince! For full chat I need a brain - Settings → AI Brain (free key, 2 minutes). Reminders and your to-do list already work: try "remind me at 6 pm to call Mom" or "todo: physics homework".`
   );
   input.focus();
 })();

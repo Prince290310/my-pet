@@ -103,12 +103,12 @@ class Brain extends EventEmitter {
   }
 
   /** Show a speech bubble. Returns how long it stays (ms). Sticky bubbles stay until clicked. */
-  say(text, { sticky = false, ms } = {}) {
+  say(text, { sticky = false, ms, head, hint } = {}) {
     if (!text) return 0;
     const dur = ms || clamp(2600 + text.length * 55, 2600, 9000);
     this.bubble = { text, sticky };
     clearTimeout(this.bubbleTimer);
-    this.emit('bubble', { text, sticky });
+    this.emit('bubble', { text, sticky, head, hint });
     if (!sticky) this.bubbleTimer = setTimeout(() => this.hideBubble(), dur);
     return dur;
   }
@@ -407,7 +407,8 @@ class Brain extends EventEmitter {
     if (this.muted || this.busy()) return false;
     if (['off', 'hidden', 'sleep', 'waking', 'fall', 'pounce'].includes(this.state)) return false;
     this.interrupt();
-    this.talkThen(this.quip('idle'), () => this.decide());
+    const line = (this.nudge && this.nudge()) || this.quip('idle'); // nudge: to-do reminder (main.js)
+    this.talkThen(line, () => this.decide());
     return true;
   }
 
@@ -526,7 +527,7 @@ class Brain extends EventEmitter {
     const cur = this.activeReminder;
     if (r.key && cur && cur.key === r.key && !this.reminderClosing) {
       this.activeReminder = r;
-      if (this.state === 'reminder') this.say(`${r.icon || '⏰'} ${r.message}`, { sticky: true });
+      if (this.state === 'reminder') this.say(`${r.icon || '⏰'} ${r.message}`, { sticky: true, head: r.head, hint: r.hint });
       this.emit('reminder-start', r);
       return;
     }
@@ -553,7 +554,7 @@ class Brain extends EventEmitter {
       this.setState('reminder');
       this.facing = 'right';
       this.play('alert');
-      this.say(`${r.icon || '⏰'} ${r.message}`, { sticky: true });
+      this.say(`${r.icon || '⏰'} ${r.message}`, { sticky: true, head: r.head, hint: r.hint });
       this.emit('reminder-shown', r);
     };
     const go = () => {

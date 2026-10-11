@@ -148,7 +148,7 @@ Windows SmartScreen may warn "unknown publisher" because the installer isn't cod
 npm test
 ```
 
-Runs 160 automated end-to-end checks against the real app (~1.5 min) in a **throw-away profile**.
+Runs 190 automated end-to-end checks against the real app (~1.5 min) in a **throw-away profile**.
 Your settings, config and Start-with-Windows setting are never touched. The checks cover window
 properties, every animation frame, click-through hit-testing, click/double-click/Ctrl+Click, dragging and
 clamping, wandering and pouncing, sleep and wake, the right-click menu, the chat → `askPet()` round trip,
@@ -185,6 +185,7 @@ main/            Electron main process
   reminders.js     reminder clock
   calendar.js      Google Calendar reminders (reads the secret iCal link)
   updater.js       self-update from GitHub Releases
+  tasks.js         "remind me…" reminders, to-do list, morning briefing
   settings.js      settings.json load/validate/save
   tray.js          tray icon + menu
   windows.js       chat panel + settings window
@@ -344,3 +345,35 @@ Notes:
 - Only the installed app updates. `npm start` and `npm test` never do.
 - Building an installer yourself with `npm run build` still works (it's version 1.0.0, so the next release
   replaces it).
+
+---
+
+## 10. Reminders, to-do list and morning briefing (from chat)
+
+Ctrl+Click Shadow and just say it. These commands work instantly, **even without an AI key or internet**:
+
+| Say | What happens |
+| --- | --- |
+| `remind me in 20 min to drink water` | ⏰ reminder in 20 minutes (also `in 2 hours`, `in half an hour`) |
+| `remind me at 6 pm to call Mom` | today at 6 PM (tomorrow if 6 PM has passed) |
+| `remind me tomorrow at 7:30 am to go running` | tomorrow morning |
+| `remind me to submit the form tomorrow at 9` | the "what" can come first too |
+| `my reminders` · `cancel reminder 2` | list / cancel |
+| `todo: physics homework` · `add buy milk to my list` | add to your to-do list |
+| `show my list` · `done 2` · `remove 3` | list / tick off / delete (numbers as shown in the list) |
+
+- Without am/pm, `at 1`–`at 6` means afternoon/evening; `at 7`–`at 11` means the next one coming up.
+  Shadow always replies with the exact time it set, so you can check.
+- With an AI brain connected you can also say things in your own words ("wake me up for gym tomorrow at 7",
+  "I finished the milk thing"). The AI sees your list and reminders and changes them for you, and
+  Shadow confirms what it did.
+- Reminders use the same walk-out bubble as everything else. If the PC was asleep, you still get it with
+  "(was due 6:00 PM)". Reminders more than a day old are dropped.
+- Stored only on your PC in `%APPDATA%\Shadow\tasks.json`.
+
+**Morning briefing:** the first time you're at the PC each day (from 5 AM), Shadow walks out with a
+**YOUR DAY** bubble: today's calendar events, how many to-dos are open, and today's reminders.
+
+**To-do nudges:** now and then (at most every 2 hours) an idle quip becomes a nudge about an open to-do.
+
+Both can be switched off in **Settings → Behaviour**.

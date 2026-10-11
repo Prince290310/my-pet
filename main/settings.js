@@ -22,6 +22,8 @@ const DEFAULTS = Object.freeze({
   calendarLeadMinutes: 10, // heads-up this many minutes before each event (0 = off)
   calendarAtStart: true, // also remind when the event starts
   calendarInChat: true, // chat AI can see upcoming events ("what's on tomorrow?")
+  morningBriefing: true, // first time at the PC each day: today's events, to-dos, reminders
+  todoNudges: true, // idle quips sometimes nudge about an open to-do
   position: null, // last pet position {x, y}
 });
 
@@ -65,6 +67,8 @@ function validate(raw) {
     calendarLeadMinutes: int(s.calendarLeadMinutes, 0, 1440, DEFAULTS.calendarLeadMinutes),
     calendarAtStart: s.calendarAtStart === undefined ? DEFAULTS.calendarAtStart : Boolean(s.calendarAtStart),
     calendarInChat: s.calendarInChat === undefined ? DEFAULTS.calendarInChat : Boolean(s.calendarInChat),
+    morningBriefing: s.morningBriefing === undefined ? DEFAULTS.morningBriefing : Boolean(s.morningBriefing),
+    todoNudges: s.todoNudges === undefined ? DEFAULTS.todoNudges : Boolean(s.todoNudges),
     position:
       s.position && Number.isFinite(s.position.x) && Number.isFinite(s.position.y)
         ? { x: Math.round(s.position.x), y: Math.round(s.position.y) }

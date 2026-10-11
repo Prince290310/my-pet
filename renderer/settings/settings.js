@@ -116,6 +116,8 @@ function fill({ settings: s, providers: list, startWithWindows, configDir, calen
   $('sleepTimeoutMinutes').value = s.sleepTimeoutMinutes;
   $('muteQuips').checked = s.muteQuips;
   $('startWithWindows').checked = startWithWindows;
+  $('morningBriefing').checked = s.morningBriefing;
+  $('todoNudges').checked = s.todoNudges;
   $('configDir').textContent = configDir;
   $('calendarUrl').value = s.calendarUrl;
   $('calendarLeadMinutes').value = s.calendarLeadMinutes;
@@ -199,6 +201,8 @@ form.addEventListener('submit', async (e) => {
       sleepTimeoutMinutes: Number($('sleepTimeoutMinutes').value),
       muteQuips: $('muteQuips').checked,
       startWithWindows: $('startWithWindows').checked,
+      morningBriefing: $('morningBriefing').checked,
+      todoNudges: $('todoNudges').checked,
       aiProvider: brain.provider,
       aiModel: brain.model,
       aiBaseUrl: brain.baseUrl,

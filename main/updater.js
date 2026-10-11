@@ -96,6 +96,8 @@ class Updater extends EventEmitter {
       kind: 'update',
       key: `update|${v}`,
       icon: '✨',
+      head: 'UPDATE READY',
+      hint: 'click to restart ↻',
       message: `Update ${v} is ready, Prince! Click me to restart (or I'll update when you quit).`,
     });
   }

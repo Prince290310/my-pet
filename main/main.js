@@ -24,6 +24,7 @@ const { ConfigStore } = require('./config');
 const { ReminderScheduler } = require('./reminders');
 const { CalendarSync, GCAL_SETTINGS_URL } = require('./calendar');
 const { Updater } = require('./updater');
+const { TaskStore, parseCommand } = require('./tasks');
 const { PetWindow } = require('./petWindow');
 const { Brain } = require('./brain');
 const { createTray } = require('./tray');
@@ -270,6 +271,7 @@ function init() {
       personality: config.personality,
       // calendar text for the chat ('' = not connected); left out entirely if Prince switched it off
       ...(settings.get('calendarInChat') && ctx.calendar ? { calendar: ctx.calendar.chatContext() } : {}),
+      tasks: ctx.tasks ? ctx.tasks.chatContext() : '',
     };
   };
   ctx.aiContext = aiContext;
@@ -283,15 +285,28 @@ function init() {
     if (!text) return '';
     const history = ctx.chatHistory;
     history.push({ role: 'user', text });
-    const context = { ...aiContext(), history: history.slice(-20) };
     let reply;
+    // "remind me at 6 pm to call Mom", "todo: buy milk", "done 2", ... - handled right here,
+    // so they work instantly, offline and without an AI key
+    const cmd = parseCommand(text);
+    if (cmd) {
+      reply = ctx.tasks.run(cmd);
+      history.push({ role: 'pet', text: reply });
+      brain.chatReply(reply);
+      return reply;
+    }
+    const context = { ...aiContext(), history: history.slice(-20) };
     try {
-      reply = await ai.chat(text, context);
+      // the AI may end its reply with hidden [[remind | ...]] / [[todo ...]] commands
+      reply = ctx.tasks.applyTags(await ai.chat(text, context)).text || '😼';
       history.push({ role: 'pet', text: reply });
     } catch (err) {
       history.pop(); // keep error lines out of the conversation the AI sees
       if (!(err instanceof ai.AiError)) console.warn('[ai]', err);
       reply = ai.friendly(err, context);
+      if (err.kind === 'no-key' && /remind|to-?do|my list/i.test(text)) {
+        reply = 'I didn\'t get that one, Prince. Try "remind me at 6 pm to call Mom", "remind me in 20 min to drink water" or "todo: physics homework".';
+      }
     }
     brain.chatReply(reply);
     return reply;
@@ -316,7 +331,7 @@ function init() {
   // settings window
   ipcMain.handle('settings:load', () => settingsPayload());
   ipcMain.handle('settings:save', async (_e, patch = {}) => {
-    const allowed = ['petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat'];
+    const allowed = ['petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat', 'morningBriefing', 'todoNudges'];
     const clean = Object.fromEntries(Object.entries(patch).filter(([k]) => allowed.includes(k)));
     const before = settings.get('calendarUrl');
     settings.update(clean);
@@ -383,7 +398,34 @@ function init() {
   });
   calendar.start();
 
+  // one-time reminders + to-do list from chat (tasks.js), saved outside the project
+  const tasks = (ctx.tasks = new TaskStore({ file: path.join(app.getPath('userData'), 'tasks.json') }));
+  tasks.on('fire', (r) => {
+    console.log(`[tasks] ${r.time} reminder`);
+    brain.reminder(r);
+  });
+  ctx.tasksTimer = setInterval(() => tasks.check(), 10 * 1000);
+  tasks.check();
+  // idle quips sometimes become a nudge about an open to-do
+  brain.nudge = () => (settings.get('todoNudges') ? tasks.nudge() : null);
+
+  // Morning briefing: the first time Prince is at the PC each day (from 5 AM), Shadow walks out
+  // with today's calendar, open to-dos and reminders. Waits for the calendar's first sync.
+  const startedAt = Date.now();
+  ctx.tryBriefing = (force = false) => {
+    if (SELF_TEST && !force) return false; // the self-test triggers it on purpose
+    if (!settings.get('morningBriefing') || !tasks.briefingDue() || brain.state === 'off') return false;
+    if (ctx.sensors.idleSeconds() > 120) return false; // wait until Prince is actually here
+    const cal = ctx.calendar;
+    if (cal.url() && !cal.lastSync && Date.now() - startedAt < 3 * 60 * 1000) return false;
+    tasks.markBriefed();
+    brain.reminder({ time: '', kind: 'briefing', key: 'briefing', icon: '☀️', head: 'YOUR DAY', hint: 'click to close ✓', message: tasks.briefing(Date.now(), cal.url() ? cal.upcoming : null) });
+    return true;
+  };
+  ctx.briefingTimer = setInterval(() => ctx.tryBriefing(), 30 * 1000);
+
   powerMonitor.on('resume', () => {
+    tasks.check();
     reminders.check();
     calendar.check();
     calendar.sync();
