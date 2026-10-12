@@ -51,7 +51,9 @@ const HELP = [
   '• play something chill · next song · what\'s playing',
   '• remind me at 6 pm to call mom · todo: physics homework · show my list',
   '• call the gang · teach me photosynthesis · any question',
-  '• send me a photo/PDF/file → saved to Downloads\\Shadow on the PC · "send me notes.pdf" → I send it here',
+  '• send me a photo/PDF/file → saved to Downloads\\Shadow on the PC',
+  '• send me my maths notes · send me notes.pdf from D drive · send me the College folder (zipped)',
+  '• browse → your folders as a numbered list (reply a number, "back", "more")',
   "Your PC has to be on with me running. Messages older than 10 minutes are skipped (I'll tell you).",
 ].join('\n');
 
@@ -297,6 +299,8 @@ class TelegramLink extends EventEmitter {
         return;
       } catch (err) {
         out = `Couldn't send ${path.basename(r.document)}: ${err.message}`;
+      } finally {
+        if (r.temp) fs.rm(r.document, { force: true }, () => {}); // a zipped folder made just for this
       }
     }
     await this.send(chatId, out);

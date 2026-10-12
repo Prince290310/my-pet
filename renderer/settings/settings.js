@@ -133,8 +133,13 @@ function showFriends(list, s) {
     })
   );
 }
+const SCOPE_HELP = {
+  folders: 'Desktop, Documents, Downloads, Pictures, Videos and Music (and everything inside them).',
+  pc: 'Every drive and folder - except Windows/system folders, program folders and app data. Password/key files are never sent. Only your paired Telegram can ask, and this can only be changed here on the PC.',
+};
 let spotifyInfo = null;
 form.addEventListener('change', (e) => {
+  if (e.target.name === 'phoneFilesScope') $('scopeHelp').textContent = SCOPE_HELP[e.target.value];
   if (e.target.name === 'friendsMode') $('friendsModeHelp').textContent = MODE_HELP[e.target.value];
   if (e.target.name === 'musicService') showMusic(e.target.value, spotifyInfo);
 });
@@ -286,6 +291,8 @@ function fill({ settings: s, appearance: theme, providers: list, startWithWindow
   $('telegramEnabled').checked = s.telegramEnabled;
   $('telegramNotify').checked = s.telegramNotify;
   $('phoneFiles').checked = s.phoneFiles;
+  form.querySelectorAll('input[name="phoneFilesScope"]').forEach((r) => (r.checked = r.value === s.phoneFilesScope));
+  $('scopeHelp').textContent = SCOPE_HELP[s.phoneFilesScope];
   showTelegram(telegram);
   spotifyInfo = spotify;
   showMusic(s.musicService, spotify);
@@ -378,6 +385,7 @@ form.addEventListener('submit', async (e) => {
       telegramEnabled: $('telegramEnabled').checked,
       telegramNotify: $('telegramNotify').checked,
       phoneFiles: $('phoneFiles').checked,
+      phoneFilesScope: (form.querySelector('input[name="phoneFilesScope"]:checked') || {}).value,
       musicService: (form.querySelector('input[name="musicService"]:checked') || {}).value,
       startupOnWake: $('startupOnWake').checked,
       examStudyTime: $('examStudyTime').value,
@@ -453,6 +461,22 @@ $('startupAdd').addEventListener('keydown', (e) => {
     addStartup();
   }
 });
+// ---- exam planner
+$('examAddBtn').addEventListener('click', async () => {
+  const subject = $('examSubject').value.trim();
+  const date = $('examDate').value;
+  const topics = $('examTopics').value.trim();
+  if (!subject || !date) return ($('examMsg').textContent = 'Type the subject and pick the date.');
+  // "1-8" on its own means chapters
+  const r = await window.settingsApi.addExam({ subject, date, topics: /^\d/.test(topics) ? `chapters ${topics}` : topics });
+  $('examMsg').textContent = r.reply;
+  showExams(r.exams);
+  if (r.exams.some((e) => e.subject.toLowerCase() === subject.toLowerCase() && e.date === date)) {
+    $('examSubject').value = '';
+    $('examTopics').value = '';
+  }
+});
+
 $('startupRun').addEventListener('click', async () => {
   $('startupMsg').textContent = 'Running…';
   $('startupMsg').textContent = await window.settingsApi.startupRun();

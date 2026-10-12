@@ -125,12 +125,19 @@
 
       <section class="exams">
         <h2>Exam planner</h2>
-        <p class="note">Tell Sage in the chat: <b>"maths exam on 20 nov chapters 1-8"</b>. He makes a day-by-day plan, reminds you every day and quizzes you on that day's chapters.</p>
+        <p class="note">Add every exam here, or tell Sage in the chat: <b>"my exams: maths 20 nov ch 1-8, physics 22 nov ch 1-5"</b> (or paste your date sheet). He plans them all together as one timetable, reminds you every day and quizzes you on that day's chapters.</p>
         <label class="field">
           <span>Daily study reminder at</span>
           <input id="examStudyTime" type="time" required />
         </label>
         <ul id="examList" class="items"></ul>
+        <div class="exam-add">
+          <input id="examSubject" maxlength="30" placeholder="Subject (e.g. Maths)" spellcheck="false" />
+          <input id="examDate" type="date" />
+          <input id="examTopics" maxlength="300" placeholder="Chapters: 1-8 · or topics: optics, waves" spellcheck="false" />
+          <button type="button" id="examAddBtn" class="ghost">ADD EXAM</button>
+        </div>
+        <p class="note" id="examMsg" role="status"></p>
       </section>
 
       <section class="friends">
@@ -171,7 +178,15 @@
         </div>
         <label class="check"><input id="telegramEnabled" type="checkbox" /><i></i>Let me control Shadow from Telegram</label>
         <label class="check"><input id="telegramNotify" type="checkbox" /><i></i>Send reminders and PC alerts to my phone when I'm away from the PC</label>
-        <label class="check"><input id="phoneFiles" type="checkbox" /><i></i>Files: photos/PDFs I send land in Downloads\Shadow, and "send me notes.pdf" sends files from Downloads, Documents, Desktop &amp; Pictures</label>
+        <label class="check"><input id="phoneFiles" type="checkbox" /><i></i>Files: photos/PDFs I send land in Downloads\Shadow, and "send me my notes" / "browse" send files to my phone</label>
+        <div class="field">
+          <span>My phone can get files from</span>
+          <div class="seg seg-wide" role="radiogroup" aria-label="My phone can get files from">
+            <label><input type="radio" name="phoneFilesScope" value="folders" /><b>MAIN FOLDERS</b></label>
+            <label><input type="radio" name="phoneFilesScope" value="pc" /><b>WHOLE PC</b></label>
+          </div>
+        </div>
+        <p class="note" id="scopeHelp"></p>
         <p class="note" id="tgStatus"></p>
         <div class="inline">
           <button type="button" id="pairTg" class="ghost hidden">PAIR MY PHONE ↗</button>

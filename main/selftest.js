@@ -1626,7 +1626,7 @@ async function run(ctx, h) {
     msg(222, 'send me the file report');
     await waitSent(222, ++nSent);
     const which = sentTo(222).pop().text;
-    check('two matches -> "which one?" (newest first)', which.startsWith('Which one, Prince? 1. report 2025.docx') && which.includes('2. report 2024.docx'), which);
+    check('two matches -> "which one?" (newest first, with the folder)', which.startsWith('Which one, Prince?\n1. 📄 report 2025.docx - ') && which.includes('School') && which.includes('2. 📄 report 2024.docx'), which);
     msg(222, '2');
     await waitFor(() => tgSent.filter((x) => x.document).length >= 2, 9000);
     docSent = tgSent.filter((x) => x.document).pop();
@@ -1638,6 +1638,78 @@ async function run(ctx, h) {
     const pcSend = await ctx.handleMessage('send notes.pdf to my phone', []);
     docSent = tgSent.filter((x) => x.document).pop();
     check('"send notes.pdf to my phone" typed on the PC goes to the phone', pcSend.text === '📤 Sent notes.pdf to your phone ✓' && tgSent.filter((x) => x.document).length === 3 && docSent.filename === 'notes.pdf', pcSend.text);
+    // everyday phrasing (no file extension needed)
+    nSent = tgSent.filter((x) => x.document).length;
+    msg(222, 'send me my chem notes');
+    await waitFor(() => tgSent.filter((x) => x.document).length > nSent, 9000);
+    check('"send me my chem notes" (no extension) finds chem notes.pdf', tgSent.filter((x) => x.document).pop().filename === 'chem notes.pdf');
+    const drop = await ctx.handleMessage('drop my notes into my phone', []);
+    check('"drop my notes into my phone" sends notes.pdf', drop.text === '📤 Sent notes.pdf to your phone ✓', drop.text);
+    const loose = await ctx.handleMessage('send me chemistry', []);
+    check('"send me chemistry" with no such file is left for the chat (not "couldn\'t find")', !loose.text.startsWith("I couldn't find") && !loose.document, loose.text);
+    // whole PC: a fake second drive with system/app folders that must stay hidden
+    const disk = path.join(process.env.SHADOW_TEST_DIR, 'disk-d');
+    for (const d of ['College/Sem 3', 'AppData/Local', 'Windows/System32', '.hidden']) fs.mkdirSync(path.join(disk, d), { recursive: true });
+    fs.writeFileSync(path.join(disk, 'College', 'Sem 3', 'dbms-notes.pdf'), 'DBMS-NOTES');
+    fs.writeFileSync(path.join(disk, 'College', 'Sem 3', 'os-notes.pdf'), 'OS-NOTES');
+    fs.writeFileSync(path.join(disk, 'AppData', 'Local', 'browser-dbms-notes.pdf'), 'no');
+    fs.writeFileSync(path.join(disk, 'Windows', 'System32', 'dbms-notes-sys.pdf'), 'no');
+    fs.writeFileSync(path.join(disk, '.hidden', 'dbms-notes-hidden.pdf'), 'no');
+    ctx.files.hooks.drives = () => [disk];
+    const zipped = [];
+    ctx.files.hooks.zip = async (src, dst) => {
+      zipped.push(src);
+      fs.writeFileSync(dst, `PK fake zip of ${path.basename(src)}`);
+    };
+    let fr3 = await ctx.handleMessage('send me dbms-notes.pdf', [], 'phone');
+    check('MAIN FOLDERS (default): files on other drives are out of reach', fr3.text.includes("couldn't find") && fr3.text.includes('whole PC') && !fr3.document, fr3.text);
+    settings.update({ phoneFilesScope: 'pc' });
+    fr3 = await ctx.handleMessage('send me dbms-notes.pdf', [], 'phone');
+    check('WHOLE PC: finds it on the other drive', fr3.document === path.join(disk, 'College', 'Sem 3', 'dbms-notes.pdf'), fr3.text);
+    const idx = (await ctx.files.ensureIndex()).entries.join('|');
+    check('...never looking into Windows, AppData or hidden folders', idx.includes('dbms-notes.pdf') && !/AppData|Windows|\.hidden/.test(idx));
+    fr3 = await ctx.handleMessage(`send me ${path.join(disk, 'College', 'Sem 3', 'os-notes.pdf')}`, [], 'phone');
+    check('"send me <full path>" works', fr3.document === path.join(disk, 'College', 'Sem 3', 'os-notes.pdf'), fr3.text);
+    fr3 = await ctx.handleMessage(`send me ${path.join(disk, 'AppData', 'Local', 'browser-dbms-notes.pdf')}`, [], 'phone');
+    check('...but a path inside AppData is refused', !fr3.document && fr3.text.includes('not Windows/system or app folders'), fr3.text);
+    fr3 = await ctx.handleMessage('send me the College folder', [], 'phone');
+    check('"send me the College folder" zips it and sends the .zip', fr3.document && /College(?: \(\d+\))?\.zip$/.test(fr3.document) && zipped.pop() === path.join(disk, 'College') && fr3.text.includes('2 files'), fr3.text);
+    if (fr3.document) fs.rmSync(fr3.document, { force: true }); // Telegram deletes it after sending; here nobody sends it
+    // browsing like File Explorer, from the phone
+    nSent = sentTo(222).length;
+    msg(222, 'browse');
+    await waitSent(222, ++nSent);
+    let brw = sentTo(222).pop().text;
+    const driveNo = (brw.split('\n').find((x) => x.includes(`💽 ${disk}`)) || '').split('.')[0];
+    check('"browse" lists your main folders and drives, numbered', brw.startsWith('📁 Your PC') && brw.includes('📁 Documents') && !!driveNo, brw);
+    msg(222, driveNo);
+    await waitSent(222, ++nSent);
+    brw = sentTo(222).pop().text;
+    check('a number opens that drive (system/app/hidden folders not shown)', brw.includes('1. 📁 College') && !/AppData|Windows|\.hidden/.test(brw.split('\n').slice(1).join('\n')), brw);
+    msg(222, '1');
+    await waitSent(222, ++nSent);
+    msg(222, '1');
+    await waitSent(222, ++nSent);
+    brw = sentTo(222).pop().text;
+    check('...folder by folder', brw.includes('Sem 3') && brw.includes('📄 dbms-notes.pdf'), brw);
+    const before3 = tgSent.filter((x) => x.document).length;
+    msg(222, '1');
+    await waitFor(() => tgSent.filter((x) => x.document).length > before3, 9000);
+    check('a number on a file sends it', tgSent.filter((x) => x.document).pop().filename === 'dbms-notes.pdf');
+    nSent = sentTo(222).length;
+    msg(222, 'back');
+    await waitSent(222, ++nSent);
+    brw = sentTo(222).pop().text;
+    check('"back" goes up a folder', brw.includes('College') && brw.includes('📁 Sem 3'), brw);
+    msg(222, 'send 1');
+    await waitFor(() => tgSent.filter((x) => x.document).length > before3 + 1, 9000);
+    const zipSent = tgSent.filter((x) => x.document).pop();
+    check('"send 1" sends a whole folder as a zip (and the temp zip is cleaned up)', zipSent.filename === 'Sem 3.zip' && zipSent.content.includes('PK fake zip of Sem 3'), zipSent.filename);
+    await sleep(300);
+    check('...temp zips are deleted after sending', !fs.readdirSync(path.join(require('os').tmpdir(), 'shadow-zips')).some((f) => f.startsWith('Sem 3')));
+    settings.update({ phoneFilesScope: 'folders' });
+    await ctx.handleMessage('close', [], 'phone');
+
     settings.update({ phoneFiles: false });
     nSent = sentTo(222).length;
     fileMsg({ document: { file_id: 'f1', file_name: 'again.pdf', file_size: 22 } });
@@ -1717,7 +1789,7 @@ async function run(ctx, h) {
     brain.rest(60000);
     settings.update({ examStudyTime: '09:00' }); // study time has come
     await waitFor(() => brain.state === 'reminder', 9000);
-    check('at study time: a STUDY TIME reminder with today\'s chapters', brain.activeReminder && brain.activeReminder.kind === 'exam' && brain.bubble.text.includes("today: Chapter 1") && brain.activeReminder.head === 'STUDY TIME', brain.bubble && brain.bubble.text);
+    check('at study time: a STUDY TIME reminder with today\'s chapters', brain.activeReminder && brain.activeReminder.kind === 'exam' && brain.bubble.text.includes('Today: Maths (in 6 days): Chapter 1') && brain.activeReminder.head === 'STUDY TIME', brain.bubble && brain.bubble.text);
     brain.dismissReminder();
     await waitFor(() => !brain.activeReminder, 4000);
     await sleep(1500);
@@ -1726,9 +1798,35 @@ async function run(ctx, h) {
     r3 = await ask3('done studying');
     check('"done studying" ticks the day off', r3.startsWith('✓ Nice work, Prince! 1/6 study days done'), r3);
     r3 = await ask3('exam plan');
-    check('"exam plan" shows the days ahead', r3.startsWith('📅 Maths exam') && r3.includes('Today: 📖 Chapter 1 ✓') && r3.includes('📝 Practice paper'), r3);
+    check('"exam plan" shows the days ahead', r3.startsWith('📅 Your exam: Maths') && r3.includes('Today: 📖 Chapter 1 ✓') && r3.includes('📝 Practice paper'), r3);
     r3 = await ask3('cancel my maths exam');
     check('"cancel my maths exam"', r3.startsWith('Removed your Maths exam') && !ctx.exams.upcoming().length, r3);
+    // all the exams at once -> one shared timetable
+    const dPlus = (n) => {
+      const d = new Date(fixed.getTime() + n * 86400000);
+      return `${d.getDate()}/${d.getMonth() + 1}`;
+    };
+    r3 = await ask3(`my exams: maths ${dPlus(20)} ch 1-6, physics ${dPlus(23)} ch 1-4 and chemistry ${dPlus(27)}: organic, inorganic, physical`);
+    const ex3 = ctx.exams.upcoming();
+    check('"my exams: maths …, physics … and chemistry …" plans all three', ex3.map((e) => `${e.subject}:${e.topics.length}`).join() === 'Maths:6,Physics:4,Chemistry:3' && r3.includes('planned 3 exams together'), r3);
+    const days3 = new Map();
+    ex3.forEach((e) => e.plan.forEach((d) => days3.set(d.date, [...(days3.get(d.date) || []), e.subject])));
+    const lastStudy = (e) => e.plan.filter((d) => d.kind !== 'light').map((d) => d.date).sort().pop();
+    check('...one timetable: every subject gets study days before its own exam', ex3.every((e) => e.plan.some((d) => d.kind === 'learn') && lastStudy(e) < e.date && e.plan.find((d) => d.kind === 'light').date < e.date));
+    check('...every chapter is covered, and the day before each exam is light revision', ex3.every((e) => e.topics.every((t) => e.plan.some((d) => d.kind === 'learn' && d.topics.includes(t)))) && ex3.every((e) => e.plan.some((d) => d.kind === 'light')));
+    check('...no day has more than two subjects', [...days3.values()].every((v) => v.length <= 2));
+    r3 = await ask3('exam plan');
+    check('"exam plan" shows the combined timetable', r3.startsWith('📅 Your exams: Maths') && r3.includes('Physics') && r3.includes('Chemistry') && /\((?:Maths|Physics|Chemistry)\)/.test(r3), r3.split('\n').slice(0, 3).join(' / '));
+    r3 = await ask3('20 Nov - English - Ch 1-3\n22 Nov - Hindi');
+    check('a date sheet without the word "exam" is not mistaken for one', !ctx.exams.upcoming().some((e) => e.subject === 'English'), r3);
+    r3 = (await ctx.handleMessage(`Exam date sheet\n${dPlus(30)} - English - Ch 1-3\n${dPlus(32)} - Hindi`, [])).text; // as it arrives from Telegram
+    check('a pasted date sheet (one exam per line) works', ctx.exams.upcoming().some((e) => e.subject === 'English' && e.topics.length === 3) && ctx.exams.upcoming().some((e) => e.subject === 'Hindi'), r3);
+    const phys = ctx.exams.upcoming().find((e) => e.subject === 'Physics');
+    const physDays = phys.plan.length;
+    r3 = await ask3('cancel my chemistry exam');
+    check('cancelling one gives its study days to the others', r3.includes('The other exams got its study days') && !ctx.exams.upcoming().some((e) => e.subject === 'Chemistry') && ctx.exams.upcoming().find((e) => e.subject === 'Physics').plan.length >= physDays, r3);
+    r3 = await ask3('cancel all exams');
+    check('"cancel all exams"', r3.startsWith('Removed all') && !ctx.exams.upcoming().length, r3);
     r3 = await ask3('write a unit test for my code');
     check('"…test for my code" is not mistaken for an exam', !r3.startsWith('📅') && !r3.startsWith('When is it'), r3);
     settings.update({ examStudyTime: '18:00' });
@@ -1903,6 +2001,15 @@ async function run(ctx, h) {
     await js(`document.getElementById('startupAdd').value = 'downloads'; document.getElementById('startupAddBtn').click()`, swSt.webContents);
     await waitFor(() => settings.get('startupRoutine').includes('open downloads'), 3000);
     check('...and ADD adds one', settings.get('startupRoutine').join() === 'open vs code,play lofi,open downloads');
+    const formDate = new Date(Date.now() + 9 * 86400000);
+    const iso = `${formDate.getFullYear()}-${String(formDate.getMonth() + 1).padStart(2, '0')}-${String(formDate.getDate()).padStart(2, '0')}`;
+    await js(`document.getElementById('examSubject').value = 'Biology'; document.getElementById('examDate').value = '${iso}'; document.getElementById('examTopics').value = '1-5'; document.getElementById('examAddBtn').click()`, swSt.webContents);
+    await waitFor(() => ctx.exams.upcoming().some((e) => e.subject === 'Biology'), 3000);
+    const bio = ctx.exams.upcoming().find((e) => e.subject === 'Biology');
+    check('Settings → Exam planner: ADD EXAM (subject, date, "1-5")', bio && bio.topics.join() === 'Chapter 1,Chapter 2,Chapter 3,Chapter 4,Chapter 5' && bio.plan.length > 5);
+    const scopeUi = await js(`[...document.querySelectorAll('input[name="phoneFilesScope"]')].map((r) => r.value + (r.checked ? '*' : '')).join()`, swSt.webContents);
+    check('Settings → Phone: "My phone can get files from" MAIN FOLDERS / WHOLE PC', scopeUi === 'folders*,pc', scopeUi);
+    ctx.exams.data.exams = [];
     await js("document.querySelector('.startup').scrollIntoView()", swSt.webContents);
     await sleep(300);
     await shot('settings-startup-exams', swSt.webContents);

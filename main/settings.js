@@ -36,6 +36,7 @@ const DEFAULTS = Object.freeze({
   startupRoutine: [], // "open spotify", "play lofi", ... run when Windows starts (startup.js)
   startupOnWake: true, // ...and when the PC wakes up after sleeping 4+ hours
   phoneFiles: true, // Telegram: phone -> PC files, and "send me notes.pdf" (files.js)
+  phoneFilesScope: 'folders', // where the phone may get files from: folders (main ones) | pc (all drives)
   examStudyTime: '18:00', // daily study reminder for the exam planner (exams.js)
   telegramEnabled: false, // control Shadow from your phone (telegram.js)
   telegramToken: '', // your bot's token from @BotFather (a password - stays on this PC)
@@ -103,6 +104,7 @@ function validate(raw) {
       : [],
     startupOnWake: s.startupOnWake === undefined ? DEFAULTS.startupOnWake : Boolean(s.startupOnWake),
     phoneFiles: s.phoneFiles === undefined ? DEFAULTS.phoneFiles : Boolean(s.phoneFiles),
+    phoneFilesScope: ['folders', 'pc'].includes(s.phoneFilesScope) ? s.phoneFilesScope : DEFAULTS.phoneFilesScope,
     examStudyTime: typeof s.examStudyTime === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(s.examStudyTime) ? s.examStudyTime : DEFAULTS.examStudyTime,
     telegramEnabled: Boolean(s.telegramEnabled),
     telegramToken: typeof s.telegramToken === 'string' && /^\d{5,15}:[A-Za-z0-9_-]{30,60}$/.test(s.telegramToken.trim()) ? s.telegramToken.trim() : '',

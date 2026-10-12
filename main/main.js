@@ -34,7 +34,7 @@ const { Tutor, parseTutorCommand, bubbleLine } = require('./tutor');
 const { TelegramLink } = require('./telegram');
 const { SpotifyLink, DASHBOARD_URL: SPOTIFY_DASHBOARD } = require('./spotify');
 const { StartupRoutine, parseStartupCommand } = require('./startup');
-const { FileShare, parseFileCommand, mb } = require('./files');
+const { FileShare, parseFileCommand, parseBrowseCommand, parseNavCommand, mb } = require('./files');
 const { ExamPlanner, parseExamCommand } = require('./exams');
 const { CatchGame, QuizRace, Scores, parseGameCommand } = require('./games');
 const { PetWindow } = require('./petWindow');
@@ -624,7 +624,7 @@ function init() {
   }
 
   // ---- Sage's exam planner (exams.js)
-  const exams = (ctx.exams = new ExamPlanner({ file: path.join(app.getPath('userData'), 'exams.json') }));
+  const exams = (ctx.exams = new ExamPlanner({ file: path.join(app.getPath('userData'), 'exams.json'), tutor: () => friends.get('sage').def.name }));
   ctx.examTimer = setInterval(() => {
     for (const r of exams.due(settings.get('examStudyTime'))) {
       friends.quickJob('sage', '📚 Study time!', 6000);
@@ -684,17 +684,33 @@ function init() {
   }
 
   // ---- files between the phone and this PC (files.js + telegram.js)
-  const files = (ctx.files = new FileShare({ getPath: (k) => app.getPath(k), screenshotsDir: () => apps.screenshotsDir() }));
+  const files = (ctx.files = new FileShare({
+    getPath: (k) => app.getPath(k),
+    screenshotsDir: () => apps.screenshotsDir(),
+    scope: () => settings.get('phoneFilesScope'), // only ever changed in Settings on the PC
+    hooks: ctx.fileHooks || {},
+  }));
+  // the file index is built in the background once the phone is set up, so "send me …" is quick
+  if (!SELF_TEST) {
+    setTimeout(() => settings.get('phoneFiles') && settings.get('telegramChatId') && files.ensureIndex(), 90 * 1000);
+    settings.on('change', (_all, changed) => changed.includes('phoneFilesScope') && settings.get('phoneFiles') && files.ensureIndex(true));
+  }
   /** "send me notes.pdf": from the phone the file comes back as the reply; typed here it goes to the paired phone. */
   async function sendFile(r, origin) {
     if (!r.document) return { text: r.text };
     friends.quickJob('dash', '📤 Delivering!', 4000);
-    if (origin === 'phone') return { text: r.text, document: r.document };
-    if (!tg.owner() || !tg.running) return { text: 'Pair your phone first (Settings → Phone), then I can send files to it 📱' };
+    if (origin === 'phone') return { text: r.text, document: r.document, temp: r.temp };
+    const drop = () => r.temp && fs.rm(r.document, { force: true }, () => {});
+    if (!settings.get('telegramEnabled') || !tg.owner() || !tg.running) {
+      drop();
+      return { text: 'Your phone isn\'t connected yet, Prince 📱 Set it up once in Settings → Phone (Telegram, about 3 minutes), then "send notes.pdf to my phone" works.' };
+    }
     try {
       await tg.sendFileToOwner(r.document, r.text);
     } catch (err) {
       return { text: `Couldn't send ${r.name}: ${err.message}` };
+    } finally {
+      drop();
     }
     return { text: `📤 Sent ${r.name} to your phone ✓` };
   }
@@ -735,6 +751,10 @@ function init() {
     return { reply, items: startup.items() };
   });
   ipcMain.handle('startup:run', () => runStartupRoutine('asked'));
+  ipcMain.handle('exams:add', (_e, form = {}) => {
+    const reply = exams.addFromForm({ subject: String(form.subject || ''), date: String(form.date || ''), topics: String(form.topics || '') });
+    return { reply, exams: settingsPayload().exams };
+  });
   ipcMain.handle('exams:remove', (_e, id) => {
     exams.remove(String(id));
     return settingsPayload().exams;
@@ -832,11 +852,22 @@ function init() {
       if (examCmd.type === 'add' && !examCmd.error) friends.quickJob('sage', '📅 Making your plan!', 5000);
       return done1(exams.run(examCmd));
     }
-    const fileCmd = parseFileCommand(text);
-    if (fileCmd) {
+    // files for the phone: "send me my notes", "browse D:", and "3" / "back" / "more" in an open list
+    const appAsked = apps.pendingChoice ? apps.pendingChoice.at : 0;
+    const fileCmd = (files.active(appAsked) && parseNavCommand(text)) || parseFileCommand(text) || parseBrowseCommand(text);
+    if (fileCmd && !(fileCmd.loose && !settings.get('phoneFiles'))) {
       if (!settings.get('phoneFiles')) return done1('Sending files is switched off, Prince (Settings → Phone).');
-      const r = await sendFile(files.request(fileCmd), origin);
-      return { ...done1(r.text), document: r.document };
+      let r;
+      try {
+        r = await files.handle(fileCmd);
+      } catch (err) {
+        console.warn('[files]', err);
+        r = { text: `Something went wrong looking for that file (${err.message}).` };
+      }
+      if (!(r.notFound && fileCmd.loose)) {
+        const out = await sendFile(r, origin);
+        return { ...done1(out.text), document: out.document, temp: out.temp };
+      }
     }
     const pcCmd = parsePcCommand(text);
     if (pcCmd) {
@@ -848,12 +879,6 @@ function init() {
         out = `That didn't work, Prince (${err.message}).`;
       }
       if (out) return done1(out);
-      // "2" answering "which file?"
-      const picked = pcCmd.type === 'choose' && files.choose(pcCmd.n);
-      if (picked) {
-        const r = await sendFile(picked, origin);
-        return { ...done1(r.text), document: r.document };
-      }
       // "cancel"/"2" with nothing pending -> just chat
     }
     const tidied = care.confirm(text); // "yes" to a pending Downloads tidy-up
@@ -995,7 +1020,7 @@ function init() {
   // settings window
   ipcMain.handle('settings:load', () => settingsPayload());
   ipcMain.handle('settings:save', async (_e, patch = {}) => {
-    const allowed = ['appearance', 'petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat', 'morningBriefing', 'todoNudges', 'webSearch', 'searchKey', 'pcControl', 'pcCare', 'musicService', 'startupOnWake', 'phoneFiles', 'examStudyTime', 'friendsMode', 'friends', 'telegramEnabled', 'telegramToken', 'telegramNotify'];
+    const allowed = ['appearance', 'petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat', 'morningBriefing', 'todoNudges', 'webSearch', 'searchKey', 'pcControl', 'pcCare', 'musicService', 'startupOnWake', 'phoneFiles', 'phoneFilesScope', 'examStudyTime', 'friendsMode', 'friends', 'telegramEnabled', 'telegramToken', 'telegramNotify'];
     const clean = Object.fromEntries(Object.entries(patch).filter(([k]) => allowed.includes(k)));
     const before = settings.get('calendarUrl');
     settings.update(clean);

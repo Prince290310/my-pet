@@ -622,38 +622,66 @@ Or use **Settings → Startup routine** (ADD / REMOVE / RUN IT NOW).
 
 Needs the phone set up (section 14).
 
-- **Phone → PC:** send your bot a photo, PDF, document, video, audio or voice note. It's saved in
-  `Downloads\Shadow` and Shadow tells you on the PC. Add a caption of `desktop`, `documents` or
-  `pictures` to save it there instead. Up to 20 MB (Telegram's limit for bots).
-- **PC → phone:** text `send me notes.pdf`, `send me the file physics notes`, `send me my latest download`
-  or `send me the last screenshot`. If several files match, Shadow asks "which one?" - answer with the
-  number. Up to 50 MB. Typed in the chat panel on the PC, `send notes.pdf to my phone` works too.
+**Phone → PC:** send your bot a photo, PDF, document, video, audio or voice note. It's saved in
+`Downloads\Shadow` and Shadow tells you on the PC. Add a caption of `desktop`, `documents` or
+`pictures` to save it there instead. Up to 20 MB (Telegram's limit for bots).
 
-Safety:
-- Shadow **never opens or runs** files that arrive. Programs and scripts (`.exe`, `.bat`, `.ps1`, `.js`…)
-  get `.download` added to their name so a double-click can't run one by accident.
-- Files are only sent from **Downloads, Documents, Desktop and Pictures** (a few folders deep). Hidden
-  files are skipped and **password/key files** (`passwords.txt`, `.pem`, `.key`, `.kdbx`…) are never sent.
-- Only your paired Telegram account can do any of this. **Settings → Phone → Files** switches it off.
-
----
-
-## 17. Exam planner (Sage)
+**PC → phone** (text the bot, or type it in the chat panel on the PC):
 
 | Say | What happens |
 | --- | --- |
-| `maths exam on 20 nov chapters 1-8` | Sage makes a day-by-day revision plan |
-| `physics exam is on 5th december: optics, waves and heat` · `exam on 12/11 units 3 to 6` | other ways to say it |
-| `what should I study today` | today's chapters |
+| `send me my maths notes` · `drop my notes into my phone` · `send me notes.pdf` | finds it and sends it (no file extension needed) |
+| `send me notes.pdf from D drive` · `… in my College folder` | only looks there |
+| `send me D:\College\Sem 3\notes.pdf` | that exact file |
+| `send me the College folder` | zips the folder and sends the .zip |
+| `send me my latest download` · `send me the last screenshot` | the newest one |
+| `browse` · `browse D:` · `what's in my downloads` | your folders as a numbered list - like File Explorer on your phone |
+
+In a list (or after "which one?"): reply a **number** to open a folder or get a file, `send 3` to send a
+whole folder (zipped), `back` to go up, `more` for the next page. Up to 50 MB per file (Telegram's limit).
+
+**Settings → Phone → "My phone can get files from":**
+- **MAIN FOLDERS** (default): Desktop, Documents, Downloads, Pictures, Videos, Music and everything inside them.
+- **WHOLE PC**: every drive and folder, except Windows/system folders, program folders (`Program Files`,
+  `ProgramData`) and app data (`AppData` - browser logins etc.). This can only be switched on the PC, never
+  from the phone.
+
+Safety (both settings):
+- Shadow **never opens or runs** files that arrive. Programs and scripts (`.exe`, `.bat`, `.ps1`, `.js`…)
+  get `.download` added to their name so a double-click can't run one by accident.
+- Hidden files and **password/key files** (`passwords.txt`, `.pem`, `.key`, `.kdbx`…) are never sent.
+- Only your paired Telegram account can do any of this, and Shadow shows on the PC what it sent.
+  **Settings → Phone → Files** switches it all off.
+- File names are found through a background index (built in a separate thread), so Shadow never freezes
+  while it searches.
+
+---
+
+## 17. Exam planner (Sage / Doctor Strange)
+
+Give Sage **all your exams** and he makes **one timetable** for the whole exam season.
+
+| Say | What happens |
+| --- | --- |
+| `my exams: maths 20 nov ch 1-8, physics 22 nov ch 1-5, chemistry 25 nov units 1-4` | plans all of them together |
+| paste your date sheet: `20 Nov - Maths - Ch 1-8` (one exam per line; start with "Exam date sheet") | same |
+| `maths exam on 20 nov chapters 1-8` · `physics exam is on 5th december: optics, waves and heat` | adds one more and re-plans everything |
+| `what should I study today` | today's subjects and chapters |
 | `quiz me` | Sage quizzes you on **today's** chapters (needs the AI brain) |
 | `done studying` | ticks today off |
-| `exam plan` · `my exams` · `cancel my maths exam` | look / change |
+| `exam plan` · `my exams` · `cancel my chemistry exam` · `cancel all exams` | look / change |
 
-- The plan: new chapters first (with revision days in between if there's time), then full revision and
-  a timed practice paper, and light revision + early sleep the day before. It starts about 3 days per
-  chapter before the exam, not months early.
-- Every day at the study time (**Settings → Exam planner**, default 6 PM) Shadow shows a STUDY TIME
-  reminder with today's chapters. The morning briefing counts down: "📚 Maths exam in 5 days".
+Or add them in **Settings → Exam planner** (subject, date, chapters like `1-8`, ADD EXAM).
+
+How the timetable works:
+- Each subject gets its own run-up (about 3 days per chapter): new chapters first, revision days in
+  between, then **full revision + a timed practice paper close to its exam**, and **light revision the
+  day before**.
+- When exams overlap, the days are shared: the subject that would run out of days first goes first, and
+  on a crowded day two subjects share it - so every chapter is covered before its exam.
+- Cancel an exam and its days go to the others. Days you already studied stay as they were.
+- One **STUDY TIME** reminder a day (Settings → Exam planner, default 6 PM) lists all of today's subjects.
+  The morning briefing counts down: "📚 Maths exam in 5 days".
 - Dates: `20 nov`, `nov 20`, `20/11` (day/month), `tomorrow`, `friday`, `in 10 days`.
 
 ---
