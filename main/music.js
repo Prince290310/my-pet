@@ -6,10 +6,13 @@
  *                                               the browser, VLC, ...) through Windows' media session
  *   what's playing                             title + artist from Windows' "now playing" info
  *   play something chill / play gym music /
- *   play arijit singh                          opens a search in Spotify (if installed) or YouTube
+ *   play arijit singh                          finds the top YouTube video for it and plays it
+ *                                              (Settings → Music: YouTube, YouTube Music, or your own
+ *                                              Spotify once it's connected - see spotify.js)
  *
  * Only fixed PowerShell scripts run here; the song you ask for only ever goes into a
- * spotify:search: / YouTube URL, never into a command.
+ * search URL, never into a command. The video id read back from YouTube must look like one
+ * (11 letters/digits/-/_) before it goes into the watch URL.
  */
 
 const { execFile } = require('child_process');
@@ -34,6 +37,27 @@ const MOODS = {
   english: 'top english hits',
   hindi: 'top hindi songs',
 };
+
+const SERVICES = ['youtube', 'ytmusic', 'spotify'];
+const SERVICE_NAME = { youtube: 'YouTube', ytmusic: 'YouTube Music', spotify: 'Spotify' };
+const BROWSERS = /chrome|msedge|edge|firefox|brave|opera|vivaldi/i;
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
+
+/** First real video in a YouTube results page -> { id, title } or null. */
+function firstVideo(html) {
+  const re = /"videoRenderer":\{"videoId":"([\w-]{11})"/g;
+  const m = re.exec(String(html || ''));
+  if (!m) return null;
+  const near = html.slice(m.index, m.index + 4000);
+  const t = /"title":\{"runs":\[\{"text":"((?:[^"\\]|\\.){1,200})"/.exec(near);
+  let title = '';
+  try {
+    title = t ? JSON.parse(`"${t[1]}"`) : '';
+  } catch {
+    title = '';
+  }
+  return { id: m[1], title: title.replace(/\s+/g, ' ').trim().slice(0, 100) };
+}
 
 const PS = ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command'];
 
@@ -84,9 +108,10 @@ function parseMusicCommand(input) {
     return { action: 'search', query: MOODS[m[1]], mood: m[1] };
   }
   if (/^play (?:some )?(?:something|some music|music|songs)(?: nice| good)?$/.test(l)) return { action: 'search', query: MOODS.chill, mood: 'chill' };
-  if ((m = /^play (.+?)(?: (?:on|in) (spotify|youtube))?$/.exec(t))) {
+  if ((m = /^play (.+?)(?: (?:on|in) (spotify|youtube music|yt music|youtube))?$/i.exec(t))) {
     const query = m[1].replace(/^(?:the |some )/i, '').trim().slice(0, 120);
-    if (query) return { action: 'search', query, where: m[2] ? m[2].toLowerCase() : null };
+    const where = m[2] ? { spotify: 'spotify', youtube: 'youtube' }[m[2].toLowerCase()] || 'ytmusic' : null;
+    if (query) return { action: 'search', query, where };
   }
   return null;
 }
@@ -110,11 +135,26 @@ function appName(id) {
 const song = (r) => (r.title ? `${r.title}${r.artist ? ` – ${r.artist}` : ''}` : '');
 
 class MusicControl {
-  constructor({ openExternal, hasSpotify = async () => false, platform = process.platform, hooks = {} } = {}) {
+  constructor({
+    openExternal,
+    service = () => 'youtube',
+    platform = process.platform,
+    hooks = {},
+    fetchImpl,
+    ytBase = 'https://www.youtube.com',
+    ytMusicBase = 'https://music.youtube.com',
+    nudgeMs = 6000,
+    spotify = null,
+  } = {}) {
     this.openExternal = openExternal;
-    this.hasSpotify = hasSpotify;
+    this.service = service; // Settings → Music
     this.platform = platform;
     this.hooks = hooks; // tests: { media(action) -> result }
+    this.fetch = fetchImpl || ((...a) => fetch(...a));
+    this.ytBase = ytBase;
+    this.ytMusicBase = ytMusicBase;
+    this.nudgeMs = nudgeMs;
+    this.spotify = spotify; // spotify.js - Prince's own Spotify account, once connected
   }
 
   get available() {
@@ -160,11 +200,66 @@ class MusicControl {
     }
   }
 
-  async search({ query, where }) {
-    const spotify = where !== 'youtube' && (where === 'spotify' || (await this.hasSpotify()));
-    const url = spotify ? `spotify:search:${encodeURIComponent(query)}` : `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
-    await this.openExternal(url);
-    return `🎧 Finding "${query}" on ${spotify ? 'Spotify' : 'YouTube'} - pick one and enjoy!`;
+  /** Top YouTube video for a search -> { id, title } (null if YouTube can't be read). */
+  async findVideo(query) {
+    const url = `${this.ytBase}/results?search_query=${encodeURIComponent(query)}&sp=EgIQAQ%253D%253D`; // videos only
+    const res = await this.fetch(url, {
+      headers: { 'User-Agent': UA, 'Accept-Language': 'en-US,en;q=0.9', Cookie: 'CONSENT=YES+1; SOCS=CAI' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+    return firstVideo(await res.text());
+  }
+
+  /** Pause whatever is playing (unless it's `except`) so two songs don't play at once. Returns the paused app. */
+  async pauseOthers(except) {
+    if (!this.available) return '';
+    const now = await this.media('status').catch(() => null);
+    if (!now || !now.ok || !/playing/i.test(now.status) || (except && except.test(now.app || ''))) return '';
+    await this.media('pause').catch(() => null);
+    return now.app || '';
+  }
+
+  async search({ query, where, mood }) {
+    const svc = SERVICES.includes(where) ? where : SERVICES.includes(this.service()) ? this.service() : 'youtube';
+    if (svc === 'spotify') {
+      if (this.spotify && this.spotify.connected()) {
+        await this.pauseOthers(/spotify/i); // a new Spotify song replaces Spotify's own anyway
+        return (await this.spotify.play({ query, mood })).reply;
+      }
+      // not connected: Spotify only lets apps open a search
+      await this.openExternal(`spotify:search:${encodeURIComponent(query)}`);
+      return `🎧 Opened "${query}" in Spotify - tap the top result. (Connect your Spotify in Settings → Music and I'll start songs myself.)`;
+    }
+    let video = null;
+    try {
+      video = await this.findVideo(query);
+    } catch {
+      video = null;
+    }
+    if (!video || !/^[\w-]{11}$/.test(video.id)) {
+      await this.openExternal(`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`);
+      return `🎧 I couldn't pick a video by myself, so I opened YouTube's search for "${query}" - click the first one!`;
+    }
+    const paused = await this.pauseOthers(); // don't play two things at once
+    const base = svc === 'ytmusic' ? this.ytMusicBase : this.ytBase;
+    await this.openExternal(`${base}/watch?v=${video.id}`);
+    this.nudge(paused);
+    return `▶️ Playing "${video.title || query}" on ${SERVICE_NAME[svc]} 🎧`;
+  }
+
+  /** Browsers sometimes hold a new video paused (autoplay rules): press play on it once. */
+  nudge(pausedApp) {
+    if (!this.available || !this.nudgeMs) return;
+    setTimeout(async () => {
+      try {
+        const r = await this.media('status');
+        // only a browser that we didn't just pause ourselves
+        if (r.ok && BROWSERS.test(r.app || '') && r.app !== pausedApp && /paus/i.test(r.status)) await this.media('play');
+      } catch {
+        /* nothing to do */
+      }
+    }, this.nudgeMs);
   }
 
   /** Is music playing? (for Tempo's dancing). Never throws. */
@@ -181,7 +276,8 @@ class MusicControl {
   aiInstructions() {
     return [
       'You can control music. End your reply with one of these lines when Prince asks:',
-      '[[music | play]]  [[music | pause]]  [[music | next]]  [[music | previous]]  [[music | play <what to search, e.g. arijit singh romantic>]]',
+      '[[music | play]]  [[music | pause]]  [[music | next]]  [[music | previous]]  [[music | play <song, artist or mood, e.g. kesariya arijit singh>]]',
+      'A song request starts playing by itself (the top YouTube result).',
     ].join('\n');
   }
 }
@@ -199,4 +295,4 @@ function musicRequests(reply) {
   return out.slice(0, 2);
 }
 
-module.exports = { MusicControl, parseMusicCommand, musicRequests, appName, MOODS };
+module.exports = { MusicControl, parseMusicCommand, musicRequests, appName, firstVideo, MOODS, SERVICES };

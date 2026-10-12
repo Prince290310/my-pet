@@ -774,9 +774,11 @@ async function run(ctx, h) {
     settings.update({ calendarInChat: true });
     const nowFire = cal.check(soon + 1000);
     check('at start time -> "starting now" reminder', nowFire.length === 1 && nowFire[0].message.includes('is starting now'), nowFire.map((r) => r.message).join(' | '));
-    check('started long ago -> stays quiet', cal.check(soon + 30 * 60 * 1000).length === 0);
+    const later = cal.check(soon + 30 * 60 * 1000); // around 8:45 this crosses 9:00, when the all-day heads-up is due
+    check('started long ago -> stays quiet', later.filter((r) => !r.message.includes('holiday')).length === 0, later.map((r) => r.message).join(' | '));
     const nine = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 9, 0, 0).getTime();
-    const dayFire = [...calFired, ...cal.check(nine)].filter((r) => r.message.includes('holiday')); // fires during sync if it's past 9 already
+    cal.check(nine); // fire events (also from the checks above) all land in calFired
+    const dayFire = calFired.filter((r) => r.message.includes('holiday')); // fires during sync if it's past 9 already
     check('all-day event -> one heads-up at 9:00', dayFire.length === 1 && dayFire[0].message === 'Today: "Self-test holiday" 📅', dayFire.map((r) => r.message).join(' | '));
     cal.off('fire', onCalFire);
     for (let k = 0; k < 6 && brain.activeReminder; k++) {
@@ -1306,10 +1308,43 @@ async function run(ctx, h) {
     player.on = false;
     rr = await askR('play');
     check('nothing playing -> friendly hint', rr.startsWith("Nothing's playing"), rr);
+    // "play <song>" finds the top YouTube video and plays it (fake YouTube - no internet)
+    const ytAsked = [];
+    const fakeYt = http.createServer((req, res) => {
+      const q = new URL(req.url, 'http://x').searchParams.get('search_query') || '';
+      ytAsked.push(q);
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      if (q === 'nothing at all') return res.end('<html>no results</html>');
+      const id = q === 'chill lofi' ? 'jfKfPfyJRdk' : 'BddP6PYo2gs';
+      const title = q === 'chill lofi' ? 'lofi hip hop radio \\u0026 beats to relax/study to' : 'Kesariya - Brahmastra | Arijit Singh';
+      res.end(`<script>var ytInitialData = {"contents":[{"adSlotRenderer":{"videoId":"AAAAAAAAAAA"}},{"videoRenderer":{"videoId":"${id}","thumbnail":{},"title":{"runs":[{"text":"${title}"}]}}}]};</script>`);
+    });
+    await new Promise((r) => fakeYt.listen(0, '127.0.0.1', r));
+    const ytBase = `http://127.0.0.1:${fakeYt.address().port}`;
+    ctx.music.ytBase = ytBase;
+    ctx.music.ytMusicBase = `${ytBase}/music`;
+    player.on = true;
+    player.status = 'Playing';
+    rr = await askR('play kesariya');
+    check('"play kesariya" plays the top YouTube video (not just a search)', opened2.pop() === `${ytBase}/watch?v=BddP6PYo2gs` && rr === '▶️ Playing "Kesariya - Brahmastra | Arijit Singh" on YouTube 🎧', rr);
+    check('...after pausing what was already playing', mediaCalls.includes('pause') && player.status === 'Paused');
+    player.on = false;
     rr = await askR('play something chill');
-    check('"play something chill" opens a Spotify search (Spotify installed)', opened2.pop() === 'spotify:search:chill%20lofi', rr);
+    check('"play something chill" plays a chill lofi video', ytAsked.pop() === 'chill lofi' && opened2.pop() === `${ytBase}/watch?v=jfKfPfyJRdk` && rr.includes('lofi hip hop radio & beats'), rr);
+    rr = await askR('play kesariya on youtube music');
+    check('"… on youtube music" plays it in YouTube Music', opened2.pop() === `${ytBase}/music/watch?v=BddP6PYo2gs`, rr);
+    settings.update({ musicService: 'ytmusic' });
+    rr = await askR('play kesariya');
+    check('Settings → Music: YouTube Music is used for every song', opened2.pop() === `${ytBase}/music/watch?v=BddP6PYo2gs`, rr);
+    settings.update({ musicService: 'spotify' });
+    rr = await askR('play arijit singh');
+    check('Settings → Music: Spotify opens its search (and says why it can\'t press play)', opened2.pop() === 'spotify:search:arijit%20singh' && rr.includes('tap the top result'), rr);
     rr = await askR('play arijit singh on youtube');
-    check('"play … on youtube" opens YouTube', opened2.pop() === 'https://www.youtube.com/results?search_query=arijit%20singh', rr);
+    check('"… on youtube" still plays on YouTube', opened2.pop() === `${ytBase}/watch?v=BddP6PYo2gs`, rr);
+    settings.update({ musicService: 'youtube' });
+    rr = await askR('play nothing at all');
+    check('no video found -> opens YouTube search instead', opened2.pop() === 'https://www.youtube.com/results?search_query=nothing%20at%20all' && rr.includes("couldn't pick"), rr);
+    fakeYt.close();
     // --- Zen
     const pcState = { battery: { percent: 18, charging: false }, disk: { free: 5 * 1024 ** 3, total: 256 * 1024 ** 3 }, online: true };
     ctx.care.hooks = {
@@ -1425,11 +1460,18 @@ async function run(ctx, h) {
     const GOOD = '123456789:AAHgoodTokenForTheSelfTest_abcdefghij';
     const tgSent = [];
     const tgQueue = [];
+    const tgFiles = {}; // file_id -> { path, bytes } that the "phone" sent
     let upId = 1;
     const fakeTg = http.createServer((req, res) => {
       const chunks = [];
       req.on('data', (d) => chunks.push(d));
       req.on('end', () => {
+        const fm = /^\/file\/bot([^/]+)\/(.+)$/.exec(req.url);
+        if (fm) {
+          const f = Object.values(tgFiles).find((x) => x.path === fm[2]);
+          res.writeHead(fm[1] === GOOD && f ? 200 : 404);
+          return res.end(f ? f.bytes : undefined);
+        }
         const m = /^\/bot([^/]+)\/(\w+)$/.exec(req.url) || [];
         const send = (code, obj) => {
           res.writeHead(code, { 'Content-Type': 'application/json' });
@@ -1449,6 +1491,19 @@ async function run(ctx, h) {
           case 'sendMessage':
             tgSent.push({ chat: j.chat_id, text: j.text });
             return send(200, { ok: true, result: {} });
+          case 'getFile':
+            return tgFiles[j.file_id] ? send(200, { ok: true, result: { file_id: j.file_id, file_path: tgFiles[j.file_id].path } }) : send(400, { ok: false, description: 'file not found' });
+          case 'sendDocument': {
+            const txt = body.toString('latin1');
+            tgSent.push({
+              document: true,
+              chat: Number((/name="chat_id"\r\n\r\n(\d+)/.exec(txt) || [])[1]),
+              filename: Buffer.from((/name="document"; filename="([^"]+)"/.exec(txt) || [])[1] || '', 'latin1').toString('utf8'),
+              text: (/name="caption"\r\n\r\n([^\r]*)/.exec(Buffer.from(txt, 'latin1').toString('utf8')) || [])[1],
+              content: txt,
+            });
+            return send(200, { ok: true, result: {} });
+          }
           case 'sendPhoto': {
             const txt = body.toString('latin1');
             tgSent.push({ photo: true, png: txt.includes('\x89PNG'), chat: Number((/name="chat_id"\r\n\r\n(\d+)/.exec(txt) || [])[1]), text: (/name="caption"\r\n\r\n([^\r]*)/.exec(Buffer.from(txt, 'latin1').toString('utf8')) || [])[1] });
@@ -1520,6 +1575,78 @@ async function run(ctx, h) {
     await waitFor(() => brain.state === 'reminder', 9000);
     brain.dismissReminder();
     await waitFor(() => !brain.activeReminder, 4000);
+    // --- files: phone -> PC and PC -> phone (fake folders)
+    const userDirs = path.join(process.env.SHADOW_TEST_DIR, 'user');
+    for (const k of ['downloads', 'documents', 'desktop', 'pictures']) fs.mkdirSync(path.join(userDirs, k), { recursive: true });
+    ctx.files.getPath = (k) => path.join(userDirs, k);
+    ctx.files.screenshotsDir = () => path.join(userDirs, 'pictures', 'Screenshots');
+    const fileMsg = (extra, caption = '') => tgQueue.push({ update_id: upId++, message: { message_id: upId, date: nowS(), chat: { id: 222, type: 'private' }, from: { id: 222, first_name: 'Prince' }, caption, ...extra } });
+    tgFiles.f1 = { path: 'documents/file_1.pdf', bytes: Buffer.from('%PDF-1.4 physics notes') };
+    let nSent = sentTo(222).length;
+    fileMsg({ document: { file_id: 'f1', file_name: 'Physics Notes.pdf', file_size: 22 } });
+    await waitSent(222, ++nSent);
+    const savedPdf = path.join(userDirs, 'downloads', 'Shadow', 'Physics Notes.pdf');
+    check('a PDF sent from the phone lands in Downloads\\Shadow', fs.existsSync(savedPdf) && fs.readFileSync(savedPdf, 'utf8') === '%PDF-1.4 physics notes' && sentTo(222).pop().text.startsWith('📥 Saved Physics Notes.pdf (1 KB) to Downloads\\Shadow'), sentTo(222)[nSent - 1].text);
+    check('...and Shadow tells you on the PC', brain.bubble && brain.bubble.text.startsWith('📥 Physics Notes.pdf arrived from your phone'), brain.bubble && brain.bubble.text);
+    fileMsg({ document: { file_id: 'f1', file_name: 'Physics Notes.pdf', file_size: 22 } });
+    await waitSent(222, ++nSent);
+    check('the same name twice is kept as "(2)", never overwritten', fs.existsSync(path.join(userDirs, 'downloads', 'Shadow', 'Physics Notes (2).pdf')));
+    tgFiles.f2 = { path: 'documents/file_2.exe', bytes: Buffer.from('MZ fake program') };
+    fileMsg({ document: { file_id: 'f2', file_name: 'setup.exe', file_size: 15 } });
+    await waitSent(222, ++nSent);
+    check('a program from the phone gets ".download" added (can\'t run by accident)', fs.existsSync(path.join(userDirs, 'downloads', 'Shadow', 'setup.exe.download')) && !fs.existsSync(path.join(userDirs, 'downloads', 'Shadow', 'setup.exe')) && sentTo(222).pop().text.includes('.download'));
+    tgFiles.f3 = { path: 'photos/file_3.jpg', bytes: Buffer.from('\xff\xd8 fake jpeg', 'latin1') };
+    fileMsg({ photo: [{ file_id: 'small', file_size: 3 }, { file_id: 'f3', file_size: 13 }] }, 'desktop');
+    await waitSent(222, ++nSent);
+    const deskFiles = fs.readdirSync(path.join(userDirs, 'desktop'));
+    check('a photo with caption "desktop" lands on the Desktop (largest size)', deskFiles.length === 1 && /^photo-\d{8}-\d{6}\.jpg$/.test(deskFiles[0]), deskFiles.join());
+    tgFiles.f4 = { path: 'documents/../../etc/passwd', bytes: Buffer.from('nope') };
+    fileMsg({ document: { file_id: 'f4', file_name: 'x.txt', file_size: 4 } });
+    await waitSent(222, ++nSent);
+    check('a weird file path from Telegram is refused', sentTo(222).pop().text.startsWith("Couldn't download"));
+    fileMsg({ document: { file_id: 'big', file_name: 'movie.mkv', file_size: 25 * 1024 * 1024 } });
+    await waitSent(222, ++nSent);
+    check('files over 20 MB get a friendly "too big"', sentTo(222).pop().text.includes('20 MB'));
+    // PC -> phone
+    const docs = path.join(userDirs, 'documents');
+    fs.writeFileSync(path.join(docs, 'notes.pdf'), 'NOTES-CONTENT');
+    fs.writeFileSync(path.join(docs, 'chem notes.pdf'), 'chem');
+    fs.writeFileSync(path.join(docs, 'passwords.txt'), 'secret');
+    fs.mkdirSync(path.join(docs, 'School'), { recursive: true });
+    fs.writeFileSync(path.join(docs, 'School', 'report 2024.docx'), 'old report');
+    fs.writeFileSync(path.join(docs, 'School', 'report 2025.docx'), 'new report');
+    fs.utimesSync(path.join(docs, 'School', 'report 2024.docx'), new Date(Date.now() - 86400000), new Date(Date.now() - 86400000));
+    msg(222, 'send me notes.pdf');
+    await waitFor(() => tgSent.some((x) => x.document), 9000);
+    let docSent = tgSent.filter((x) => x.document).pop();
+    check('"send me notes.pdf" from the phone sends the file', docSent && docSent.chat === 222 && docSent.filename === 'notes.pdf' && docSent.content.includes('NOTES-CONTENT') && (docSent.text || '').startsWith("📤 Here's notes.pdf"), docSent && JSON.stringify({ f: docSent.filename, t: docSent.text }));
+    await waitFor(() => brain.bubble && brain.bubble.text.startsWith('📤 Sent notes.pdf'), 3000);
+    check('...and Shadow says so on the PC', brain.bubble && brain.bubble.text === '📤 Sent notes.pdf to your phone', brain.bubble && brain.bubble.text);
+    nSent = sentTo(222).length;
+    msg(222, 'send me the file report');
+    await waitSent(222, ++nSent);
+    const which = sentTo(222).pop().text;
+    check('two matches -> "which one?" (newest first)', which.startsWith('Which one, Prince? 1. report 2025.docx') && which.includes('2. report 2024.docx'), which);
+    msg(222, '2');
+    await waitFor(() => tgSent.filter((x) => x.document).length >= 2, 9000);
+    docSent = tgSent.filter((x) => x.document).pop();
+    check('...and "2" sends that one', docSent.filename === 'report 2024.docx', docSent.filename);
+    nSent = sentTo(222).length;
+    msg(222, 'send me passwords.txt');
+    await waitSent(222, ++nSent);
+    check('password/key files are never sent', sentTo(222).pop().text.includes('never send those') && tgSent.filter((x) => x.document).length === 2);
+    const pcSend = await ctx.handleMessage('send notes.pdf to my phone', []);
+    docSent = tgSent.filter((x) => x.document).pop();
+    check('"send notes.pdf to my phone" typed on the PC goes to the phone', pcSend.text === '📤 Sent notes.pdf to your phone ✓' && tgSent.filter((x) => x.document).length === 3 && docSent.filename === 'notes.pdf', pcSend.text);
+    settings.update({ phoneFiles: false });
+    nSent = sentTo(222).length;
+    fileMsg({ document: { file_id: 'f1', file_name: 'again.pdf', file_size: 22 } });
+    await waitSent(222, ++nSent);
+    check('Settings → Phone can switch file transfer off', sentTo(222).pop().text.includes('switched off') && !fs.existsSync(path.join(userDirs, 'downloads', 'Shadow', 'again.pdf')));
+    settings.update({ phoneFiles: true });
+    quiet();
+    brain.rest(60000);
+
     h.openSettings();
     const sw10 = await waitFor(() => require('./windows').getSettingsWindow(), 3000);
     await waitFor(() => js('document.getElementById("tgStatus").textContent.length > 0', sw10.webContents), 3000);
@@ -1536,6 +1663,254 @@ async function run(ctx, h) {
     check('switching it off stops listening', tg.info().state === 'off' && !tg.running);
     settings.update({ telegramToken: '' });
     await new Promise((r) => fakeTg.close(r));
+
+    section('Round 3: Spotify, startup routine, exam planner, mini-games (all faked)');
+    settings.update({ friendsMode: 'working', aiProvider: 'gemini', aiModel: '', aiBaseUrl: '', apiKeys: {}, musicService: 'youtube' });
+    const chat3 = h.openChatPanel();
+    await waitFor(() => chat3.isVisible(), 3000);
+    await waitFor(() => js('document.querySelectorAll(".msg.pet").length > 0', chat3.webContents), 3000);
+    const ask3 = (text) =>
+      js(`(async () => { const n = document.querySelectorAll('.msg.pet:not(.typing)').length; const i = document.getElementById('msg'); i.value = ${JSON.stringify(text)};
+        document.getElementById('composer').requestSubmit();
+        for (let k = 0; k < 200 && document.querySelectorAll('.msg.pet:not(.typing)').length <= n; k++) await new Promise(r => setTimeout(r, 50));
+        return [...document.querySelectorAll('.msg.pet:not(.typing)')][n].firstChild.textContent; })()`, chat3.webContents);
+    const lastPet = () => js(`[...document.querySelectorAll('.msg.pet:not(.typing)')].pop().textContent`, chat3.webContents);
+
+    // --- startup routine
+    let r3 = await ask3('add vs code, spotify and play lofi to my startup');
+    check('"add vs code, spotify and play lofi to my startup"', JSON.stringify(settings.get('startupRoutine')) === '["open vs code","open spotify","play lofi"]' && r3.startsWith('Added to your startup routine'), r3);
+    r3 = await ask3('add lock my pc to startup');
+    check('lock / sleep / screenshot can never be part of it', r3.includes('skipped: lock my pc') && settings.get('startupRoutine').length === 3, r3);
+    r3 = await ask3('show my startup routine');
+    check('"show my startup routine" lists the steps', r3 === '🌅 When your PC starts I: 1. open vs code · 2. open spotify · 3. play lofi', r3);
+    const launchedBefore = launched.length;
+    r3 = await ask3('run my startup routine');
+    check('"run my startup routine" opens the apps, then the music', launched.slice(launchedBefore).join() === 'App.2!VisualStudioCode,App.0!Spotify' && r3.startsWith('🌅 Startup routine done: vs code, spotify, 🎵 lofi'), r3);
+    quiet();
+    brain.rest(60000);
+    await ctx.runStartupRoutine('boot');
+    check('when Windows starts, Shadow says what he opened', brain.bubble && brain.bubble.text.startsWith('🌅 Startup routine done'), brain.bubble && brain.bubble.text);
+    r3 = await ask3('remove spotify from startup');
+    check('"remove spotify from startup"', r3 === 'Removed "open spotify" from your startup routine ✓' && settings.get('startupRoutine').length === 2, r3);
+    const loginArgs = ctx.realLoginItem.opts().args;
+    check('"Start with Windows" starts Shadow with --startup', loginArgs[loginArgs.length - 1] === '--startup');
+
+    // --- exam planner (Sage)
+    const examT0 = Date.now();
+    const fixed = new Date();
+    fixed.setHours(10, 0, 0, 0);
+    ctx.exams.clock = () => fixed.getTime() + (Date.now() - examT0);
+    const examDay = new Date(fixed.getTime() + 6 * 86400000);
+    const examStr = `${examDay.getDate()}/${examDay.getMonth() + 1}`;
+    settings.update({ examStudyTime: '23:30' }); // no study reminder yet
+    r3 = await ask3(`maths exam on ${examStr} chapters 1-4`);
+    const ex = ctx.exams.upcoming()[0];
+    check('"maths exam on <date> chapters 1-4" -> Sage makes a day-by-day plan', ex && ex.subject === 'Maths' && ex.plan.length === 6 && r3.includes('Sage made your plan: 6 study days for 4 topics') && r3.includes('Today: 📖 Chapter 1'), r3);
+    check('...new chapters first, then full revision + practice paper, light revision the day before', ex && ex.plan.map((d) => d.kind).join() === 'learn,learn,learn,learn,mock,light', ex && ex.plan.map((d) => d.kind).join());
+    check('...and Sage the owl comes to plan it', fr('sage').state !== 'away');
+    r3 = await ask3('what should i study today');
+    check('"what should I study today"', r3 === '📚 Maths exam (in 6 days): 📖 Chapter 1', r3);
+    check('"quiz me" on a study day covers today\'s chapters', ctx.exams.quizTopic() === 'Maths: Chapter 1');
+    check('the morning briefing counts down', ctx.tasks.briefing(Date.now(), null, [ctx.exams.briefingLine()]).includes('📚 Maths exam in 6 days: today Chapter 1.'));
+    chat3.hide();
+    quiet();
+    brain.rest(60000);
+    settings.update({ examStudyTime: '09:00' }); // study time has come
+    await waitFor(() => brain.state === 'reminder', 9000);
+    check('at study time: a STUDY TIME reminder with today\'s chapters', brain.activeReminder && brain.activeReminder.kind === 'exam' && brain.bubble.text.includes("today: Chapter 1") && brain.activeReminder.head === 'STUDY TIME', brain.bubble && brain.bubble.text);
+    brain.dismissReminder();
+    await waitFor(() => !brain.activeReminder, 4000);
+    await sleep(1500);
+    check('...only once a day', !brain.activeReminder);
+    chat3.show();
+    r3 = await ask3('done studying');
+    check('"done studying" ticks the day off', r3.startsWith('✓ Nice work, Prince! 1/6 study days done'), r3);
+    r3 = await ask3('exam plan');
+    check('"exam plan" shows the days ahead', r3.startsWith('📅 Maths exam') && r3.includes('Today: 📖 Chapter 1 ✓') && r3.includes('📝 Practice paper'), r3);
+    r3 = await ask3('cancel my maths exam');
+    check('"cancel my maths exam"', r3.startsWith('Removed your Maths exam') && !ctx.exams.upcoming().length, r3);
+    r3 = await ask3('write a unit test for my code');
+    check('"…test for my code" is not mistaken for an exam', !r3.startsWith('📅') && !r3.startsWith('When is it'), r3);
+    settings.update({ examStudyTime: '18:00' });
+
+    // --- quiz race vs Sage
+    let qi = 0;
+    ctx.race.rng = () => ((qi = (qi * 9301 + 49297) % 233280) / 233280);
+    ctx.race.sageMs = () => 1800;
+    r3 = await ask3('quiz race');
+    check('"quiz race" starts a maths race against Sage', r3.startsWith('🏁 Quiz race vs Sage - mental maths!') && r3.includes('Q1/5: '), r3);
+    const ans = () => ctx.race.race.questions[ctx.race.race.i].answers[0];
+    r3 = await ask3('999999');
+    check('a wrong answer -> try again', r3.startsWith('❌ Not quite'), r3);
+    r3 = await ask3(ans());
+    check('the right answer first wins the point', r3.startsWith('✅') && r3.includes('Prince 1 – 0 Sage') && r3.includes('Q2/5'), r3);
+    await waitFor(async () => (await lastPet()).startsWith('🦉 Sage buzzes in'), 5000);
+    const buzz = await lastPet();
+    check('too slow -> Sage buzzes in (pushed into the chat)', buzz.includes('Prince 1 – 1 Sage') && buzz.includes('Q3/5'), buzz);
+    for (let k = 0; k < 2; k++) await ask3(ans());
+    r3 = await ask3(ans());
+    check('after 5 questions: the winner', r3.includes('🏆 You beat Sage 4–1!'), r3);
+    check('...and the result is saved', ctx.scores.data.raceWins === 1);
+    r3 = await ask3('quiz race');
+    r3 = await ask3('stop the race');
+    check('"stop the race"', r3.startsWith('Race stopped at 0–0'), r3);
+
+    // --- catch the treat
+    const { BrowserWindow } = require('electron');
+    ctx.catchGame.durationMs = 5000;
+    chat3.hide();
+    quiet();
+    brain.rest(60000);
+    const wa3 = pet.display().workArea;
+    fake.cursor = { x: wa3.x + 300, y: wa3.y + wa3.height - 50 };
+    const cg = await ctx.handleMessage('catch the treat', []);
+    check('"catch the treat" starts the game', cg.text.startsWith('🎮 Catch the treat!') && brain.state === 'game' && ctx.catchGame.running(), cg.text);
+    const layer = await waitFor(() => BrowserWindow.getAllWindows().find((w) => w.getTitle() === 'Catch the treat' && w.isVisible()), 4000);
+    check('treats fall in a see-through layer that never takes focus', layer && !layer.isFocusable() && layer.isAlwaysOnTop());
+    await waitFor(() => Math.abs(pet.center().x - (wa3.x + 300)) < 8, 3000);
+    check('Shadow runs after the mouse along the floor', Math.abs(pet.center().x - (wa3.x + 300)) < 8 && brain.onFloor(), `x=${pet.center().x}`);
+    ctx.catchGame.spawn({ x: pet.center().x, kind: 'steak', y: pet.pos.y - 60, vy: 300 });
+    await waitFor(() => ctx.catchGame.game && ctx.catchGame.game.score === 3, 3000);
+    check('catching a 🥩 = +3', ctx.catchGame.game && ctx.catchGame.game.score === 3);
+    ctx.catchGame.spawn({ x: pet.center().x, kind: 'broccoli', y: pet.pos.y - 60, vy: 300 });
+    await waitFor(() => ctx.catchGame.game && ctx.catchGame.game.score === 1, 3000);
+    check('catching a 🥦 = -2 (yuck)', ctx.catchGame.game && ctx.catchGame.game.score === 1);
+    const drawn = layer && (await js('window.__gameTest.last()', layer.webContents));
+    check('the layer draws the treats and the score', drawn && drawn.score === 1 && Array.isArray(drawn.treats));
+    await shot('catch-the-treat', layer.webContents);
+    brain.click();
+    check('clicks don\'t break the game', brain.state === 'game');
+    await waitFor(() => !ctx.catchGame.running(), 7000);
+    check('time up -> score + new best, layer gone', brain.bubble && /Time's up! \d+ points?/.test(brain.bubble.text) && brain.bubble.text.includes('NEW BEST') && (!layer || layer.isDestroyed()), brain.bubble && brain.bubble.text);
+    const hs = await ctx.handleMessage('my high scores', []);
+    check('"my high scores"', hs.text.startsWith(`🏆 Catch the treat best: ${ctx.scores.data.catchBest} (1 game)`) && hs.text.includes('1 won'), hs.text);
+    await waitFor(() => brain.state !== 'happy', 5000);
+    ctx.handleMessage('catch the treat', []);
+    await waitFor(() => brain.state === 'game', 2000);
+    brain.reminder({ time: '', message: 'Game interrupt test' });
+    await waitFor(() => !ctx.catchGame.running(), 3000);
+    check('a reminder pauses the game', !ctx.catchGame.running() && !brain.gaming);
+    await waitFor(() => brain.state === 'reminder', 9000);
+    brain.dismissReminder();
+    await waitFor(() => !brain.activeReminder, 4000);
+    const ph3 = await ctx.handleMessage('catch the treat', [], 'phone');
+    check('from the phone: catch the treat needs the mouse (suggests quiz race)', ph3.text.includes('mouse on your PC') && !ctx.catchGame.running(), ph3.text);
+    fake.cursor = { x: -99999, y: -99999 };
+
+    // --- Spotify (fake Spotify accounts + Web API)
+    const spPlayed = [];
+    const spCalls = [];
+    let spPremium = true;
+    let spDevices = [{ id: 'pc1', name: 'PRINCE-LAPTOP', type: 'Computer', is_active: false }];
+    const fakeSp = http.createServer((req, res) => {
+      const chunks = [];
+      req.on('data', (d) => chunks.push(d));
+      req.on('end', () => {
+        const body = Buffer.concat(chunks).toString();
+        const u = new URL(req.url, 'http://x');
+        const send = (code, obj) => {
+          res.writeHead(code, { 'Content-Type': 'application/json' });
+          res.end(obj === undefined ? '' : JSON.stringify(obj));
+        };
+        spCalls.push(`${req.method} ${u.pathname}`);
+        if (u.pathname === '/api/token') {
+          const f = new URLSearchParams(body);
+          if (f.get('grant_type') === 'authorization_code' && f.get('code') === 'GOODCODE' && f.get('code_verifier') && f.get('client_id') === '0123456789abcdef0123456789abcdef') {
+            return send(200, { access_token: 'AT1', refresh_token: 'RT-abcdefghijklmnopqrstuvwxyz', expires_in: 3600 });
+          }
+          if (f.get('grant_type') === 'refresh_token' && f.get('refresh_token') === 'RT-abcdefghijklmnopqrstuvwxyz') return send(200, { access_token: 'AT2', expires_in: 3600 });
+          return send(400, { error: 'invalid_grant' });
+        }
+        if (!['Bearer AT1', 'Bearer AT2'].includes(req.headers.authorization)) return send(401, { error: { status: 401 } });
+        if (u.pathname === '/v1/me') return send(200, { display_name: 'Prince', product: spPremium ? 'premium' : 'free' });
+        if (u.pathname === '/v1/search') {
+          if (u.searchParams.get('type') === 'track') return send(200, { tracks: { items: [{ uri: 'spotify:track:4cOdK2wGLETKBW3PvgPWqT', name: 'Kesariya', artists: [{ name: 'Arijit Singh' }, { name: 'Pritam' }] }] } });
+          return send(200, { playlists: { items: [null, { uri: 'spotify:playlist:37i9dQZF1DWWQRwui0ExPn', name: 'lofi beats' }] } });
+        }
+        if (u.pathname === '/v1/me/player/devices') return send(200, { devices: spDevices });
+        if (u.pathname === '/v1/me/player/play') {
+          spPlayed.push({ device: u.searchParams.get('device_id'), body: JSON.parse(body || '{}') });
+          return spPremium ? send(204) : send(403, { error: { status: 403, message: 'Player command failed: Premium required', reason: 'PREMIUM_REQUIRED' } });
+        }
+        send(404, {});
+      });
+    });
+    await new Promise((r) => fakeSp.listen(0, '127.0.0.1', r));
+    const spBase = `http://127.0.0.1:${fakeSp.address().port}`;
+    Object.assign(ctx.spotify, { accountsBase: spBase, apiBase: `${spBase}/v1`, port: 18971, deviceWaitMs: 3000 });
+    h.openSettings();
+    const swSp = await waitFor(() => require('./windows').getSettingsWindow(), 3000);
+    await waitFor(() => js('!!document.getElementById("spotifyClientId")', swSp.webContents), 3000);
+    await js(`(() => { const r = document.querySelector('input[name="musicService"][value="spotify"]'); r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); })()`, swSp.webContents);
+    const spBox = await js(`!document.getElementById('spotifyBox').classList.contains('hidden') && document.getElementById('spRedirect').textContent`, swSp.webContents);
+    check('Settings → Music → SPOTIFY shows the 3 setup steps with the exact Redirect URI', spBox === 'http://127.0.0.1:18971/callback', String(spBox));
+    const openedBefore = opened2.length;
+    await js(`document.getElementById('spotifyClientId').value = '0123456789abcdef0123456789abcdef'; document.getElementById('connectSp').click()`, swSp.webContents);
+    const authUrl = await waitFor(() => opened2.slice(openedBefore).find((u) => u.startsWith(`${spBase}/authorize?`)), 4000);
+    const aq = authUrl ? new URL(authUrl).searchParams : new URLSearchParams();
+    check('CONNECT opens Spotify\'s own login page (PKCE, no secret)', authUrl && aq.get('code_challenge_method') === 'S256' && aq.get('code_challenge') && aq.get('redirect_uri') === 'http://127.0.0.1:18971/callback' && aq.get('scope').includes('user-modify-playback-state'));
+    const cbPage = await new Promise((resolve) => http.get(`http://127.0.0.1:18971/callback?code=GOODCODE&state=${encodeURIComponent(aq.get('state'))}`, (res) => {
+      let t = '';
+      res.on('data', (d) => (t += d));
+      res.on('end', () => resolve(t));
+    }).on('error', () => resolve('')));
+    check('...the browser lands on "Connected!"', cbPage.includes('Connected!'));
+    await waitFor(() => js(`document.getElementById('spResult').textContent.startsWith('✓')`, swSp.webContents), 5000);
+    const spStatus = await js(`document.getElementById('spStatus').textContent`, swSp.webContents);
+    check('Spotify connected (Premium) and songs now play there', settings.get('spotifyRefreshToken') && settings.get('musicService') === 'spotify' && spStatus.startsWith('✓ Connected as Prince · Premium'), spStatus);
+    const payload = await js('window.settingsApi.load()', swSp.webContents);
+    check('the Spotify login token never reaches the Settings page', !JSON.stringify(payload).includes('RT-abcdefghijklmnopqrstuvwxyz'));
+    await js("document.querySelector('.music').scrollIntoView()", swSp.webContents);
+    await sleep(300);
+    await shot('settings-music-spotify', swSp.webContents);
+    player.on = true;
+    player.status = 'Playing';
+    player.app = 'chrome.exe';
+    mediaCalls.length = 0;
+    let sp3 = await ctx.handleMessage('play kesariya', []);
+    check('"play kesariya" starts it on Spotify (Premium)', sp3.text === '▶️ Playing "Kesariya – Arijit Singh, Pritam" on Spotify (PRINCE-LAPTOP) 🎧' && spPlayed.pop().body.uris[0] === 'spotify:track:4cOdK2wGLETKBW3PvgPWqT', sp3.text);
+    check('...after pausing the YouTube video that was playing', mediaCalls.includes('pause'));
+    player.on = false;
+    sp3 = await ctx.handleMessage('play something chill', []);
+    check('"play something chill" starts a chill playlist on Spotify', spPlayed.pop().body.context_uri === 'spotify:playlist:37i9dQZF1DWWQRwui0ExPn' && sp3.text.includes('lofi beats'), sp3.text);
+    ctx.spotify.access.expiresAt = 0;
+    spDevices = [];
+    const realStub = ctx.stubOpenExternal;
+    ctx.stubOpenExternal = (u) => {
+      realStub(u);
+      if (u === 'spotify:') setTimeout(() => (spDevices = [{ id: 'pc1', name: 'PRINCE-LAPTOP', type: 'Computer', is_active: false }]), 500);
+    };
+    sp3 = await ctx.handleMessage('play kesariya', []);
+    check('Spotify closed -> Shadow opens it, waits, then plays', opened2.includes('spotify:') && sp3.text.startsWith('▶️ Playing "Kesariya') && spPlayed.length === 1, sp3.text);
+    check('...and refreshes the login by itself when it runs out', spCalls.filter((c) => c === 'POST /api/token').length === 2);
+    ctx.stubOpenExternal = realStub;
+    spPremium = false;
+    sp3 = await ctx.handleMessage('play kesariya', []);
+    check('Spotify Free: opens the exact song and says why it can\'t press play', opened2.pop() === 'spotify:track:4cOdK2wGLETKBW3PvgPWqT' && sp3.text.startsWith('🎧 Opened "Kesariya') && sp3.text.includes('Premium') && settings.get('spotifyProduct') === 'free', sp3.text);
+    await js(`document.getElementById('disconnectSp').click()`, swSp.webContents);
+    await waitFor(() => !settings.get('spotifyRefreshToken'), 3000);
+    check('DISCONNECT forgets the login (back to YouTube)', !settings.get('spotifyRefreshToken') && settings.get('musicService') === 'youtube');
+    swSp.close();
+    await waitFor(() => swSp.isDestroyed(), 3000); // reopening too soon would talk to the closing window
+    fakeSp.close();
+
+    // --- the new Settings sections
+    h.openSettings();
+    const swSt = await waitFor(() => require('./windows').getSettingsWindow(), 3000);
+    await waitFor(() => js('document.getElementById("startupList").children.length > 0', swSt.webContents), 3000);
+    const st4 = await js(`[...document.querySelectorAll('#startupList li span')].map(e => e.textContent).join('|')`, swSt.webContents);
+    check('Settings → Startup routine lists the steps', st4 === '1. open vs code|2. play lofi', st4);
+    await js(`document.getElementById('startupAdd').value = 'downloads'; document.getElementById('startupAddBtn').click()`, swSt.webContents);
+    await waitFor(() => settings.get('startupRoutine').includes('open downloads'), 3000);
+    check('...and ADD adds one', settings.get('startupRoutine').join() === 'open vs code,play lofi,open downloads');
+    await js("document.querySelector('.startup').scrollIntoView()", swSt.webContents);
+    await sleep(300);
+    await shot('settings-startup-exams', swSt.webContents);
+    swSt.close();
+    settings.update({ startupRoutine: [] });
+    chat3.close();
+    quiet();
+    brain.rest(60000);
 
     section('Morning briefing & to-do nudges');
     quiet();

@@ -100,6 +100,57 @@ function openSettings() {
 }
 
 const getChatWindow = () => (chatWin && !chatWin.isDestroyed() ? chatWin : null);
+
+/**
+ * The see-through layer the "catch the treat" treats fall in (games.js). Covers the work area,
+ * ignores the mouse completely (clicks go through) and never takes focus.
+ */
+function openGameLayer(wa, pet) {
+  const win = new BrowserWindow({
+    x: wa.x,
+    y: wa.y,
+    width: wa.width,
+    height: wa.height,
+    show: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    frame: false,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    focusable: false,
+    alwaysOnTop: true,
+    title: 'Catch the treat',
+    webPreferences: {
+      preload: path.join(PRELOAD, 'game.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      spellcheck: false,
+      backgroundThrottling: false,
+    },
+  });
+  lockDown(win);
+  win.setIgnoreMouseEvents(true);
+  win.setAlwaysOnTop(true, 'screen-saver');
+  let ready = false;
+  win.loadFile(path.join(RENDERER, 'game', 'index.html'));
+  win.webContents.once('did-finish-load', () => {
+    ready = true;
+    if (win.isDestroyed()) return;
+    win.showInactive();
+    if (pet && pet.alive()) pet.win.moveTop(); // Shadow stays in front of the treats
+  });
+  return {
+    win,
+    send: (state) => ready && !win.isDestroyed() && win.webContents.send('game:state', state),
+    close: () => !win.isDestroyed() && win.destroy(),
+  };
+}
 const getSettingsWindow = () => (settingsWin && !settingsWin.isDestroyed() ? settingsWin : null);
 
-module.exports = { openChat, openSettings, getChatWindow, getSettingsWindow, lockDown };
+module.exports = { openChat, openSettings, getChatWindow, getSettingsWindow, lockDown, openGameLayer };

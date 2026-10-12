@@ -17,4 +17,10 @@ contextBridge.exposeInMainWorld('settingsApi', {
   checkUpdate: () => ipcRenderer.invoke('update:check'),
   updateStatus: () => ipcRenderer.invoke('update:status'),
   installUpdate: () => ipcRenderer.invoke('update:install'),
+  spotifyInfo: () => ipcRenderer.invoke('spotify:info'),
+  connectSpotify: (clientId) => ipcRenderer.invoke('spotify:connect', String(clientId)),
+  disconnectSpotify: () => ipcRenderer.invoke('spotify:disconnect'),
+  startupEdit: (cmd) => ipcRenderer.invoke('startup:edit', cmd),
+  startupRun: () => ipcRenderer.invoke('startup:run'),
+  removeExam: (id) => ipcRenderer.invoke('exams:remove', String(id)),
 });

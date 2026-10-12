@@ -27,6 +27,15 @@ const DEFAULTS = Object.freeze({
   webSearch: true, // chat may look things up (Tavily with searchKey, otherwise Wikipedia)
   pcControl: true, // chat may open apps/folders/settings and lock/sleep/screenshot/volume (apps.js)
   pcCare: true, // Zen warns about battery, storage, RAM/CPU and internet (care.js)
+  musicService: 'youtube', // where "play <song>" plays: youtube | ytmusic | spotify (music.js)
+  spotifyClientId: '', // your own free app at developer.spotify.com (spotify.js)
+  spotifyRefreshToken: '', // kept after you log in to Spotify (a password - stays on this PC)
+  spotifyUser: '', // display name, for Settings
+  spotifyProduct: '', // premium | free ('' = not connected)
+  startupRoutine: [], // "open spotify", "play lofi", ... run when Windows starts (startup.js)
+  startupOnWake: true, // ...and when the PC wakes up after sleeping 4+ hours
+  phoneFiles: true, // Telegram: phone -> PC files, and "send me notes.pdf" (files.js)
+  examStudyTime: '18:00', // daily study reminder for the exam planner (exams.js)
   telegramEnabled: false, // control Shadow from your phone (telegram.js)
   telegramToken: '', // your bot's token from @BotFather (a password - stays on this PC)
   telegramChatId: 0, // the paired Telegram chat (only this one is listened to)
@@ -82,6 +91,17 @@ function validate(raw) {
     webSearch: s.webSearch === undefined ? DEFAULTS.webSearch : Boolean(s.webSearch),
     pcControl: s.pcControl === undefined ? DEFAULTS.pcControl : Boolean(s.pcControl),
     pcCare: s.pcCare === undefined ? DEFAULTS.pcCare : Boolean(s.pcCare),
+    musicService: ['youtube', 'ytmusic', 'spotify'].includes(s.musicService) ? s.musicService : DEFAULTS.musicService,
+    spotifyClientId: typeof s.spotifyClientId === 'string' && /^[0-9a-f]{32}$/i.test(s.spotifyClientId.trim()) ? s.spotifyClientId.trim() : '',
+    spotifyRefreshToken: typeof s.spotifyRefreshToken === 'string' && /^[\w.~+/=-]{20,2000}$/.test(s.spotifyRefreshToken) ? s.spotifyRefreshToken : '',
+    spotifyUser: typeof s.spotifyUser === 'string' ? s.spotifyUser.slice(0, 60) : '',
+    spotifyProduct: ['premium', 'free'].includes(s.spotifyProduct) ? s.spotifyProduct : '',
+    startupRoutine: Array.isArray(s.startupRoutine)
+      ? s.startupRoutine.filter((x) => typeof x === 'string' && /^(?:open|play) \S/.test(x) && x.length <= 90).slice(0, 10)
+      : [],
+    startupOnWake: s.startupOnWake === undefined ? DEFAULTS.startupOnWake : Boolean(s.startupOnWake),
+    phoneFiles: s.phoneFiles === undefined ? DEFAULTS.phoneFiles : Boolean(s.phoneFiles),
+    examStudyTime: typeof s.examStudyTime === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(s.examStudyTime) ? s.examStudyTime : DEFAULTS.examStudyTime,
     telegramEnabled: Boolean(s.telegramEnabled),
     telegramToken: typeof s.telegramToken === 'string' && /^\d{5,15}:[A-Za-z0-9_-]{30,60}$/.test(s.telegramToken.trim()) ? s.telegramToken.trim() : '',
     telegramChatId: Number.isSafeInteger(Number(s.telegramChatId)) ? Number(s.telegramChatId) : 0,

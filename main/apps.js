@@ -157,7 +157,7 @@ function parsePcCommand(input) {
   if (/^(?:lock|lock (?:my |the )?(?:pc|computer|laptop|screen|system))$/.test(l)) return { type: 'system', action: 'lock' };
   if (/^(?:sleep|put (?:my |the )?(?:pc|computer|laptop|system) to sleep|sleep (?:my |the )?(?:pc|computer|laptop|system)|(?:pc|computer|laptop) sleep)$/.test(l)) return { type: 'system', action: 'sleep' };
   if (/^(?:cancel|stop|don'?t|no|wait)(?: sleep| it| that)?$/.test(l)) return { type: 'cancel' };
-  if (/^(?:take (?:a )?)?(?:screenshot|screen ?shot|ss)(?: of (?:my |the )?screen)?$|^capture (?:my |the )?screen$/.test(l)) return { type: 'system', action: 'screenshot' };
+  if (/^(?:take (?:a )?|(?:send|give|show)(?: me)? (?:an? |the )?)?(?:screenshot|screen ?shot|ss)(?: of (?:my |the )?screen)?$|^capture (?:my |the )?screen$/.test(l)) return { type: 'system', action: 'screenshot' };
   if (/^(?:snip|snipping tool|screenshot (?:an? )?(?:area|part|region)|take a snip)$/.test(l)) return { type: 'system', action: 'snip' };
   if ((m = /^(?:turn (?:the )?)?volume (up|down)(?: a bit| more)?$|^(?:increase|raise) (?:the )?volume$|^(?:decrease|lower|reduce) (?:the )?volume$/.exec(l))) {
     return { type: 'system', action: m[1] === 'down' || /^(?:decrease|lower|reduce)/.test(l) ? 'volume-down' : 'volume-up' };

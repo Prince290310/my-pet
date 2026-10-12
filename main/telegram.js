@@ -10,6 +10,9 @@
  * "open spotify", "lock my pc", "take a screenshot" (the picture is sent back), "pc health",
  * "remind me at 6 to call mom", questions, searches, music...
  *
+ * Files: send the bot a photo / PDF / document / video / voice note and it lands in Downloads\Shadow;
+ * "send me notes.pdf" sends a file from the PC back (see files.js for the rules).
+ *
  * - Long polling (getUpdates): no server, no open ports - Shadow asks Telegram for new messages.
  * - Messages older than 10 minutes (PC was asleep/off) are NOT run - you get told instead.
  * - The bot token is a password: it stays in your settings file and is never logged.
@@ -24,6 +27,21 @@ const POLL_TIMEOUT_S = 50;
 const STALE_S = 10 * 60;
 const MAX_TEXT = 4000;
 const TOKEN_RE = /^\d{5,15}:[A-Za-z0-9_-]{30,60}$/;
+const MAX_DOWNLOAD = 20 * 1024 * 1024; // Telegram lets bots download files up to 20 MB
+
+/** The file in a message (document, photo, video, ...) -> { id, name, size } or null. */
+function fileOf(m, now = new Date()) {
+  const stamp = now.toISOString().slice(0, 19).replace(/[-:]/g, '').replace('T', '-');
+  const pick = (f, fallback) => f && { id: f.file_id, name: f.file_name || fallback, size: Number(f.file_size) || 0 };
+  if (m.document) return pick(m.document, `file-${stamp}`);
+  if (Array.isArray(m.photo) && m.photo.length) return pick(m.photo[m.photo.length - 1], `photo-${stamp}.jpg`); // largest size
+  if (m.video) return pick(m.video, `video-${stamp}.mp4`);
+  if (m.audio) return pick(m.audio, `audio-${stamp}.${/ogg/.test(m.audio.mime_type || '') ? 'ogg' : 'mp3'}`);
+  if (m.voice) return pick(m.voice, `voice-note-${stamp}.ogg`);
+  if (m.video_note) return pick(m.video_note, `video-note-${stamp}.mp4`);
+  if (m.animation) return pick(m.animation, `animation-${stamp}.mp4`);
+  return null;
+}
 
 const HELP = [
   "🐾 Shadow here! Text me like you'd chat on the PC. Some ideas:",
@@ -33,6 +51,7 @@ const HELP = [
   '• play something chill · next song · what\'s playing',
   '• remind me at 6 pm to call mom · todo: physics homework · show my list',
   '• call the gang · teach me photosynthesis · any question',
+  '• send me a photo/PDF/file → saved to Downloads\\Shadow on the PC · "send me notes.pdf" → I send it here',
   "Your PC has to be on with me running. Messages older than 10 minutes are skipped (I'll tell you).",
 ].join('\n');
 
@@ -40,12 +59,14 @@ class TelegramLink extends EventEmitter {
   /**
    * @param {object} o
    * @param {import('./settings').Settings} o.settings
-   * @param {(text: string) => Promise<{text: string, sources?: Array, photo?: string}>} o.handle
+   * @param {(text: string) => Promise<{text: string, sources?: Array, photo?: string, document?: string}>} o.handle
+   * @param {(f: {buffer: Buffer, name: string, caption: string}) => Promise<string>} [o.onFile]  a file from the phone -> reply
    */
-  constructor({ settings, handle, apiBase = 'https://api.telegram.org', fetchImpl, clock = () => Date.now() }) {
+  constructor({ settings, handle, onFile = null, apiBase = 'https://api.telegram.org', fetchImpl, clock = () => Date.now() }) {
     super();
     this.settings = settings;
     this.handle = handle;
+    this.onFile = onFile;
     this.apiBase = apiBase;
     this.fetch = fetchImpl || ((...a) => fetch(...a));
     this.clock = clock;
@@ -177,6 +198,48 @@ class TelegramLink extends EventEmitter {
     return this.api('sendPhoto', null, { form, timeoutMs: 60000 });
   }
 
+  async sendDocument(chatId, file, caption) {
+    const form = new FormData();
+    form.append('chat_id', String(chatId));
+    if (caption) form.append('caption', caption.slice(0, 1000));
+    form.append('document', new Blob([fs.readFileSync(file)]), path.basename(file));
+    return this.api('sendDocument', null, { form, timeoutMs: 5 * 60 * 1000 });
+  }
+
+  /** "send notes.pdf to my phone" typed on the PC: deliver it to the paired phone. */
+  async sendFileToOwner(file, caption) {
+    const owner = this.owner();
+    if (!owner || !this.running) return false;
+    await this.sendDocument(owner, file, caption);
+    return true;
+  }
+
+  /** A file arrived from the phone: download it (≤ 20 MB) and hand it to onFile. */
+  async receiveFile(chatId, m, f) {
+    if (!this.onFile) return this.send(chatId, "I can't take files right now 🐾");
+    const label = `"${f.name}"`;
+    if (f.size > MAX_DOWNLOAD) return this.send(chatId, `📦 ${label} is too big - Telegram only lets bots download files up to 20 MB. Try Google Drive for big ones.`);
+    this.api('sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => {});
+    let buffer;
+    try {
+      const info = await this.api('getFile', { file_id: f.id });
+      if (!info || !/^[\w./-]{1,300}$/.test(info.file_path || '') || info.file_path.includes('..')) throw new Error('Telegram gave no file');
+      const res = await this.fetch(`${this.apiBase}/file/bot${this.token()}/${info.file_path}`, { signal: AbortSignal.timeout(5 * 60 * 1000) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      buffer = Buffer.from(await res.arrayBuffer());
+      if (buffer.length > MAX_DOWNLOAD) throw new Error('too big');
+    } catch (err) {
+      return this.send(chatId, `Couldn't download ${label} (${err.message}). Send it again?`);
+    }
+    let reply;
+    try {
+      reply = await this.onFile({ buffer, name: f.name, caption: String(m.caption || '') });
+    } catch (err) {
+      reply = `Couldn't save ${label} (${err.message}).`;
+    }
+    return this.send(chatId, reply);
+  }
+
   async onUpdate(u) {
     const m = u.message;
     if (!m || !m.chat) return;
@@ -200,7 +263,10 @@ class TelegramLink extends EventEmitter {
     if (chatId !== owner) return; // strangers are ignored completely
 
     if (/^\/(start|help)\b/.test(text)) return this.send(chatId, HELP);
-    if (!text) return this.send(chatId, 'I can only read text messages for now 🐾');
+    // files are saved even if they waited while the PC was off - saving one is harmless
+    const file = fileOf(m, new Date(this.clock()));
+    if (file) return this.receiveFile(chatId, m, file);
+    if (!text) return this.send(chatId, 'I can only read text messages and files for now 🐾');
     const ageS = Math.floor(this.clock() / 1000) - Number(m.date || 0);
     if (ageS > STALE_S) {
       const mins = Math.round(ageS / 60);
@@ -222,6 +288,15 @@ class TelegramLink extends EventEmitter {
         return;
       } catch (err) {
         out += `\n(Couldn't send the picture: ${err.message})`;
+      }
+    }
+    if (r.document && fs.existsSync(r.document)) {
+      try {
+        await this.sendDocument(chatId, r.document, out);
+        this.emit('file-sent', path.basename(r.document));
+        return;
+      } catch (err) {
+        out = `Couldn't send ${path.basename(r.document)}: ${err.message}`;
       }
     }
     await this.send(chatId, out);
@@ -246,4 +321,4 @@ class TelegramLink extends EventEmitter {
   }
 }
 
-module.exports = { TelegramLink, TOKEN_RE, HELP };
+module.exports = { TelegramLink, TOKEN_RE, HELP, fileOf, MAX_DOWNLOAD };

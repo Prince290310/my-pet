@@ -406,7 +406,7 @@ class TaskStore extends EventEmitter {
   }
 
   /** One short bubble: today's calendar, open to-dos and today's reminders. */
-  briefing(now = this.clock(), events = null) {
+  briefing(now = this.clock(), events = null, extra = []) {
     const h = new Date(now).getHours();
     const hello = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
     const short = (s, n = 24) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
@@ -424,6 +424,7 @@ class TaskStore extends EventEmitter {
     if (open.length) parts.push(`📝 ${open.length} to-do${open.length === 1 ? '' : 's'} (top: ${short(open[0].text, 28)}).`);
     const remToday = this.pendingReminders().filter((r) => r.at < startOfDay(now) + DAY);
     if (remToday.length) parts.push(`⏰ ${remToday.length} reminder${remToday.length === 1 ? '' : 's'} today.`);
+    parts.push(...extra.filter(Boolean)); // e.g. the exam countdown (exams.js)
     if (parts.length === 1) parts.push('Nothing on your plate - aaj full chill 😎');
     return parts.join(' ');
   }

@@ -502,12 +502,30 @@ from the last 10 minutes are left alone.
 | --- | --- |
 | `play` · `pause` · `next song` · `previous song` | controls whatever is playing: Spotify, YouTube in the browser, VLC… |
 | `what's playing` | "🎵 Kesariya – Arijit Singh (Spotify)" |
-| `play something chill` (also study, gym, party, sad, happy, sleep, romantic, bollywood, punjabi, lofi) | opens a matching search in Spotify (if installed) or YouTube |
-| `play arijit singh` · `play lofi on youtube` | opens that search |
+| `play kesariya` · `play arijit singh` | **plays it**: the top YouTube result starts by itself (or on your Spotify, see below) |
+| `play something chill` (also study, gym, party, sad, happy, sleep, romantic, bollywood, punjabi, lofi) | plays a matching song / mix |
+| `play kesariya on youtube music` · `… on spotify` · `… on youtube` | plays it there this once |
 
-Music control uses Windows' own media controls (the same ones behind the volume pop-up), so it works with
-most players. Spotify can't be told to play one exact song without a Spotify developer login, so Tempo
-opens the search and you pick.
+**Settings → Music** chooses where songs play: **YouTube** (default), **YT Music** or **Spotify**. If something
+is already playing, Tempo pauses it first so two songs never play at once.
+
+#### Playing on your own Spotify
+Spotify only lets apps start songs through your Spotify account, so connect it once (about 3 minutes):
+1. **Settings → Music → SPOTIFY → OPEN SPOTIFY DEVELOPER**, log in with your Spotify account and click
+   **Create app** (any name, e.g. *Shadow*; any description).
+2. Under **Redirect URIs** add exactly `http://127.0.0.1:8971/callback`, tick **Web API**, save.
+3. Copy the app's **Client ID**, paste it into Settings and click **CONNECT SPOTIFY**. Approve on the
+   Spotify page that opens. Done - Settings shows "✓ Connected".
+
+- **Spotify Premium:** `play kesariya` finds the song and starts it in your Spotify app (Shadow opens
+  Spotify first if it's closed). Moods play a matching playlist.
+- **Spotify Free:** Spotify doesn't allow any app to press play on Free accounts. Shadow opens the exact
+  song in Spotify and you tap ▶ once. (Or switch Settings → Music to YouTube and it plays by itself.)
+- The login happens on Spotify's own page (PKCE, no secret, Shadow never sees your password). Only a
+  login token is kept in `%APPDATA%\Shadow\settings.json`. **DISCONNECT** forgets it.
+
+Play / pause / next use Windows' own media controls (the same ones behind the volume pop-up), so they
+work with Spotify, YouTube in the browser, VLC and most other players.
 
 ---
 
@@ -541,5 +559,82 @@ Text your own Telegram bot from anywhere, and Shadow does it on your PC: `open s
   2+ minutes, reminders and Zen's alerts (battery low, internet down…) also come to Telegram.
 - Shadow listens with Telegram's "long polling": no server, no open ports, nothing to configure on
   your router. Only one running Shadow can use a bot at a time.
+- **Files:** send the bot a photo, PDF, document, video or voice note and it's saved on the PC (see section 16).
 - Why not WhatsApp? WhatsApp has no free personal bot API. The official one needs a Meta business
   account and a separate number, and unofficial tools can get your number banned.
+
+---
+
+## 15. Startup routine
+
+When Windows starts, Shadow opens your usual apps, folders and sites, puts music on, and then gives
+your morning briefing.
+
+| Say | What happens |
+| --- | --- |
+| `add vs code, spotify and play lofi to my startup` | adds those steps |
+| `when my pc starts open chrome and downloads` | same thing, said differently |
+| `show my startup routine` · `remove spotify from startup` · `clear my startup routine` | look / change |
+| `run my startup routine` | runs it right now |
+
+Or use **Settings → Startup routine** (ADD / REMOVE / RUN IT NOW).
+
+- It runs by itself when **Start with Windows** is on (Settings → Behaviour). Shadow waits until you're
+  actually at the PC, opens apps one at a time (music last) and tells you what it opened.
+- **Also when the PC wakes up after sleeping 4+ hours** (on by default) - handy if you never shut down.
+- Only "open …" and "play …" steps are allowed. Lock, sleep, screenshots and the like can never be part
+  of it.
+
+---
+
+## 16. Files between your phone and the PC (Telegram)
+
+Needs the phone set up (section 14).
+
+- **Phone → PC:** send your bot a photo, PDF, document, video, audio or voice note. It's saved in
+  `Downloads\Shadow` and Shadow tells you on the PC. Add a caption of `desktop`, `documents` or
+  `pictures` to save it there instead. Up to 20 MB (Telegram's limit for bots).
+- **PC → phone:** text `send me notes.pdf`, `send me the file physics notes`, `send me my latest download`
+  or `send me the last screenshot`. If several files match, Shadow asks "which one?" - answer with the
+  number. Up to 50 MB. Typed in the chat panel on the PC, `send notes.pdf to my phone` works too.
+
+Safety:
+- Shadow **never opens or runs** files that arrive. Programs and scripts (`.exe`, `.bat`, `.ps1`, `.js`…)
+  get `.download` added to their name so a double-click can't run one by accident.
+- Files are only sent from **Downloads, Documents, Desktop and Pictures** (a few folders deep). Hidden
+  files are skipped and **password/key files** (`passwords.txt`, `.pem`, `.key`, `.kdbx`…) are never sent.
+- Only your paired Telegram account can do any of this. **Settings → Phone → Files** switches it off.
+
+---
+
+## 17. Exam planner (Sage)
+
+| Say | What happens |
+| --- | --- |
+| `maths exam on 20 nov chapters 1-8` | Sage makes a day-by-day revision plan |
+| `physics exam is on 5th december: optics, waves and heat` · `exam on 12/11 units 3 to 6` | other ways to say it |
+| `what should I study today` | today's chapters |
+| `quiz me` | Sage quizzes you on **today's** chapters (needs the AI brain) |
+| `done studying` | ticks today off |
+| `exam plan` · `my exams` · `cancel my maths exam` | look / change |
+
+- The plan: new chapters first (with revision days in between if there's time), then full revision and
+  a timed practice paper, and light revision + early sleep the day before. It starts about 3 days per
+  chapter before the exam, not months early.
+- Every day at the study time (**Settings → Exam planner**, default 6 PM) Shadow shows a STUDY TIME
+  reminder with today's chapters. The morning briefing counts down: "📚 Maths exam in 5 days".
+- Dates: `20 nov`, `nov 20`, `20/11` (day/month), `tomorrow`, `friday`, `in 10 days`.
+
+---
+
+## 18. Mini-games
+
+| Say | Game |
+| --- | --- |
+| `catch the treat` | Treats fall from the top of the screen and Shadow runs along the bottom after your mouse. 🐟 +1 · 🍗 +2 · 🥩 +3 · ⭐ +5 · 🥦 −2 (panthers hate broccoli). 45 seconds. The treats fall in a see-through layer, so your clicks still go to whatever is underneath. |
+| `quiz race` | 5 mental-maths questions in the chat. Type the answer before Sage buzzes in (about 7 seconds). Works offline. |
+| `quiz race on planets` | the same with questions on any topic (needs the AI brain) |
+| `stop the game` · `my high scores` | quit / your records |
+
+A reminder pauses the game. From the phone you can play `quiz race`. Best scores are kept in
+`%APPDATA%\Shadow\games.json`.

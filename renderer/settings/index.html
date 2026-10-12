@@ -62,6 +62,62 @@
         <label class="check"><input id="pcCare" type="checkbox" /><i></i>Zen warns me about low battery, full storage, RAM/CPU and internet</label>
       </section>
 
+      <section class="music">
+        <h2>Music</h2>
+        <div class="field">
+          <span>Songs play on</span>
+          <div class="seg seg-wide" role="radiogroup" aria-label="Songs play on">
+            <label><input type="radio" name="musicService" value="youtube" /><b>YOUTUBE</b></label>
+            <label><input type="radio" name="musicService" value="ytmusic" /><b>YT MUSIC</b></label>
+            <label><input type="radio" name="musicService" value="spotify" /><b>SPOTIFY</b></label>
+          </div>
+        </div>
+        <p class="note" id="musicHelp"></p>
+        <div id="spotifyBox" class="hidden">
+          <p class="note" id="spStatus"></p>
+          <ol class="steps note" id="spSteps">
+            <li>Click <b>OPEN SPOTIFY DEVELOPER</b>, log in with your Spotify account and click <b>Create app</b> (any name, e.g. Shadow).</li>
+            <li>Under <b>Redirect URIs</b> add exactly <b id="spRedirect">http://127.0.0.1:8971/callback</b>, tick <b>Web API</b> and save.</li>
+            <li>Copy the app's <b>Client ID</b>, paste it below and click <b>CONNECT SPOTIFY</b>, then approve on the Spotify page.</li>
+          </ol>
+          <button type="button" id="openSpDev" class="ghost">OPEN SPOTIFY DEVELOPER ↗</button>
+          <label class="field">
+            <span>Client ID</span>
+            <input id="spotifyClientId" spellcheck="false" maxlength="40" placeholder="32 letters and digits" />
+          </label>
+          <div class="inline">
+            <button type="button" id="connectSp" class="ghost">CONNECT SPOTIFY</button>
+            <button type="button" id="disconnectSp" class="ghost hidden">DISCONNECT</button>
+            <span id="spResult" class="test-result" role="status"></span>
+          </div>
+          <p class="note">Premium: Shadow starts songs by itself. Free: Spotify doesn't let any app press play, so Shadow opens the exact song and you tap play once.</p>
+        </div>
+      </section>
+
+      <section class="startup">
+        <h2>Startup routine</h2>
+        <p class="note">When Windows starts, Shadow opens these for you, then gives your briefing. Apps, folders, sites - or "play …" for music.</p>
+        <ul id="startupList" class="items"></ul>
+        <div class="inline">
+          <input id="startupAdd" maxlength="80" placeholder="vs code · downloads · youtube · play lofi" spellcheck="false" />
+          <button type="button" id="startupAddBtn" class="ghost">ADD</button>
+        </div>
+        <p class="note" id="startupMsg" role="status"></p>
+        <label class="check"><input id="startupOnWake" type="checkbox" /><i></i>Also when the PC wakes up after sleeping 4+ hours</label>
+        <button type="button" id="startupRun" class="ghost">RUN IT NOW</button>
+        <p class="note" id="startupLoginNote"></p>
+      </section>
+
+      <section class="exams">
+        <h2>Exam planner</h2>
+        <p class="note">Tell Sage in the chat: <b>"maths exam on 20 nov chapters 1-8"</b>. He makes a day-by-day plan, reminds you every day and quizzes you on that day's chapters.</p>
+        <label class="field">
+          <span>Daily study reminder at</span>
+          <input id="examStudyTime" type="time" required />
+        </label>
+        <ul id="examList" class="items"></ul>
+      </section>
+
       <section class="friends">
         <h2>Friends</h2>
         <p class="note">Shadow's gang - each one has a job and shows up to do it.</p>
@@ -100,6 +156,7 @@
         </div>
         <label class="check"><input id="telegramEnabled" type="checkbox" /><i></i>Let me control Shadow from Telegram</label>
         <label class="check"><input id="telegramNotify" type="checkbox" /><i></i>Send reminders and PC alerts to my phone when I'm away from the PC</label>
+        <label class="check"><input id="phoneFiles" type="checkbox" /><i></i>Files: photos/PDFs I send land in Downloads\Shadow, and "send me notes.pdf" sends files from Downloads, Documents, Desktop &amp; Pictures</label>
         <p class="note" id="tgStatus"></p>
         <div class="inline">
           <button type="button" id="pairTg" class="ghost hidden">PAIR MY PHONE ↗</button>

@@ -3,7 +3,7 @@
  * brain.js - Shadow's behaviour state machine (runs in the main process).
  *
  * States: idle | walk | sit | groom | stretch | pounce | fall | talk | happy |
- *         sleep | waking | drag | reminder | hidden
+ *         sleep | waking | drag | reminder | hidden | game
  *
  * The brain decides what to do, moves the window, and tells the renderer which animation
  * to play / what to say through events:
@@ -56,6 +56,7 @@ class Brain extends EventEmitter {
     this.reminderClosing = false;
     this.bubble = null;
     this.sleepInfo = null;
+    this.gaming = false; // catch the treat (games.js) is steering
   }
 
   // ------------------------------------------------------------------ plumbing
@@ -158,7 +159,7 @@ class Brain extends EventEmitter {
     return this.pet.S / 2 + 70;
   }
   busy() {
-    return !!(this.activeReminder || this.chatOpen || this.dragging);
+    return !!(this.activeReminder || this.chatOpen || this.dragging || this.gaming);
   }
 
   // ------------------------------------------------------------------ lifecycle
@@ -429,7 +430,7 @@ class Brain extends EventEmitter {
 
   // ------------------------------------------------------------------ interactions
   click() {
-    if (this.dragging || this.state === 'hidden') return;
+    if (this.dragging || this.gaming || this.state === 'hidden') return;
     if (this.activeReminder) return this.dismissReminder();
     if (this.state === 'sleep') return this.wake('click');
     this.interrupt();
@@ -437,7 +438,7 @@ class Brain extends EventEmitter {
   }
 
   dblclick() {
-    if (this.dragging || this.state === 'hidden') return;
+    if (this.dragging || this.gaming || this.state === 'hidden') return;
     if (this.activeReminder) return this.dismissReminder();
     if (this.state === 'sleep') return this.wake('click');
     this.interrupt();
@@ -492,6 +493,46 @@ class Brain extends EventEmitter {
     this.setState('sit');
     this.play('sit');
     if (!this.chatOpen) this.after(rand(6000, 15000), () => this.decide());
+  }
+
+  // ------------------------------------------------------------------ mini-game (games.js)
+  startGame() {
+    this.interrupt();
+    this.hideBubble();
+    this.sleepInfo = null;
+    this.gaming = true;
+    this.setState('game');
+    if (!this.onFloor()) this.pet.moveTo(this.pos.x, this.floorY());
+    this.play('alert');
+    this.gameAnim = 'alert';
+  }
+
+  /** Run along the floor towards x (the mouse), fast but not instantly. */
+  gameMove(targetX, dt) {
+    if (!this.gaming || this.state !== 'game') return;
+    const [minX, maxX] = this.pet.xRange(this.display());
+    const tx = clamp(targetX, minX, maxX);
+    const dx = tx - this.pos.x;
+    const step = 900 * dt; // px per second
+    const moving = Math.abs(dx) > 3;
+    const nx = moving ? this.pos.x + clamp(dx, -step, step) : this.pos.x;
+    this.pet.moveTo(nx, this.floorY());
+    const anim = moving ? (dx > 0 ? 'walk_right' : 'walk_left') : 'alert';
+    if (anim !== this.gameAnim) {
+      this.gameAnim = anim;
+      this.facing = dx > 0 ? 'right' : dx < 0 ? 'left' : this.facing;
+      this.play(anim, { fps: moving ? 12 : undefined });
+    }
+  }
+
+  endGame(line) {
+    if (!this.gaming) return;
+    this.gaming = false;
+    if (this.state !== 'game') return; // a reminder, drag or Tuck Away took over
+    this.setState('happy');
+    this.play('happy');
+    const ms = line ? this.say(line, { ms: 6000 }) : 0;
+    this.after(Math.max(3000, ms), () => (this.chatOpen ? this.chatIdle() : this.rest()));
   }
 
   // ------------------------------------------------------------------ tuck away / wake
@@ -607,7 +648,7 @@ class Brain extends EventEmitter {
   // ------------------------------------------------------------------ chat panel
   chatOpened() {
     this.chatOpen = true;
-    if (this.activeReminder || this.state === 'hidden') return;
+    if (this.activeReminder || this.gaming || this.state === 'hidden') return;
     this.interrupt();
     if (this.state === 'sleep') this.sleepInfo = null;
     this.chatIdle();
@@ -625,7 +666,7 @@ class Brain extends EventEmitter {
   }
 
   chatReply(text) {
-    if (this.activeReminder || this.state === 'hidden' || this.dragging) return;
+    if (this.activeReminder || this.gaming || this.state === 'hidden' || this.dragging) return;
     this.interrupt();
     this.talkThen(text, () => (this.chatOpen ? this.chatIdle() : this.decide()));
   }

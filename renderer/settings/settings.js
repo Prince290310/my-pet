@@ -133,8 +133,10 @@ function showFriends(list, s) {
     })
   );
 }
+let spotifyInfo = null;
 form.addEventListener('change', (e) => {
   if (e.target.name === 'friendsMode') $('friendsModeHelp').textContent = MODE_HELP[e.target.value];
+  if (e.target.name === 'musicService') showMusic(e.target.value, spotifyInfo);
 });
 
 let tgPoll = null;
@@ -159,7 +161,81 @@ function showTelegram(t) {
   if (['connecting', 'waiting-pair'].includes(t.state)) tgPoll = setTimeout(async () => showTelegram(await window.settingsApi.telegramInfo()), 1500);
 }
 
-function fill({ settings: s, providers: list, startWithWindows, configDir, calendar, update, friends, telegram }) {
+const MUSIC_HELP = {
+  youtube: 'Say "play kesariya" or "play something chill" and the top YouTube video starts playing.',
+  ytmusic: 'Songs open in YouTube Music and start playing.',
+  spotify: 'Songs play on your Spotify. Connect your account once below.',
+};
+function showMusic(service, sp) {
+  form.querySelectorAll('input[name="musicService"]').forEach((r) => (r.checked = r.value === service));
+  $('musicHelp').textContent = MUSIC_HELP[service] || '';
+  $('spotifyBox').classList.toggle('hidden', service !== 'spotify' && !(sp && sp.connected));
+  if (!sp) return;
+  const st = $('spStatus');
+  st.classList.remove('bad');
+  st.textContent = sp.connected
+    ? `✓ Connected${sp.user ? ` as ${sp.user}` : ''} · ${sp.premium ? 'Premium - songs start by themselves 🎧' : "Free - Shadow opens the song, you tap play (Spotify's rule)"}`
+    : sp.clientId
+      ? 'Not connected (or Spotify logged Shadow out). Click CONNECT SPOTIFY.'
+      : 'Not connected yet.';
+  $('spRedirect').textContent = sp.redirectUri;
+  if (sp.clientId && !$('spotifyClientId').value) $('spotifyClientId').value = sp.clientId;
+  $('spSteps').classList.toggle('hidden', sp.connected);
+  $('disconnectSp').classList.toggle('hidden', !sp.connected);
+  $('connectSp').textContent = sp.connected ? 'RECONNECT' : 'CONNECT SPOTIFY';
+}
+
+function li(text, button, onClick) {
+  const el = document.createElement('li');
+  const span = document.createElement('span');
+  span.textContent = text;
+  el.append(span);
+  if (button) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'ghost';
+    b.textContent = button;
+    b.addEventListener('click', onClick);
+    el.append(b);
+  }
+  return el;
+}
+function emptyLi(text) {
+  const el = li(text);
+  el.className = 'empty';
+  return el;
+}
+
+function showStartup(items, loginOn) {
+  $('startupList').replaceChildren(
+    ...(items.length
+      ? items.map((step, i) =>
+          li(`${i + 1}. ${step}`, 'REMOVE', async () => {
+            const r = await window.settingsApi.startupEdit({ type: 'remove', item: step });
+            showStartup(r.items, loginOn);
+            $('startupMsg').textContent = r.reply;
+          })
+        )
+      : [emptyLi('Nothing yet - add your usual apps below.')])
+  );
+  $('startupRun').disabled = !items.length;
+  $('startupLoginNote').textContent = loginOn ? '' : '⚠ "Start with Windows" (Behaviour) is off, so this only runs when you say "run my startup routine".';
+}
+
+function showExams(list) {
+  const nice = (k) => new Date(`${k}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+  $('examList').replaceChildren(
+    ...(list && list.length
+      ? list.map((e) =>
+          li(`📅 ${e.subject ? `${e.subject} exam` : 'Exam'} · ${nice(e.date)} · ${e.done}/${e.days} study days done`, 'REMOVE', async () => {
+            showExams(await window.settingsApi.removeExam(e.id));
+          })
+        )
+      : [emptyLi('No exams planned.')])
+  );
+}
+
+function fill({ settings: s, providers: list, startWithWindows, configDir, calendar, update, friends, telegram, spotify, exams }) {
   $('petName').value = s.petName;
   form.querySelectorAll('input[name="scale"]').forEach((r) => (r.checked = Number(r.value) === s.scale));
   $('quipMinMinutes').value = s.quipMinMinutes;
@@ -184,7 +260,14 @@ function fill({ settings: s, providers: list, startWithWindows, configDir, calen
   $('telegramToken').value = s.telegramToken;
   $('telegramEnabled').checked = s.telegramEnabled;
   $('telegramNotify').checked = s.telegramNotify;
+  $('phoneFiles').checked = s.phoneFiles;
   showTelegram(telegram);
+  spotifyInfo = spotify;
+  showMusic(s.musicService, spotify);
+  showStartup(s.startupRoutine, startWithWindows);
+  $('startupOnWake').checked = s.startupOnWake;
+  $('examStudyTime').value = s.examStudyTime;
+  showExams(exams);
 
   providers = list;
   keys = { ...s.apiKeys };
@@ -268,6 +351,10 @@ form.addEventListener('submit', async (e) => {
       telegramToken: $('telegramToken').value.trim(),
       telegramEnabled: $('telegramEnabled').checked,
       telegramNotify: $('telegramNotify').checked,
+      phoneFiles: $('phoneFiles').checked,
+      musicService: (form.querySelector('input[name="musicService"]:checked') || {}).value,
+      startupOnWake: $('startupOnWake').checked,
+      examStudyTime: $('examStudyTime').value,
       friendsMode: (form.querySelector('input[name="friendsMode"]:checked') || {}).value,
       friends: Object.fromEntries([...document.querySelectorAll('input[data-friend]')].map((b) => [b.dataset.friend, b.checked])),
       webSearch: $('webSearch').checked,
@@ -297,6 +384,53 @@ $('reveal').addEventListener('click', () => {
 });
 
 $('openBotFather').addEventListener('click', () => window.settingsApi.openLink('https://t.me/BotFather'));
+
+// ---- Spotify
+$('openSpDev').addEventListener('click', () => window.settingsApi.openLink('https://developer.spotify.com/dashboard'));
+$('connectSp').addEventListener('click', async () => {
+  const out = $('spResult');
+  const btn = $('connectSp');
+  btn.disabled = true;
+  out.className = 'test-result';
+  out.textContent = 'Approve Shadow on the Spotify page that just opened…';
+  try {
+    const r = await window.settingsApi.connectSpotify($('spotifyClientId').value.trim());
+    out.classList.add(r.ok ? 'ok' : 'bad');
+    out.textContent = r.ok ? '✓ Connected!' : `✗ ${r.message}`;
+    if (r.ok) fill(await window.settingsApi.load());
+  } catch (err) {
+    out.classList.add('bad');
+    out.textContent = `✗ ${err.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+});
+$('disconnectSp').addEventListener('click', async () => {
+  spotifyInfo = await window.settingsApi.disconnectSpotify();
+  fill(await window.settingsApi.load());
+  $('spResult').textContent = 'Disconnected.';
+});
+
+// ---- startup routine
+async function addStartup() {
+  const v = $('startupAdd').value.trim();
+  if (!v) return;
+  const r = await window.settingsApi.startupEdit({ type: 'add', items: [v] });
+  $('startupMsg').textContent = r.reply;
+  $('startupAdd').value = '';
+  showStartup(r.items, $('startWithWindows').checked);
+}
+$('startupAddBtn').addEventListener('click', addStartup);
+$('startupAdd').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault(); // not a form submit
+    addStartup();
+  }
+});
+$('startupRun').addEventListener('click', async () => {
+  $('startupMsg').textContent = 'Running…';
+  $('startupMsg').textContent = await window.settingsApi.startupRun();
+});
 $('pairTg').addEventListener('click', () => tgInfo && tgInfo.pairLink && window.settingsApi.openLink(tgInfo.pairLink));
 $('unpairTg').addEventListener('click', async () => showTelegram(await window.settingsApi.unpairTelegram()));
 $('revealTg').addEventListener('click', () => {

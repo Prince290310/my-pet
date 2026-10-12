@@ -32,10 +32,15 @@ const { MusicControl, parseMusicCommand, musicRequests } = require('./music');
 const { PcCare, parseCareCommand } = require('./care');
 const { Tutor, parseTutorCommand, bubbleLine } = require('./tutor');
 const { TelegramLink } = require('./telegram');
+const { SpotifyLink, DASHBOARD_URL: SPOTIFY_DASHBOARD } = require('./spotify');
+const { StartupRoutine, parseStartupCommand } = require('./startup');
+const { FileShare, parseFileCommand, mb } = require('./files');
+const { ExamPlanner, parseExamCommand } = require('./exams');
+const { CatchGame, QuizRace, Scores, parseGameCommand } = require('./games');
 const { PetWindow } = require('./petWindow');
 const { Brain } = require('./brain');
 const { createTray } = require('./tray');
-const { openChat, openSettings, getChatWindow } = require('./windows');
+const { openChat, openSettings, getChatWindow, openGameLayer } = require('./windows');
 const ai = require('./ai');
 
 const realSensors = {
@@ -46,9 +51,19 @@ const realSensors = {
 };
 
 // "Start with Windows" uses Electron's login-item settings (registry Run key, per user).
+// It starts Shadow with --startup, so the startup routine (startup.js) knows Windows just started.
 const loginItem = {
-  opts() {
-    return app.isPackaged ? { path: process.execPath } : { path: process.execPath, args: [path.resolve(paths.ROOT)] };
+  opts(old = false) {
+    const args = [...(app.isPackaged ? [] : [path.resolve(paths.ROOT)]), ...(old ? [] : ['--startup'])];
+    return { path: process.execPath, args };
+  },
+  /** Entries made by older versions (no --startup) are switched to the new form once. */
+  migrate() {
+    try {
+      if (!app.getLoginItemSettings(this.opts()).openAtLogin && app.getLoginItemSettings(this.opts(true)).openAtLogin) this.set(true);
+    } catch {
+      /* not supported here */
+    }
   },
   get() {
     try {
@@ -62,7 +77,7 @@ const loginItem = {
   },
 };
 
-const ctx = { SELF_TEST, loginItem, sensors: realSensors, chatHistory: [] };
+const ctx = { SELF_TEST, loginItem, realLoginItem: loginItem, sensors: realSensors, chatHistory: [] };
 if (SELF_TEST) ctx.sensors = require('./selftest').makeSensors(realSensors);
 
 function loadMeta() {
@@ -113,9 +128,11 @@ function showPetMenu() {
 }
 
 function settingsPayload() {
-  const { position, ...s } = ctx.settings.all(); // eslint-disable-line no-unused-vars
+  const { position, spotifyRefreshToken, ...s } = ctx.settings.all(); // eslint-disable-line no-unused-vars
   return {
     settings: s,
+    spotify: ctx.spotify ? ctx.spotify.info() : null,
+    exams: ctx.exams ? ctx.exams.upcoming().map((e) => ({ id: e.id, subject: e.subject, date: e.date, days: e.plan.length, done: e.plan.filter((d) => d.done).length })) : [],
     providers: ai.publicProviders(),
     calendar: ctx.calendar ? ctx.calendar.status() : null,
     update: ctx.updater ? ctx.updater.status() : null,
@@ -380,7 +397,7 @@ function init() {
       personality: config.personality,
       // calendar text for the chat ('' = not connected); left out entirely if Prince switched it off
       ...(settings.get('calendarInChat') && ctx.calendar ? { calendar: ctx.calendar.chatContext() } : {}),
-      tasks: ctx.tasks ? ctx.tasks.chatContext() : '',
+      tasks: [ctx.tasks ? ctx.tasks.chatContext() : '', ctx.exams ? ctx.exams.chatContext() : ''].filter(Boolean).join('\n'),
     };
   };
   ctx.aiContext = aiContext;
@@ -481,13 +498,27 @@ function init() {
   }
 
   // ---- Tempo the penguin: music (music.js)
+  // Prince's own Spotify account (spotify.js) - "play <song>" starts it there once connected
+  const spotify = (ctx.spotify = new SpotifyLink({ settings, openExternal: (u) => openUrl(u) }));
+  ipcMain.handle('spotify:info', () => spotify.info());
+  ipcMain.handle('spotify:connect', async (_e, clientId) => {
+    const r = await spotify.connect(typeof clientId === 'string' ? clientId : '');
+    if (r.ok) {
+      settings.update({ musicService: 'spotify' }); // that's why he connected it
+      if (!brain.activeReminder && brain.state !== 'hidden') brain.say(`🎧 Spotify connected${r.user ? ` (${r.user})` : ''}! Say "play kesariya" 🐧`, { ms: 6000 });
+    }
+    return r;
+  });
+  ipcMain.handle('spotify:disconnect', () => {
+    const info = spotify.disconnect();
+    if (settings.get('musicService') === 'spotify') settings.update({ musicService: 'youtube' });
+    return info;
+  });
   const music = (ctx.music = new MusicControl({
     openExternal: (u) => openUrl(u),
-    hasSpotify: async () => {
-      if (!apps.windows) return false;
-      await apps.refresh();
-      return apps.find('spotify').some((x) => x.s === 100);
-    },
+    spotify,
+    service: () => settings.get('musicService'),
+    nudgeMs: SELF_TEST ? 0 : 6000,
     hooks: ctx.musicHooks || {},
   }));
   const TEMPO_LINES = { play: '▶️ Hit it!', pause: '⏸️ Pausing!', next: '⏭️ Next track!', previous: '⏮️ Rewind!', status: '🎵 Let me listen…', search: '🎧 Digging the crates…' };
@@ -583,6 +614,145 @@ function init() {
     return null;
   }
 
+  // ---- Sage's exam planner (exams.js)
+  const exams = (ctx.exams = new ExamPlanner({ file: path.join(app.getPath('userData'), 'exams.json') }));
+  ctx.examTimer = setInterval(() => {
+    for (const r of exams.due(settings.get('examStudyTime'))) {
+      friends.quickJob('sage', '📚 Study time!', 6000);
+      brain.reminder({ time: '', kind: 'exam', key: r.key, icon: '📚', head: 'STUDY TIME', hint: 'click when you start ✓', message: r.message });
+    }
+  }, SELF_TEST ? 1000 : 30 * 1000);
+
+  // ---- mini-games (games.js)
+  const scores = (ctx.scores = new Scores(path.join(app.getPath('userData'), 'games.json')));
+  const catchGame = (ctx.catchGame = new CatchGame({ brain, pet, sensors: ctx.sensors, scores, openLayer: (wa) => openGameLayer(wa, pet) }));
+  brain.on('state', (st) => catchGame.running() && st !== 'game' && catchGame.stop('interrupted')); // reminder, drag, tuck...
+  const race = (ctx.race = new QuizRace({ scores }));
+  let raceDone = null; // Sage's job while a race runs
+  const raceEnded = () => {
+    if (race.active() || !raceDone) return;
+    raceDone('GG! 🏁');
+    raceDone = null;
+  };
+  /** A line that arrives on its own (Sage buzzing in) into the chat panel. */
+  const pushChat = (text) => {
+    ctx.chatHistory.push({ role: 'pet', text });
+    const w = getChatWindow();
+    if (w) w.webContents.send('chat:push', { text });
+  };
+  async function runGame(cmd, origin) {
+    if (cmd.type === 'menu') return '🎮 Pick a game: "catch the treat" (move your mouse - Shadow catches falling treats) or "quiz race" (beat Sage to the answers - try "quiz race on planets"). "my high scores" shows your records.';
+    if (cmd.type === 'scores') return scores.text();
+    if (cmd.type === 'stop') {
+      const a = catchGame.stop('stopped');
+      const b = race.stop();
+      raceEnded();
+      return a || b || 'There\'s no game running, Prince. Say "catch the treat" or "quiz race" 🎮';
+    }
+    if (cmd.type === 'catch') {
+      if (origin === 'phone') return 'Catch the treat is played with the mouse on your PC, Prince 🖱️ Try "quiz race" from here!';
+      return catchGame.start();
+    }
+    const c = aiContext();
+    const p = ai.PROVIDERS[c.provider];
+    const askAi = p.needsKey && !c.apiKey ? null : (prompt) => ai.chat(prompt, { ...c, history: [] });
+    const deliver =
+      origin === 'phone'
+        ? (t) => tg.owner() && tg.send(tg.owner(), t).catch(() => {})
+        : (t) => {
+            pushChat(t);
+            brain.chatReply(t);
+          };
+    if (!raceDone) raceDone = friends.job('sage', '🏁 Race on!');
+    return race.start({
+      topic: cmd.topic,
+      askAi,
+      push: (t) => {
+        deliver(t);
+        raceEnded();
+      },
+    });
+  }
+
+  // ---- files between the phone and this PC (files.js + telegram.js)
+  const files = (ctx.files = new FileShare({ getPath: (k) => app.getPath(k), screenshotsDir: () => apps.screenshotsDir() }));
+  /** "send me notes.pdf": from the phone the file comes back as the reply; typed here it goes to the paired phone. */
+  async function sendFile(r, origin) {
+    if (!r.document) return { text: r.text };
+    friends.quickJob('dash', '📤 Delivering!', 4000);
+    if (origin === 'phone') return { text: r.text, document: r.document };
+    if (!tg.owner() || !tg.running) return { text: 'Pair your phone first (Settings → Phone), then I can send files to it 📱' };
+    try {
+      await tg.sendFileToOwner(r.document, r.text);
+    } catch (err) {
+      return { text: `Couldn't send ${r.name}: ${err.message}` };
+    }
+    return { text: `📤 Sent ${r.name} to your phone ✓` };
+  }
+
+  // ---- startup routine (startup.js)
+  const startup = (ctx.startup = new StartupRoutine({ settings, loginOn: () => ctx.loginItem.get() }));
+  const OK_STEP = /^(?:Opening|▶️|🎧)/;
+  async function runStartupRoutine(why = 'asked') {
+    if (!startup.items().length) return startup.describe();
+    const show = (t, ms) => !brain.activeReminder && brain.state !== 'hidden' && brain.say(t, { ms });
+    if (why !== 'asked') show(`🌅 ${why === 'wake' ? 'Welcome back' : 'Hey'} Prince! Setting up your stuff…`, 5000);
+    const results = await startup.run(
+      async (step) => {
+        if (/^play /i.test(step)) {
+          const m = parseMusicCommand(step);
+          return m ? runMusic(m) : 'skipped';
+        }
+        const c = parsePcCommand(step);
+        return c && c.type === 'open' ? (await runPcCommand(c)) || 'skipped' : 'skipped';
+      },
+      { gapMs: SELF_TEST ? 50 : 1200 }
+    );
+    const ok = results.filter((r) => OK_STEP.test(r.reply)).map((r) => r.step.replace(/^open /, '').replace(/^play /, '🎵 '));
+    const bad = results.filter((r) => !OK_STEP.test(r.reply)).map((r) => r.step);
+    const line = `🌅 Startup routine done: ${ok.length ? ok.join(', ') : 'nothing opened'}${bad.length ? ` · couldn't: ${bad.join(', ')}` : ''}`;
+    if (why !== 'asked') {
+      show(line, 7000);
+      setTimeout(() => ctx.tryBriefing && ctx.tryBriefing(), 8000); // then the day's briefing
+    }
+    return line;
+  }
+  ctx.runStartupRoutine = runStartupRoutine;
+  ipcMain.handle('startup:edit', (_e, cmd = {}) => {
+    const ok = cmd && ['add', 'remove', 'clear'].includes(cmd.type);
+    const reply = ok
+      ? startup.edit({ type: cmd.type, items: Array.isArray(cmd.items) ? cmd.items.map(String).slice(0, 10) : [], item: String(cmd.item || '').slice(0, 90) })
+      : '';
+    return { reply, items: startup.items() };
+  });
+  ipcMain.handle('startup:run', () => runStartupRoutine('asked'));
+  ipcMain.handle('exams:remove', (_e, id) => {
+    exams.remove(String(id));
+    return settingsPayload().exams;
+  });
+  // Windows just started (--startup), or the PC woke up after 4+ hours: run it once Prince is at the PC
+  const whenActive = (fn, giveUpMs = 30 * 60 * 1000) => {
+    const t0 = Date.now();
+    const iv = setInterval(() => {
+      if (Date.now() - t0 > giveUpMs) return clearInterval(iv);
+      if (ctx.sensors.idleSeconds() <= 5 && !['off', 'hidden'].includes(brain.state)) {
+        clearInterval(iv);
+        fn();
+      }
+    }, 3000);
+  };
+  if (!SELF_TEST) {
+    ctx.loginItem.migrate();
+    if (process.argv.includes('--startup') && startup.items().length) setTimeout(() => whenActive(() => runStartupRoutine('boot')), 15000);
+  }
+  let suspendedAt = 0;
+  powerMonitor.on('suspend', () => (suspendedAt = Date.now()));
+  powerMonitor.on('resume', () => {
+    const long = suspendedAt && Date.now() - suspendedAt >= 4 * 60 * 60 * 1000;
+    suspendedAt = 0;
+    if (long && settings.get('startupOnWake') && startup.items().length) whenActive(() => runStartupRoutine('wake'));
+  });
+
   ipcMain.handle('chat:ask', (_e, message) => handleMessage(message, ctx.chatHistory));
   ctx.handleMessage = handleMessage;
 
@@ -593,13 +763,22 @@ function init() {
     apiBase: ctx.telegramBase || 'https://api.telegram.org',
     handle: async (text) => {
       const shot = apps.lastScreenshot;
-      const r = await handleMessage(text, ctx.tgHistory);
+      const r = await handleMessage(text, ctx.tgHistory, 'phone');
       if (ctx.tgHistory.length > 40) ctx.tgHistory.splice(0, ctx.tgHistory.length - 40);
       // "take a screenshot" from the phone: send the picture back
       if (apps.lastScreenshot && apps.lastScreenshot !== shot) r.photo = apps.lastScreenshot;
       return r;
     },
+    // a photo / PDF / file sent to the bot -> Downloads\Shadow (files.js)
+    onFile: async ({ buffer, name, caption }) => {
+      if (!settings.get('phoneFiles')) return 'File transfer is switched off on the PC (Settings → Phone).';
+      const saved = files.save(buffer, name, caption);
+      friends.quickJob('dash', '📥 Delivery from your phone!', 5000);
+      if (!brain.activeReminder && brain.state !== 'hidden') brain.say(`📥 ${saved.name} arrived from your phone → ${saved.folder}`, { ms: 6000 });
+      return `📥 Saved ${saved.name} (${mb(saved.size)}) to ${saved.folder} on your PC${saved.renamed ? '. It\'s a program/script file, so I added ".download" to its name - it can\'t run by accident' : ''} ✓`;
+    },
   }));
+  tg.on('file-sent', (name) => !brain.activeReminder && brain.state !== 'hidden' && brain.say(`📤 Sent ${name} to your phone`, { ms: 5000 }));
   tg.on('paired', () => brain.state !== 'hidden' && !brain.activeReminder && brain.say('📱 Phone paired! Text me anytime, Prince 🐾', { ms: 5000 }));
   tg.on('message', (text) => console.log(`[telegram] message (${text.length} chars)`)); // content stays private
   const away = () => ctx.sensors.idleSeconds() > 120;
@@ -611,16 +790,44 @@ function init() {
    * Everything Shadow can do from a message - used by the chat panel and by Telegram (telegram.js).
    * Returns { text, sources }.
    */
-  async function handleMessage(message, history) {
+  async function handleMessage(message, history, origin = 'pc') {
     const text = String(message || '').trim().slice(0, 2000);
     if (!text) return { text: '' };
     history.push({ role: 'user', text });
     let reply;
+    const done1 = (out) => {
+      history.push({ role: 'pet', text: out });
+      brain.chatReply(out);
+      return { text: out, sources: [] };
+    };
+    // during a quiz race everything Prince types is an answer (games.js)
+    if (race.active()) {
+      const g = parseGameCommand(text);
+      if (!g || g.type !== 'race') {
+        const out = g && g.type === 'stop' ? race.stop() : race.answer(text);
+        raceEnded();
+        return done1(out);
+      }
+    }
     const gang = gangCommand(text);
-    if (gang) {
-      history.push({ role: 'pet', text: gang });
-      brain.chatReply(gang);
-      return { text: gang, sources: [] };
+    if (gang) return done1(gang);
+    const gameCmd = parseGameCommand(text);
+    if (gameCmd) return done1(await runGame(gameCmd, origin));
+    const startupCmd = parseStartupCommand(text);
+    if (startupCmd) {
+      friends.quickJob('bolt', startupCmd.type === 'run' ? '⚡ Morning routine!' : '📝 Noted!', 4000);
+      return done1(startupCmd.type === 'run' ? await runStartupRoutine('asked') : startup.edit(startupCmd));
+    }
+    const examCmd = parseExamCommand(text);
+    if (examCmd) {
+      if (examCmd.type === 'add' && !examCmd.error) friends.quickJob('sage', '📅 Making your plan!', 5000);
+      return done1(exams.run(examCmd));
+    }
+    const fileCmd = parseFileCommand(text);
+    if (fileCmd) {
+      if (!settings.get('phoneFiles')) return done1('Sending files is switched off, Prince (Settings → Phone).');
+      const r = await sendFile(files.request(fileCmd), origin);
+      return { ...done1(r.text), document: r.document };
     }
     const pcCmd = parsePcCommand(text);
     if (pcCmd) {
@@ -631,18 +838,15 @@ function init() {
         console.warn('[apps]', err);
         out = `That didn't work, Prince (${err.message}).`;
       }
-      if (out) {
-        history.push({ role: 'pet', text: out });
-        brain.chatReply(out);
-        return { text: out, sources: [] };
+      if (out) return done1(out);
+      // "2" answering "which file?"
+      const picked = pcCmd.type === 'choose' && files.choose(pcCmd.n);
+      if (picked) {
+        const r = await sendFile(picked, origin);
+        return { ...done1(r.text), document: r.document };
       }
       // "cancel"/"2" with nothing pending -> just chat
     }
-    const done1 = (out) => {
-      history.push({ role: 'pet', text: out });
-      brain.chatReply(out);
-      return { text: out, sources: [] };
-    };
     const tidied = care.confirm(text); // "yes" to a pending Downloads tidy-up
     if (tidied) {
       friends.quickJob('zen', '🧹 Tidying!', 5000);
@@ -653,6 +857,8 @@ function init() {
     const careCmd = parseCareCommand(text);
     if (careCmd) return done1(await runCare(careCmd));
     const tutorCmd = parseTutorCommand(text);
+    // "quiz me" with no topic on a study day = today's chapters
+    if (tutorCmd && tutorCmd.type === 'quiz' && !tutorCmd.topic && !tutor.active() && exams.quizTopic()) tutorCmd.topic = exams.quizTopic();
     if (tutorCmd || (tutor.active() && !parseCommand(text) && !search.parseSearchCommand(text))) {
       let out;
       try {
@@ -756,7 +962,7 @@ function init() {
   }
   // Dash also delivers reminders as they fire (not update notices or the morning briefing)
   brain.on('reminder-start', (r) => {
-    if (!['update', 'briefing', 'care'].includes(r.kind) && !brain.reminderClosing) friends.quickJob('dash', '📨 Delivery for Prince!', 7000);
+    if (!['update', 'briefing', 'care', 'exam'].includes(r.kind) && !brain.reminderClosing) friends.quickJob('dash', '📨 Delivery for Prince!', 7000);
     if (!['update', 'briefing'].includes(r.kind) && ctx.telegram && away()) ctx.telegram.notify(`${r.icon || '⏰'} ${r.message}`);
   });
   ipcMain.handle('ai:test', (_e, form = {}) => {
@@ -768,7 +974,7 @@ function init() {
   // "Get a free key" / "Open Google Calendar settings" buttons: only ever open these known pages
   ipcMain.on('settings:open-link', (_e, url) => {
     if (/^https:\/\/t\.me\/[A-Za-z0-9_]{4,40}(\?start=\d{6})?$/.test(url)) return shell.openExternal(url); // @BotFather / pairing link
-    if (url === GCAL_SETTINGS_URL || url === search.TAVILY_KEY_URL || ai.publicProviders().some((p) => p.keyUrl && p.keyUrl === url)) shell.openExternal(url);
+    if (url === GCAL_SETTINGS_URL || url === search.TAVILY_KEY_URL || url === SPOTIFY_DASHBOARD || ai.publicProviders().some((p) => p.keyUrl && p.keyUrl === url)) shell.openExternal(url);
   });
   ipcMain.handle('calendar:test', (_e, url) => ctx.calendar.test(typeof url === 'string' ? url.slice(0, 1000) : ''));
   ipcMain.handle('calendar:sync', () => ctx.calendar.sync());
@@ -780,7 +986,7 @@ function init() {
   // settings window
   ipcMain.handle('settings:load', () => settingsPayload());
   ipcMain.handle('settings:save', async (_e, patch = {}) => {
-    const allowed = ['petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat', 'morningBriefing', 'todoNudges', 'webSearch', 'searchKey', 'pcControl', 'pcCare', 'friendsMode', 'friends', 'telegramEnabled', 'telegramToken', 'telegramNotify'];
+    const allowed = ['petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat', 'morningBriefing', 'todoNudges', 'webSearch', 'searchKey', 'pcControl', 'pcCare', 'musicService', 'startupOnWake', 'phoneFiles', 'examStudyTime', 'friendsMode', 'friends', 'telegramEnabled', 'telegramToken', 'telegramNotify'];
     const clean = Object.fromEntries(Object.entries(patch).filter(([k]) => allowed.includes(k)));
     const before = settings.get('calendarUrl');
     settings.update(clean);
@@ -877,7 +1083,7 @@ function init() {
     const cal = ctx.calendar;
     if (cal.url() && !cal.lastSync && Date.now() - startedAt < 3 * 60 * 1000) return false;
     tasks.markBriefed();
-    brain.reminder({ time: '', kind: 'briefing', key: 'briefing', icon: '☀️', head: 'YOUR DAY', hint: 'click to close ✓', message: tasks.briefing(Date.now(), cal.url() ? cal.upcoming : null) });
+    brain.reminder({ time: '', kind: 'briefing', key: 'briefing', icon: '☀️', head: 'YOUR DAY', hint: 'click to close ✓', message: tasks.briefing(Date.now(), cal.url() ? cal.upcoming : null, [exams.briefingLine()]) });
     return true;
   };
   ctx.briefingTimer = setInterval(() => ctx.tryBriefing(), 30 * 1000);
