@@ -1,0 +1,56 @@
+{
+  "frameWidth": 32,
+  "frameHeight": 32,
+  "columns": 8,
+  "animations": {
+    "idle": {
+      "row": 0,
+      "frames": 4,
+      "fps": 4,
+      "loop": true,
+      "flip": true,
+      "note": "idle: starlord"
+    },
+    "move": {
+      "row": 1,
+      "frames": 4,
+      "fps": 8,
+      "loop": true,
+      "flip": true,
+      "note": "move: starlord"
+    },
+    "work": {
+      "row": 2,
+      "frames": 4,
+      "fps": 8,
+      "loop": true,
+      "flip": true,
+      "note": "work: starlord"
+    },
+    "talk": {
+      "row": 3,
+      "frames": 4,
+      "fps": 8,
+      "loop": true,
+      "flip": true,
+      "note": "talk: starlord"
+    },
+    "sleep": {
+      "row": 4,
+      "frames": 4,
+      "fps": 3,
+      "loop": true,
+      "flip": true,
+      "note": "sleep: starlord"
+    },
+    "play": {
+      "row": 5,
+      "frames": 4,
+      "fps": 8,
+      "loop": true,
+      "flip": true,
+      "note": "play: starlord"
+    }
+  },
+  "character": "starlord"
+}

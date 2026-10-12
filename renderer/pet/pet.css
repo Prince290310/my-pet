@@ -9,6 +9,7 @@ body {
   user-select: none;
   -webkit-user-select: none;
 }
+body[data-appearance='avengers'] #bubble { --pop: #b63239; --paper: #eaf7fc; --ink: #102438; }
 
 #pet {
   position: absolute;

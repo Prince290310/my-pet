@@ -8,6 +8,7 @@ const { PROVIDERS, DEFAULT_PROVIDER } = require('./ai');
 const { cleanCalendarUrl } = require('./calendar');
 
 const DEFAULTS = Object.freeze({
+  appearance: 'avengers', // avengers | shadow (original theme, restored instantly)
   petName: 'Shadow',
   scale: 2, // 1x / 2x / 3x
   quipMinMinutes: 20, // random idle quip every min..max minutes
@@ -72,6 +73,7 @@ function validate(raw) {
   const s = { ...DEFAULTS, ...(raw && typeof raw === 'object' ? raw : {}) };
   const name = typeof s.petName === 'string' ? s.petName.trim().slice(0, 24) : '';
   const out = {
+    appearance: ['avengers', 'shadow'].includes(s.appearance) ? s.appearance : DEFAULTS.appearance,
     petName: name || DEFAULTS.petName,
     scale: [1, 2, 3].includes(Number(s.scale)) ? Number(s.scale) : DEFAULTS.scale,
     quipMinMinutes: int(s.quipMinMinutes, 1, 720, DEFAULTS.quipMinMinutes),

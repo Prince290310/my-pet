@@ -4,6 +4,7 @@
 const { Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
 const { ASSETS } = require('./paths');
+const appearance = require('./appearance');
 
 /**
  * @param {object} o
@@ -13,7 +14,7 @@ const { ASSETS } = require('./paths');
  * @param {object} o.actions { openSettings, openConfigFolder, openChat, quit }
  */
 function createTray({ brain, settings, loginItem, actions, getUpdater = () => null, callGang = null }) {
-  const icon = nativeImage.createFromPath(path.join(ASSETS, 'tray.png')); // tray@2x.png picked up automatically
+  const icon = nativeImage.createFromPath(path.join(appearance.assetsDir(ASSETS, settings), 'tray.png')); // tray@2x.png picked up automatically
   const tray = new Tray(icon);
 
   function template() {
@@ -21,7 +22,7 @@ function createTray({ brain, settings, loginItem, actions, getUpdater = () => nu
     const sleeping = brain.state === 'sleep';
     const scale = settings.get('scale');
     const items = [
-      { label: `🐾 ${settings.get('petName')}`, enabled: false },
+      { label: `${appearance.isAvengers(settings) ? '⚡' : '🐾'} ${appearance.displayName(settings)}`, enabled: false },
       { type: 'separator' },
     ];
     const updater = getUpdater();
@@ -40,7 +41,7 @@ function createTray({ brain, settings, loginItem, actions, getUpdater = () => nu
     );
     if (sleeping) items.push({ id: 'wake', label: 'Wake Pet', click: () => brain.command('wake') });
     if (actions.rescue) items.push({ id: 'rescue', label: `Unstick ${settings.get('petName')} (can't click?)`, click: () => actions.rescue() });
-    if (callGang) items.push({ id: 'gang', label: 'Call the Gang 🐾', click: () => callGang() });
+    if (callGang) items.push({ id: 'gang', label: appearance.isAvengers(settings) ? 'Avengers, Assemble! ⚡' : 'Call the Gang 🐾', click: () => callGang() });
     items.push(
       { id: 'chat', label: 'Chat… (Ctrl+Click pet)', click: () => actions.openChat() },
       {
@@ -85,7 +86,8 @@ function createTray({ brain, settings, loginItem, actions, getUpdater = () => nu
     if (tray.isDestroyed()) return;
     menu = Menu.buildFromTemplate(template());
     tray.setContextMenu(menu);
-    tray.setToolTip(`${settings.get('petName')} - your panther${brain.state === 'hidden' ? ' (tucked away)' : ''}`);
+    tray.setImage(nativeImage.createFromPath(path.join(appearance.assetsDir(ASSETS, settings), 'tray.png')));
+    tray.setToolTip(`${appearance.displayName(settings)} - ${appearance.isAvengers(settings) ? 'Avengers desktop companion' : 'your panther'}${brain.state === 'hidden' ? ' (tucked away)' : ''}`);
   }
 
   tray.on('click', () => tray.popUpContextMenu());
@@ -96,7 +98,7 @@ function createTray({ brain, settings, loginItem, actions, getUpdater = () => nu
   brain.on('reminder-dismissed', rebuild);
   brain.on('reminder-done', rebuild);
   settings.on('change', (_all, changed) => {
-    if (changed.some((k) => ['muteQuips', 'scale', 'petName'].includes(k))) rebuild();
+    if (changed.some((k) => ['muteQuips', 'scale', 'petName', 'appearance'].includes(k))) rebuild();
   });
   rebuild();
 

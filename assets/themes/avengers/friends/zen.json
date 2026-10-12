@@ -1,0 +1,56 @@
+{
+  "frameWidth": 32,
+  "frameHeight": 32,
+  "columns": 8,
+  "animations": {
+    "idle": {
+      "row": 0,
+      "frames": 4,
+      "fps": 3,
+      "loop": true,
+      "flip": true,
+      "note": "idle: hulk"
+    },
+    "move": {
+      "row": 1,
+      "frames": 4,
+      "fps": 5,
+      "loop": true,
+      "flip": true,
+      "note": "move: hulk"
+    },
+    "work": {
+      "row": 2,
+      "frames": 4,
+      "fps": 5,
+      "loop": true,
+      "flip": true,
+      "note": "work: hulk"
+    },
+    "talk": {
+      "row": 3,
+      "frames": 4,
+      "fps": 6,
+      "loop": true,
+      "flip": true,
+      "note": "talk: hulk"
+    },
+    "sleep": {
+      "row": 4,
+      "frames": 4,
+      "fps": 2,
+      "loop": true,
+      "flip": true,
+      "note": "sleep: hulk"
+    },
+    "play": {
+      "row": 5,
+      "frames": 4,
+      "fps": 6,
+      "loop": true,
+      "flip": true,
+      "note": "play: hulk"
+    }
+  },
+  "character": "hulk"
+}

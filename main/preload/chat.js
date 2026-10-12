@@ -7,4 +7,5 @@ contextBridge.exposeInMainWorld('chat', {
   close: () => ipcRenderer.send('chat:close'),
   openLink: (url) => ipcRenderer.send('chat:open-link', String(url)),
   onPush: (cb) => ipcRenderer.on('chat:push', (_e, m) => cb(m)), // lines that come later (quiz race)
+  onAppearance: (fn) => ipcRenderer.on('chat:appearance', (_event, info) => fn(info)),
 });

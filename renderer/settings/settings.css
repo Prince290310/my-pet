@@ -339,3 +339,8 @@ input[type='time'] {
 #spStatus.bad {
   color: #ff6f91;
 }
+.team-preview { display: block; width: 100%; height: auto; image-rendering: pixelated; border: 1px solid var(--line); margin: 12px 0; }
+.team-preview.original { width: 80px; border: 0; }
+html[data-appearance='avengers'] { --bg: #0d1726; --panel: #18283b; --ink: #f1f6ff; --muted: #adbdcf; --line: #526b86; --gold: #f3c572; --field: #101b2e; }
+html[data-appearance='avengers'] h2 { color: #9be9f4; }
+html[data-appearance='avengers'] header { padding-bottom: 14px; border-bottom: 2px solid #c53236; }

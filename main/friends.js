@@ -18,6 +18,7 @@ const { EventEmitter } = require('events');
 const fs = require('fs');
 const path = require('path');
 const { PetWindow } = require('./petWindow');
+const appearance = require('./appearance');
 
 const CELL = 32;
 const STEP_MS = 33;
@@ -129,7 +130,7 @@ class Friend {
   onReady() {
     this.ready = true;
     const w = this.win;
-    w.send('pet:init', { meta: this.meta, sheet: this.mgr.sheet(this.id), scale: this.mgr.scale(), workArea: w.display().workArea, test: false });
+    w.send('pet:init', { meta: this.meta, sheet: this.mgr.sheet(this.id), scale: this.mgr.scale(), workArea: w.display().workArea, appearance: this.mgr.settings.get('appearance'), test: false });
     if (this.state !== 'away') {
       w.win.showInactive();
       w.win.setAlwaysOnTop(true, 'screen-saver');
@@ -373,7 +374,7 @@ class Friend {
     if (this.state !== 'here') return;
     this.clearTimers();
     this.play('talk', true);
-    const ms = this.say(`${pick(this.def.hello)} (${this.def.name} the ${this.def.animal} · ${this.def.job})`, 5000);
+    const ms = this.say(`${pick(this.def.hello)} (${appearance.friendLabel(this.def)})`, 5000);
     this.after(ms, () => {
       this.play('idle', true);
       this.scheduleIdle();
@@ -401,9 +402,10 @@ class FriendsManager extends EventEmitter {
     this.settings = settings;
     this.brain = brain;
     this.pet = pet;
-    this.assets = assets;
+    this.rootAssets = assets;
+    this.assets = appearance.assetsDir(assets, settings);
     this.isolated = isolated;
-    this.list = DEFS.map((d) => new Friend(d, this));
+    this.list = DEFS.map((d) => new Friend(appearance.friendDef(d, settings), this));
     this.sheets = {};
     this.gangUntil = 0;
     this.playTimer = null;
@@ -412,6 +414,20 @@ class FriendsManager extends EventEmitter {
 
   get(id) {
     return this.list.find((f) => f.id === id);
+  }
+
+  // Keep the same Friend objects, jobs and switches when changing appearance.
+  setAppearance() {
+    this.assets = appearance.assetsDir(this.rootAssets, this.settings);
+    this.sheets = {};
+    this.list.forEach((f, i) => {
+      f.def = appearance.friendDef(DEFS[i], this.settings);
+      f.meta = JSON.parse(fs.readFileSync(path.join(this.assets, 'friends', `${f.id}.json`), 'utf8'));
+      if (f.win && f.win.alive()) {
+        f.win.win.setTitle(f.def.name);
+        f.onReady();
+      }
+    });
   }
 
   enabled(id) {
@@ -571,7 +587,7 @@ class FriendsManager extends EventEmitter {
     b.interrupt();
     b.setState('happy');
     b.play('happy');
-    b.say('The gang is here! 🐾', { ms: 3000 });
+    b.say(appearance.isAvengers(this.settings) ? 'Avengers, assemble! ⚡' : 'The gang is here! 🐾', { ms: 3000 });
     b.after(3200, () => b.rest());
   }
 
@@ -602,7 +618,7 @@ class FriendsManager extends EventEmitter {
   }
 
   info() {
-    return this.list.map((f) => ({ id: f.id, name: f.def.name, animal: f.def.animal, job: f.def.job, blurb: f.def.blurb, enabled: this.enabled(f.id), state: f.state }));
+    return this.list.map((f) => ({ id: f.id, name: f.def.name, animal: f.def.animal, icon: f.def.icon, job: f.def.job, blurb: f.def.blurb, enabled: this.enabled(f.id), state: f.state }));
   }
 }
 

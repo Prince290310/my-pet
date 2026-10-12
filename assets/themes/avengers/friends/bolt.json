@@ -1,0 +1,56 @@
+{
+  "frameWidth": 32,
+  "frameHeight": 32,
+  "columns": 8,
+  "animations": {
+    "idle": {
+      "row": 0,
+      "frames": 4,
+      "fps": 4,
+      "loop": true,
+      "flip": true,
+      "note": "idle: thor"
+    },
+    "move": {
+      "row": 1,
+      "frames": 4,
+      "fps": 8,
+      "loop": true,
+      "flip": true,
+      "note": "move: thor"
+    },
+    "work": {
+      "row": 2,
+      "frames": 4,
+      "fps": 6,
+      "loop": true,
+      "flip": true,
+      "note": "work: thor"
+    },
+    "talk": {
+      "row": 3,
+      "frames": 4,
+      "fps": 8,
+      "loop": true,
+      "flip": true,
+      "note": "talk: thor"
+    },
+    "sleep": {
+      "row": 4,
+      "frames": 4,
+      "fps": 3,
+      "loop": true,
+      "flip": true,
+      "note": "sleep: thor"
+    },
+    "play": {
+      "row": 5,
+      "frames": 4,
+      "fps": 7,
+      "loop": true,
+      "flip": true,
+      "note": "play: thor"
+    }
+  },
+  "character": "thor"
+}

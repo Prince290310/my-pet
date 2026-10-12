@@ -250,7 +250,14 @@ bubble.addEventListener('click', (e) => {
 });
 
 // ------------------------------------------------------------------ main -> renderer
+let sheetVersion = 0;
 api.onInit(async (init) => {
+  const version = ++sheetVersion;
+  clearTimeout(frameTimer);
+  frameTimer = null;
+  sheet = null;
+  frameData = null;
+  document.body.dataset.appearance = init.appearance || 'shadow';
   meta = init.meta;
   CELL = meta.frameWidth || 48;
   canvas.width = CELL;
@@ -263,6 +270,7 @@ api.onInit(async (init) => {
   const img = new Image();
   img.src = init.sheet;
   await img.decode();
+  if (version !== sheetVersion) return;
   sheet = img;
   applyScale();
   currentFrame = -1;
@@ -299,6 +307,8 @@ window.__shadowTest = {
   lateness: () => lateLog.splice(0),
   log: () => dbgLog.splice(0),
   state: () => ({
+    appearance: document.body.dataset.appearance,
+    character: meta && meta.character,
     anim: anim.name,
     facing: anim.facing,
     fps: anim.fps,

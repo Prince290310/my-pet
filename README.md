@@ -1,4 +1,35 @@
-# 🐾 Shadow — your pixel-art black panther desktop pet
+# Shadow — Avengers desktop team & original pixel pet
+
+The default appearance is now a team of **humanoid pixel-art heroes**, led by **Iron Man**.
+The original Shadow panther and every animal friend are still included.
+
+![Avengers pixel team](assets/preview/avengers-team.png)
+
+| Character | Job | Original friend / compatible command name |
+| --- | --- | --- |
+| Iron Man | Main companion: patrol, chat, reminders and interaction | Shadow |
+| Spider-Man | Internet research | Atlas |
+| Captain America | Reminders and to-do delivery | Dash |
+| Thor | Apps, folders and PC controls | Bolt |
+| Doctor Strange | Lessons, quizzes and homework | Sage |
+| Hulk | PC health and Downloads care | Zen |
+| Star-Lord | Music and playlists | Tempo |
+
+Say **“call the Avengers”**, **“Avengers, assemble!”**, **“call Spider-Man”**, **“call Thor”**,
+or another teammate's name in chat. The original command names also keep working.
+
+**To return to the original look:** Settings → Appearance → **RESTORE SHADOW & FRIENDS**.
+This switches the original sprites, friend names, dialogue, AI identity, tray and chat styling
+back immediately. It preserves your reminders, integrations, custom personality files, friend switches,
+and other preferences. To enable the team again, select **Avengers — Iron Man & team** and click **SAVE**.
+Your default saved name “Shadow” displays as “Iron Man” in Avengers mode; a custom name is respected.
+
+Run `npm run sprites:avengers` to regenerate only the new theme. `npm run sprites` and the build
+pre-step regenerate both themes. The new assets live in `assets/themes/avengers/`; the original
+`assets/sprites.*`, `assets/friends/`, icons and config files are unchanged.
+
+The following guide describes the existing companion features, all of which remain available
+with either appearance.
 
 Shadow is an **original** pixel-art black panther who lives on top of all your windows, patrols the
 bottom of your screen, naps when you're away, talks in Hinglish, and nags you about reminders.

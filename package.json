@@ -2,17 +2,18 @@
   "name": "shadow-pet",
   "productName": "Shadow",
   "version": "1.0.0",
-  "description": "Shadow - an original pixel-art black panther desktop pet.",
+  "description": "Shadow - an Avengers pixel-art desktop team with the original panther theme available.",
   "author": "Prince",
   "license": "UNLICENSED",
   "private": true,
   "main": "main/main.js",
   "scripts": {
     "start": "electron .",
-    "sprites": "node scripts/generate-sprites.js && node scripts/generate-friends.js",
+    "sprites": "node scripts/generate-sprites.js && node scripts/generate-friends.js && node scripts/generate-avengers.js",
+    "sprites:avengers": "node scripts/generate-avengers.js",
     "fonts": "node scripts/copy-fonts.js",
     "test": "electron . --self-test",
-    "prebuild": "node scripts/generate-sprites.js && node scripts/generate-friends.js",
+    "prebuild": "node scripts/generate-sprites.js && node scripts/generate-friends.js && node scripts/generate-avengers.js",
     "build": "electron-builder --win nsis"
   },
   "build": {
@@ -45,7 +46,7 @@
           ]
         }
       ],
-      "icon": "assets/icon.ico"
+      "icon": "assets/themes/avengers/icon.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -54,9 +55,9 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Shadow",
-      "installerIcon": "assets/icon.ico",
-      "uninstallerIcon": "assets/icon.ico",
-      "installerHeaderIcon": "assets/icon.ico",
+      "installerIcon": "assets/themes/avengers/icon.ico",
+      "uninstallerIcon": "assets/themes/avengers/icon.ico",
+      "installerHeaderIcon": "assets/themes/avengers/icon.ico",
       "artifactName": "Shadow-Setup-${version}.${ext}"
     },
     "publish": [

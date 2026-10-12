@@ -2029,6 +2029,74 @@ async function run(ctx, h) {
     const m = app.getAppMetrics();
     const cpu = m.reduce((s, x) => s + (x.cpu ? x.cpu.percentCPUUsage : 0), 0);
     check('CPU usage is low while idle', cpu < 25, `${cpu.toFixed(1)}% across ${m.length} processes`);
+
+    section('Avengers appearance and exact theme restoration');
+    const appearance = require('./appearance');
+    check('new installations default to the Avengers team', validateSettings({}).appearance === 'avengers');
+    check('unknown appearances cannot select arbitrary assets', validateSettings({ appearance: '../../other' }).appearance === 'avengers');
+    quiet();
+    brain.rest(60000);
+    const originalPixels = await js('document.getElementById("pet").toDataURL()');
+    const preserved = JSON.stringify({ ...settings.all(), appearance: null });
+    const originalPersonality = config.personality;
+    const originalConfigFiles = Object.fromEntries(['quips.json', 'reminders.json', 'personality.md'].map(n => [n, fs.readFileSync(config.file(n), 'utf8')]));
+    const swTheme = h.openSettings();
+    await waitFor(() => js('document.getElementById("appearance").value === "shadow"', swTheme.webContents), 3000);
+    await js('document.getElementById("appearance").value = "avengers"; document.getElementById("appearance").dispatchEvent(new Event("change")); document.getElementById("form").requestSubmit()', swTheme.webContents);
+    await waitFor(() => settings.get('appearance') === 'avengers' && pet.win.getTitle() === 'Iron Man', 3000);
+    await waitFor(async () => (await rstate()).character === 'ironman' && (await rstate()).frame >= 0, 3000);
+    check('Save activates a rendered humanoid Iron Man', ctx.meta.character === 'ironman' && (await rstate()).character === 'ironman' && await js('document.getElementById("pet").toDataURL()') !== originalPixels);
+    check('theme selection is persisted', JSON.parse(fs.readFileSync(settings.file, 'utf8')).appearance === 'avengers');
+    check('the team contains the requested heroes and retains all six jobs', friends.list.map(f => f.def.name).join() === 'Spider-Man,Captain America,Thor,Doctor Strange,Hulk,Star-Lord' && friends.list.map(f => f.def.job).join() === 'Researcher,Messenger,Launcher,Tutor,PC caretaker,Music DJ');
+    check('appearance changes preserve all other saved preferences', JSON.stringify({ ...settings.all(), appearance: null }) === preserved);
+    check('custom personality and reminder files stay untouched', Object.entries(originalConfigFiles).every(([n, value]) => fs.readFileSync(config.file(n), 'utf8') === value));
+    check('tray uses Iron Man and Avengers assembly', ctx.trayCtl.menu().items[0].label.includes('Iron Man') && ctx.trayCtl.menu().getMenuItemById('gang').label.includes('Avengers'));
+    check('AI identity follows the Avengers theme without changing the config', ctx.aiContext().petName === 'Iron Man' && ctx.aiContext().personality.includes('an Iron Man desktop companion') && config.personality === originalPersonality);
+    const themedChat = h.openChatPanel();
+    await waitFor(() => js('document.getElementById("name").textContent === "IRON MAN"', themedChat.webContents), 3000);
+    check('chat displays Iron Man and his helmet avatar', await js('document.getElementById("name").textContent === "IRON MAN" && document.querySelector(".avatar").src.includes("themes/avengers")', themedChat.webContents));
+    await shot('avengers-chat', themedChat.webContents);
+    for (const [name, a] of Object.entries(ctx.meta.animations)) {
+      brain.play(name);
+      await sleep(200);
+      check(`Iron Man animation ${name} renders`, (await rstate()).anim === name && (await js('Array.from(document.getElementById("pet").getContext("2d").getImageData(0,0,48,48).data).some((v,i)=>i%4===3&&v>0)')));
+    }
+    brain.rest(60000);
+    await sleep(200);
+    for (const alias of ['spider man', 'thor', 'captain america', 'doctor strange', 'hulk', 'star lord']) {
+      const reply = await ctx.handleMessage(`call ${alias}`, []);
+      check(`chat can summon ${alias}`, reply.text.includes('Come here'));
+    }
+    await waitFor(() => friends.list.every(f => f.state === 'here'), 9000);
+    for (const f of friends.list) {
+      const state = await fstate(f);
+      check(`${f.def.name} uses its own humanoid sprite`, f.meta.character && state.character === f.meta.character && state.appearance === 'avengers');
+    }
+    // Capture actual in-app frames; the team sheet is also available in assets/preview.
+    await shot('avengers-iron-man');
+    await js('document.querySelector(".appearance").scrollIntoView()', swTheme.webContents);
+    await shot('avengers-settings', swTheme.webContents);
+    const oldLog = await js('document.getElementById("log").textContent', themedChat.webContents);
+    await js('document.getElementById("msg").value = "draft stays here"', themedChat.webContents);
+    await js('document.getElementById("restoreShadow").click()', swTheme.webContents);
+    await waitFor(() => settings.get('appearance') === 'shadow' && pet.win.getTitle() === 'Shadow', 3000);
+    await waitFor(async () => (await rstate()).appearance === 'shadow' && !(await rstate()).character && (await rstate()).frame >= 0, 3000);
+    check('one click restores the original main sprite and all six friends', !(await rstate()).character && friends.list.map(f => f.def.name).join() === 'Atlas,Dash,Bolt,Sage,Zen,Tempo' && friends.assets === require('./paths').ASSETS);
+    check('restoring preserves preferences, reminders, and personality', JSON.stringify({ ...settings.all(), appearance: null }) === preserved && config.personality === originalPersonality && Object.entries(originalConfigFiles).every(([n, value]) => fs.readFileSync(config.file(n), 'utf8') === value));
+    await waitFor(() => js('document.getElementById("name").textContent === "SHADOW"', themedChat.webContents), 3000);
+    check('an open chat keeps its history and draft during restoration', await js('document.getElementById("log").textContent', themedChat.webContents) === oldLog && await js('document.getElementById("msg").value', themedChat.webContents) === 'draft stays here');
+    check('original AI personality and tray identity return', ctx.aiContext().personality === originalPersonality && ctx.aiContext().petName === 'Shadow' && ctx.trayCtl.menu().items[0].label.includes('Shadow'));
+    // Rapid switches must not let a stale image decode overwrite the final choice.
+    settings.update({ appearance: 'avengers' });
+    settings.update({ appearance: 'shadow' });
+    settings.update({ appearance: 'avengers' });
+    await waitFor(async () => (await rstate()).character === 'ironman' && (await rstate()).frame >= 0, 3000);
+    check('rapid theme switches keep the final sprite and animation alive', (await rstate()).character === 'ironman' && (await rstate()).ticking);
+    settings.update({ appearance: 'shadow' });
+    friends.sendHome();
+    swTheme.close();
+    themedChat.close();
+    check('Avengers artwork adds no renderer network requests', network.length === 0);
   } catch (err) {
     check('self-test crashed', false, err.stack);
   }

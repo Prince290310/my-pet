@@ -16,6 +16,7 @@
  */
 
 const { EventEmitter } = require('events');
+const appearance = require('./appearance');
 
 const MOVE_HZ = 30; // window movement updates per second (pixel animation itself is capped at 12 fps)
 
@@ -122,7 +123,7 @@ class Brain extends EventEmitter {
   }
 
   quip(category) {
-    return this.config.pick(category, { name: this.settings.get('petName') });
+    return appearance.quip(this.settings, category, () => this.config.pick(category, { name: this.settings.get('petName') }));
   }
 
   startMove(step) {

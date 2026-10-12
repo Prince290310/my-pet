@@ -15,17 +15,32 @@
       <img src="../../assets/icon.png" alt="" class="logo" />
       <div>
         <h1>SETTINGS</h1>
-        <p class="sub">Tune your panther. Changes apply instantly when you hit Save.</p>
+        <p class="sub">Tune your companion. Changes apply instantly when you hit Save.</p>
       </div>
     </header>
 
     <form id="form" autocomplete="off">
+      <section class="appearance">
+        <h2>Appearance</h2>
+        <label class="field">
+          <span>Your desktop team</span>
+          <select id="appearance">
+            <option value="avengers">Avengers — Iron Man &amp; team</option>
+            <option value="shadow">Original — Shadow &amp; friends</option>
+          </select>
+        </label>
+        <img id="teamPreview" class="team-preview" src="../../assets/themes/avengers/team.png" alt="Avengers pixel sprites" />
+        <p class="note" id="teamDescription"></p>
+        <p class="note">Choose a team and hit SAVE. Your reminders, integrations and preferences stay with you.</p>
+        <button type="button" id="restoreShadow" class="ghost">RESTORE SHADOW &amp; FRIENDS</button>
+      </section>
       <section>
         <h2>Pet</h2>
         <label class="field">
           <span>Pet name</span>
           <input id="petName" maxlength="24" required />
         </label>
+        <p class="note" id="nameHelp"></p>
         <div class="field">
           <span>Size</span>
           <div class="seg" role="radiogroup" aria-label="Size">
@@ -58,8 +73,8 @@
         <label class="check"><input id="startWithWindows" type="checkbox" /><i></i>Start with Windows</label>
         <label class="check"><input id="morningBriefing" type="checkbox" /><i></i>Morning briefing (first time I'm at the PC each day)</label>
         <label class="check"><input id="todoNudges" type="checkbox" /><i></i>Nudge me now and then about my to-do list</label>
-        <label class="check"><input id="pcControl" type="checkbox" /><i></i>Let Shadow open apps &amp; folders and lock / sleep / screenshot my PC</label>
-        <label class="check"><input id="pcCare" type="checkbox" /><i></i>Zen warns me about low battery, full storage, RAM/CPU and internet</label>
+        <label class="check"><input id="pcControl" type="checkbox" /><i></i><span id="pcControlLabel">Let Shadow open apps &amp; folders and lock / sleep / screenshot my PC</span></label>
+        <label class="check"><input id="pcCare" type="checkbox" /><i></i><span id="pcCareLabel">Zen warns me about low battery, full storage, RAM/CPU and internet</span></label>
       </section>
 
       <section class="music">
@@ -120,7 +135,7 @@
 
       <section class="friends">
         <h2>Friends</h2>
-        <p class="note">Shadow's gang - each one has a job and shows up to do it.</p>
+        <p class="note" id="friendsDescription">Shadow's gang - each one has a job and shows up to do it.</p>
         <div class="field">
           <span>Show them</span>
           <div class="seg seg-wide" role="radiogroup" aria-label="Show friends">

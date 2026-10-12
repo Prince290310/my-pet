@@ -15,6 +15,12 @@ function lockDown(win) {
 
 let chatWin = null;
 let settingsWin = null;
+let identity = { name: 'Shadow', assets: ASSETS };
+function setAppearance(name, assets) {
+  identity = { name, assets };
+  if (chatWin && !chatWin.isDestroyed()) { chatWin.setTitle(`Chat with ${name}`); chatWin.setIcon(path.join(assets, 'icon.png')); }
+  if (settingsWin && !settingsWin.isDestroyed()) { settingsWin.setTitle(`${name} Settings`); settingsWin.setIcon(path.join(assets, 'icon.png')); }
+}
 
 /** Open (or focus) the chat panel next to the panther. */
 function openChat(pet, { onOpen, onClose } = {}) {
@@ -42,8 +48,8 @@ function openChat(pet, { onOpen, onClose } = {}) {
     alwaysOnTop: true,
     skipTaskbar: false,
     backgroundColor: '#120e1c',
-    title: 'Chat with Shadow',
-    icon: path.join(ASSETS, 'icon.png'),
+    title: `Chat with ${identity.name}`,
+    icon: path.join(identity.assets, 'icon.png'),
     webPreferences: {
       preload: path.join(PRELOAD, 'chat.js'),
       contextIsolation: true,
@@ -81,8 +87,8 @@ function openSettings() {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#120e1c',
-    title: 'Shadow Settings',
-    icon: path.join(ASSETS, 'icon.png'),
+    title: `${identity.name} Settings`,
+    icon: path.join(identity.assets, 'icon.png'),
     webPreferences: {
       preload: path.join(PRELOAD, 'settings.js'),
       contextIsolation: true,
@@ -153,4 +159,4 @@ function openGameLayer(wa, pet) {
 }
 const getSettingsWindow = () => (settingsWin && !settingsWin.isDestroyed() ? settingsWin : null);
 
-module.exports = { openChat, openSettings, getChatWindow, getSettingsWindow, lockDown, openGameLayer };
+module.exports = { openChat, openSettings, getChatWindow, getSettingsWindow, lockDown, openGameLayer, setAppearance };

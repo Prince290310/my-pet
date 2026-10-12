@@ -42,6 +42,7 @@ const { Brain } = require('./brain');
 const { createTray } = require('./tray');
 const { openChat, openSettings, getChatWindow, openGameLayer } = require('./windows');
 const ai = require('./ai');
+const appearance = require('./appearance');
 
 const realSensors = {
   idleSeconds: () => powerMonitor.getSystemIdleTime(),
@@ -81,12 +82,12 @@ const ctx = { SELF_TEST, loginItem, realLoginItem: loginItem, sensors: realSenso
 if (SELF_TEST) ctx.sensors = require('./selftest').makeSensors(realSensors);
 
 function loadMeta() {
-  return JSON.parse(fs.readFileSync(path.join(paths.ASSETS, 'sprites.json'), 'utf8'));
+  return JSON.parse(fs.readFileSync(path.join(appearance.assetsDir(paths.ASSETS, ctx.settings), 'sprites.json'), 'utf8'));
 }
 
 function sheetDataUrl() {
   // Sent as a data: URL so the renderer can read pixels for click-through hit-testing.
-  return 'data:image/png;base64,' + fs.readFileSync(path.join(paths.ASSETS, 'sprites.png')).toString('base64');
+  return 'data:image/png;base64,' + fs.readFileSync(path.join(appearance.assetsDir(paths.ASSETS, ctx.settings), 'sprites.png')).toString('base64');
 }
 
 function openConfigFolder() {
@@ -109,7 +110,7 @@ function petMenuTemplate() {
     items.push({ label: later ? 'Update Later' : 'Dismiss Reminder', click: () => brain.dismissReminder('menu') });
   }
   if (items.length) items.push({ type: 'separator' });
-  if (ctx.friends) items.push({ label: 'Call the Gang 🐾', click: () => ctx.friends.callGang() }, { type: 'separator' });
+  if (ctx.friends) items.push({ label: appearance.isAvengers(ctx.settings) ? 'Avengers, Assemble! ⚡' : 'Call the Gang 🐾', click: () => ctx.friends.callGang() }, { type: 'separator' });
   return [
     ...items,
     { label: 'Sit', click: () => brain.command('sit') },
@@ -133,6 +134,7 @@ function settingsPayload() {
     settings: s,
     spotify: ctx.spotify ? ctx.spotify.info() : null,
     exams: ctx.exams ? ctx.exams.upcoming().map((e) => ({ id: e.id, subject: e.subject, date: e.date, days: e.plan.length, done: e.plan.filter((d) => d.done).length })) : [],
+    appearance: appearance.presentation(ctx.settings),
     providers: ai.publicProviders(),
     calendar: ctx.calendar ? ctx.calendar.status() : null,
     update: ctx.updater ? ctx.updater.status() : null,
@@ -155,6 +157,9 @@ function init() {
   paths.ensureConfig();
 
   const settings = (ctx.settings = new Settings(paths.settingsFile()));
+  // Run original regressions first; the self-test then explicitly exercises both themes.
+  if (SELF_TEST) settings.update({ appearance: 'shadow' });
+  require('./windows').setAppearance(appearance.displayName(settings), appearance.assetsDir(paths.ASSETS, settings));
   const config = (ctx.config = new ConfigStore(paths.configDir()));
   config.on('error', ({ file, message }) => {
     console.warn(`[config] ${file}: ${message}`);
@@ -167,8 +172,8 @@ function init() {
   config.on('reminders', (list) => console.log(`[config] reminders loaded: ${list.length}`));
   config.start();
 
-  const meta = (ctx.meta = loadMeta());
-  const pet = (ctx.pet = new PetWindow({ scale: settings.get('scale'), isolated: SELF_TEST }));
+  let meta = (ctx.meta = loadMeta());
+  const pet = (ctx.pet = new PetWindow({ scale: settings.get('scale'), isolated: SELF_TEST, title: appearance.displayName(settings) }));
   const brain = (ctx.brain = new Brain({ pet, settings, config, meta, sensors: ctx.sensors }));
   pet.create();
 
@@ -220,11 +225,11 @@ function init() {
   const friendOf = (e) => friends.forSender(e.sender);
   const friendMenu = (f) =>
     Menu.buildFromTemplate([
-      { label: `${f.def.name} the ${f.def.animal} · ${f.def.job}`, enabled: false },
+      { label: appearance.friendLabel(f.def), enabled: false },
       { type: 'separator' },
-      { label: 'Call the Gang 🐾', click: () => friends.callGang() },
+      { label: appearance.isAvengers(settings) ? 'Avengers, Assemble! ⚡' : 'Call the Gang 🐾', click: () => friends.callGang() },
       { label: `Send ${f.def.name} Home`, click: () => f.leave() },
-      { label: 'Chat with Shadow…', click: () => openChatPanel() },
+      { label: `Chat with ${appearance.displayName(settings)}…`, click: () => openChatPanel() },
     ]).popup({ window: f.win.win });
   ipcMain.on('pet:ready', (e) => {
     if (!fromPet(e)) {
@@ -237,6 +242,7 @@ function init() {
       sheet: sheetDataUrl(),
       scale: settings.get('scale'),
       workArea: pet.display().workArea,
+      appearance: settings.get('appearance'),
       test: SELF_TEST,
       debug: !!process.env.SHADOW_DEBUG,
     });
@@ -393,19 +399,20 @@ function init() {
       model: over.model !== undefined ? over.model : settings.get('aiModel'),
       baseUrl: over.baseUrl !== undefined ? over.baseUrl : settings.get('aiBaseUrl'),
       apiKey: over.apiKey !== undefined ? over.apiKey : settings.get('apiKeys')[provider] || '',
-      petName: settings.get('petName'),
-      personality: config.personality,
+      petName: appearance.displayName(settings),
+      personality: appearance.personality(settings, config.personality),
       // calendar text for the chat ('' = not connected); left out entirely if Prince switched it off
       ...(settings.get('calendarInChat') && ctx.calendar ? { calendar: ctx.calendar.chatContext() } : {}),
       tasks: [ctx.tasks ? ctx.tasks.chatContext() : '', ctx.exams ? ctx.exams.chatContext() : ''].filter(Boolean).join('\n'),
     };
   };
   ctx.aiContext = aiContext;
-  ipcMain.handle('chat:info', () => {
+  const chatInfo = () => {
     const c = aiContext();
     const p = ai.PROVIDERS[c.provider];
-    return { petName: c.petName, provider: p.label, ready: !p.needsKey || !!c.apiKey };
-  });
+    return { petName: c.petName, provider: p.label, ready: !p.needsKey || !!c.apiKey, appearance: appearance.presentation(settings) };
+  };
+  ipcMain.handle('chat:info', chatInfo);
   // links Shadow may open: our own search URLs and the sources it just showed in chat
   const openUrl = (url) => (ctx.stubOpenExternal ? ctx.stubOpenExternal(url) : shell.openExternal(url));
   const sourceUrls = new Set();
@@ -574,37 +581,39 @@ function init() {
     }
     const c = aiContext();
     const p = ai.PROVIDERS[c.provider];
-    if (p.needsKey && !c.apiKey) return 'Sage needs an AI brain to teach, Prince - add a free key in Settings → AI Brain (2 minutes) 🦉';
+    if (p.needsKey && !c.apiKey) return `${friends.get('sage').def.name} needs an AI brain to teach, Prince - add a free key in Settings → AI Brain (2 minutes) ${friends.get('sage').def.icon || '🦉'}`;
     if (cmd) {
       tutor.start(cmd);
       if (!sageDone) sageDone = friends.job('sage', cmd.type === 'quiz' ? '📝 Pop quiz time!' : '📚 Class is on!');
       history[history.length - 1].text = tutor.firstMessage(cmd); // what the AI should answer
     }
     tutor.touch();
-    const answer = await ai.chat(history[history.length - 1].text, { ...c, ...tutor.context(), history: history.slice(-20) });
+    const answer = await ai.chat(history[history.length - 1].text, { ...c, ...tutor.context(appearance.isAvengers(settings) ? 'Doctor Strange' : null), history: history.slice(-20) });
     return search.stripCommands(answer) || 'Hoo? Ask me that again, Prince 🦉';
   }
   /** Sage says tutor replies in his own bubble (Shadow just listens). */
   function tutorBubble(reply) {
     const sage = friends.get('sage');
-    if (friends.enabled('sage') && sage.state !== 'away') sage.sayWhenHere(`🦉 ${bubbleLine(reply)}`, 9000);
-    else brain.chatReply(`🦉 ${bubbleLine(reply)}`);
+    const icon = sage.def.icon || '🦉';
+    if (friends.enabled('sage') && sage.state !== 'away') sage.sayWhenHere(`${icon} ${bubbleLine(reply)}`, 9000);
+    else brain.chatReply(`${icon} ${bubbleLine(reply)}`);
   }
 
   /** "call the gang", "send the gang home", "call atlas" */
   function gangCommand(text) {
     const l = text.trim().toLowerCase().replace(/[?.!]+$/, '');
-    if (/^(?:call|bring|summon|show)(?: out)? (?:the |my )?(?:gang|friends|everyone|squad|team)(?: out)?$/.test(l)) {
+    if (/^(?:call|bring|summon|show)(?: out)? (?:the |my )?(?:gang|friends|everyone|squad|team|avengers)(?: out)?$|^avengers[, ]+assemble$/.test(l)) {
       const n = friends.callGang();
-      return n ? 'Gang, assemble! 🐾' : 'All my friends are switched off, Prince. Turn them on in Settings → Friends.';
+      return n ? (appearance.isAvengers(settings) ? 'Avengers, assemble! ⚡' : 'Gang, assemble! 🐾') : 'All my friends are switched off, Prince. Turn them on in Settings → Friends.';
     }
-    if (/^(?:send|tell) (?:the |my )?(?:gang|friends|everyone) (?:home|away)$|^(?:bye|goodbye) (?:gang|friends|everyone)$/.test(l)) {
+    if (/^(?:send|tell) (?:the |my )?(?:gang|friends|everyone|avengers|team) (?:home|away)$|^(?:bye|goodbye) (?:gang|friends|everyone|avengers|team)$/.test(l)) {
       friends.sendHome();
-      return 'Bye gang! 👋';
+      return appearance.isAvengers(settings) ? 'Stand down, Avengers! 👋' : 'Bye gang! 👋';
     }
-    const m = /^(?:call|bring|summon) (atlas|dash|bolt|sage|zen|tempo)$/.exec(l);
+    const m = /^(?:call|bring|summon) (.+)$/.exec(l);
     if (m) {
-      const f = friends.get(m[1]);
+      const f = friends.list.find(f => f.id === m[1] || (appearance.isAvengers(settings) && f.def.aliases.includes(m[1])));
+      if (!f) return null;
       if (!friends.enabled(f.id)) return `${f.def.name} is switched off, Prince. Turn them on in Settings → Friends.`;
       f.stayUntil = Date.now() + 30000;
       f.appear(() => f.clicked());
@@ -986,7 +995,7 @@ function init() {
   // settings window
   ipcMain.handle('settings:load', () => settingsPayload());
   ipcMain.handle('settings:save', async (_e, patch = {}) => {
-    const allowed = ['petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat', 'morningBriefing', 'todoNudges', 'webSearch', 'searchKey', 'pcControl', 'pcCare', 'musicService', 'startupOnWake', 'phoneFiles', 'examStudyTime', 'friendsMode', 'friends', 'telegramEnabled', 'telegramToken', 'telegramNotify'];
+    const allowed = ['appearance', 'petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat', 'morningBriefing', 'todoNudges', 'webSearch', 'searchKey', 'pcControl', 'pcCare', 'musicService', 'startupOnWake', 'phoneFiles', 'examStudyTime', 'friendsMode', 'friends', 'telegramEnabled', 'telegramToken', 'telegramNotify'];
     const clean = Object.fromEntries(Object.entries(patch).filter(([k]) => allowed.includes(k)));
     const before = settings.get('calendarUrl');
     settings.update(clean);
@@ -1004,6 +1013,20 @@ function init() {
   ipcMain.handle('update:install', () => ctx.updater.install());
 
   settings.on('change', (all, changed) => {
+    if (changed.includes('appearance') || changed.includes('petName')) {
+      require('./windows').setAppearance(appearance.displayName(settings), appearance.assetsDir(paths.ASSETS, settings));
+      pet.win.setTitle(appearance.displayName(settings));
+      const chat = getChatWindow();
+      if (chat) chat.webContents.send('chat:appearance', chatInfo());
+    }
+    if (changed.includes('appearance')) {
+      meta = ctx.meta = loadMeta();
+      brain.meta = meta;
+      pet.win.setTitle(appearance.displayName(settings));
+      pet.send('pet:init', { meta, sheet: sheetDataUrl(), scale: all.scale, workArea: pet.display().workArea, appearance: all.appearance, test: SELF_TEST, debug: !!process.env.SHADOW_DEBUG });
+      if (brain.anim) pet.send('pet:anim', { name: brain.anim, facing: brain.facing });
+      friends.setAppearance();
+    }
     if (changed.includes('friendsMode') || changed.includes('friends')) friends.apply();
     if ((changed.includes('telegramToken') || changed.includes('telegramEnabled')) && ctx.telegram) {
       if (changed.includes('telegramToken')) settings.update({ telegramChatId: 0 }); // new bot = pair again

@@ -19,7 +19,7 @@ const clean = (s) =>
   String(s || '')
     .trim()
     .replace(/\s+/g, ' ')
-    .replace(/^(?:hey |ok |okay )?(?:shadow|sage)?[,:!]?\s*/i, '')
+    .replace(/^(?:hey |ok |okay )?(?:shadow|sage|iron man|doctor strange|strange)?[,:!]?\s*/i, '')
     .replace(/^(?:please|pls|plz|can you|could you)\s+/i, '')
     .trim();
 
@@ -28,7 +28,7 @@ function parseTutorCommand(input) {
   const t = clean(input);
   const l = t.toLowerCase().replace(/[?.!]+$/, '');
   let m;
-  if (/^(?:stop|end|finish|quit|exit)(?: the)? (?:quiz|lesson|class|tutoring|session)$|^(?:thanks|thank you|bye|ok bye) sage$|^class (?:is )?over$/.test(l)) return { type: 'stop' };
+  if (/^(?:stop|end|finish|quit|exit)(?: the)? (?:quiz|lesson|class|tutoring|session)$|^(?:thanks|thank you|bye|ok bye) (?:sage|doctor strange|strange)$|^class (?:is )?over$/.test(l)) return { type: 'stop' };
   if ((m = /^(?:quiz|test) me(?: (?:on|about|in))? ?(.*)$/i.exec(t))) return { type: 'quiz', topic: m[1].replace(/[?.!]+$/, '').trim() };
   if ((m = /^(?:make |give me |create )?(?:some )?flash ?cards (?:on|for|about|of) (.+)$/i.exec(t))) return { type: 'flashcards', topic: m[1].replace(/[?.!]+$/, '').trim() };
   if ((m = /^(?:check|correct|grade|mark) (?:my |this )?(?:answer|homework|work|solution|essay)s?\s*[:-]?\s*([\s\S]+)$/i.exec(t))) return { type: 'check', work: m[1].trim() };
@@ -43,8 +43,8 @@ const LONG_RULES = [
   'Plain text: numbered steps and simple lines are fine, but no markdown headings, bold, tables or code blocks.',
 ].join('\n');
 
-function sessionPrompt(s) {
-  const who = "Right now you are SAGE the wise owl, Shadow's friend and Prince's patient tutor. Encouraging, clear, a little playful.";
+function sessionPrompt(s, heroName) {
+  const who = heroName ? `Right now you are ${heroName}, Iron Man's teammate and Prince's patient tutor. Encouraging, clear, a little playful.` : "Right now you are SAGE the wise owl, Shadow's friend and Prince's patient tutor. Encouraging, clear, a little playful.";
   switch (s.mode) {
     case 'quiz':
       return [
@@ -109,9 +109,9 @@ class Tutor {
   }
 
   /** Extra system prompt for the AI while a session runs. */
-  context() {
+  context(heroName = null) {
     if (!this.active()) return null;
-    return { tutor: sessionPrompt(this.session), long: true };
+    return { tutor: sessionPrompt(this.session, heroName), long: true };
   }
 }
 
