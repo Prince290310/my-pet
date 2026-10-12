@@ -229,8 +229,11 @@ function init() {
       syncDisplay(true);
       pet.win.showInactive();
       if (ctx.onStarted) ctx.onStarted();
-    } else if (brain.anim) {
-      pet.send('pet:anim', { name: brain.anim, facing: brain.facing });
+    } else {
+      // the page was reloaded (crash/freeze recovery): give it back what it was showing
+      if (brain.anim) pet.send('pet:anim', { name: brain.anim, facing: brain.facing });
+      if (brain.bubble) pet.send('pet:bubble', brain.bubble);
+      if (brain.state === 'hidden') pet.send('pet:pause');
     }
   });
   const onFriend = (fn) => (e, ...a) => {
@@ -244,12 +247,29 @@ function init() {
   ipcMain.on('pet:context-menu', (e) => (fromPet(e) ? showPetMenu() : onFriend(friendMenu)(e)));
   // Press & drag: follow the real cursor from here while the button is held (a non-focusable
   // window gets no mouse-move events mid-press on Windows). Polls only during a press.
+  // A press must always end: if Windows swallows the button-up (released off-screen or outside the
+  // window), the next press, a timeout or "Unstick Shadow" closes it. A press or drag left open used
+  // to freeze Shadow for good - every click ignored and the hover check switched off.
   let press = null;
+  const endPress = (tellPage = true) => {
+    if (!press) {
+      if (brain.dragging) brain.dragEnd();
+      return false;
+    }
+    clearInterval(press.timer);
+    const dragged = press.dragging;
+    press = null;
+    if (dragged) brain.dragMove(ctx.sensors.cursor());
+    if (brain.dragging) brain.dragEnd();
+    if (tellPage) pet.send('pet:press-reset');
+    return dragged;
+  };
   ipcMain.on('pet:press-start', (e, p) => {
     if (!fromPet(e) || !validPt(p)) return;
-    if (press) clearInterval(press.timer);
-    const cur = { start: { x: p.x, y: p.y }, ctrl: !!p.ctrl, dragging: false };
+    endPress(false);
+    const cur = { start: { x: p.x, y: p.y }, ctrl: !!p.ctrl, dragging: false, since: Date.now() };
     cur.timer = setInterval(() => {
+      if (Date.now() - cur.since > (ctx.pressMaxMs || 20000)) return endPress();
       const c = ctx.sensors.cursor();
       if (!cur.dragging) {
         if (cur.ctrl || Math.hypot(c.x - cur.start.x, c.y - cur.start.y) <= 4) return;
@@ -260,34 +280,90 @@ function init() {
     }, 16);
     press = cur;
   });
-  ipcMain.handle('pet:press-end', (e) => {
-    if (!fromPet(e) || !press) return { dragged: false };
-    clearInterval(press.timer);
-    const dragged = press.dragging;
-    press = null;
-    if (dragged) {
-      brain.dragMove(ctx.sensors.cursor());
-      brain.dragEnd();
-    }
-    return { dragged };
-  });
+  ipcMain.handle('pet:press-end', (e) => (fromPet(e) ? { dragged: endPress(false) } : { dragged: false }));
   // Hover check that doesn't depend on Windows forwarding mouse moves (see pet.js onCursor).
   // Only talks to the renderer while the cursor is over the pet's window, so it costs ~nothing.
   const hover = (w) => {
     const c = ctx.sensors.cursor();
-    const b = w.bounds();
+    const b = w.win.getBounds(); // where the window really is, not where we think it is
     const inside = c.x >= b.x && c.x < b.x + b.width && c.y >= b.y && c.y < b.y + b.height;
     if (inside || w.cursorWasInside || w.interactive) {
       w.send('pet:cursor', { inside, x: c.x - b.x, y: c.y - b.y, interactive: w.interactive });
     }
     w.cursorWasInside = inside;
   };
+  let strayDrag = 0;
   setInterval(() => {
-    if (press || brain.dragging) return;
+    if (press) return;
+    if (brain.dragging) {
+      // dragging with no mouse button held behind it is a leftover - finish it
+      if (!strayDrag) strayDrag = Date.now();
+      else if (Date.now() - strayDrag > 3000) endPress();
+      return;
+    }
+    strayDrag = 0;
     if (pet.alive() && !pet.tucked) hover(pet);
     friends.windows().forEach(hover); // the friends get the same fix
   }, 60);
-  powerMonitor.on('unlock-screen', () => pet.setInteractive(pet.interactive)); // re-arm click-through after locking
+  // Windows can move a window on its own (screen off/on, sleep, monitor or DPI changes) while Shadow
+  // sits still - then he'd be drawn in one place but clickable in another. Put it back.
+  const keepInPlace = (w) => {
+    if (!w.alive() || !w.win.isVisible() || w.win.isMinimized()) return;
+    const want = w.bounds();
+    const got = w.win.getBounds();
+    if (['x', 'y', 'width', 'height'].some((k) => Math.abs(want[k] - got[k]) > 4)) w.win.setBounds(want);
+  };
+  setInterval(() => {
+    if (press || brain.dragging) return;
+    if (pet.alive() && !pet.tucked) keepInPlace(pet);
+    friends.windows().forEach(keepInPlace);
+  }, 1000);
+  // after sleep / unlock / screen changes: drop any half-finished press and start clean
+  const rearm = () => {
+    endPress();
+    for (const w of [pet, ...friends.windows()]) {
+      if (!w.alive()) continue;
+      w.send('pet:press-reset');
+      w.setInteractive(false); // the hover check turns it back on the moment the cursor is over him
+      w.cursorWasInside = false;
+      keepInPlace(w);
+    }
+  };
+  powerMonitor.on('unlock-screen', rearm);
+  powerMonitor.on('resume', rearm);
+  // The pet page itself: if it crashes or stops answering, load it again (Shadow carries on).
+  pet.lastBeat = Date.now();
+  ipcMain.on('pet:heartbeat', (e) => fromPet(e) && (pet.lastBeat = Date.now()));
+  const reloadPet = () => {
+    if (!pet.alive()) return;
+    pet.lastBeat = Date.now();
+    endPress(false);
+    pet.setInteractive(false);
+    if (!pet.win.webContents.isCrashed()) pet.win.webContents.forcefullyCrashRenderer();
+    pet.win.webContents.reload();
+  };
+  ctx.reloadPet = reloadPet;
+  let lastWatch = Date.now();
+  setInterval(() => {
+    const now = Date.now();
+    const slept = now - lastWatch > 15000; // the PC was asleep - give the page a moment first
+    lastWatch = now;
+    if (slept || !pet.alive() || pet.tucked) return void (pet.lastBeat = now);
+    if (now - pet.lastBeat > (ctx.heartbeatMaxMs || 30000)) {
+      console.warn('[pet] page stopped answering - reloading it');
+      reloadPet();
+    }
+  }, 5000);
+  // tray -> "Unstick Shadow": everything above at once, plus a fresh page and a spot on screen
+  ctx.rescue = () => {
+    rearm();
+    if (brain.state === 'hidden') brain.command('wake');
+    brain.displaysChanged();
+    reloadPet();
+    pet.win.showInactive();
+    pet.win.setAlwaysOnTop(true, 'screen-saver');
+    pet.win.moveTop();
+  };
 
   ipcMain.on('pet:bubble-click', (e) => (fromPet(e) ? brain.bubbleClicked() : onFriend((f) => f.win.send('pet:bubble-hide'))(e)));
   ipcMain.on('pet:test-frame', (e, info) => fromPet(e) && ctx.onTestFrame && ctx.onTestFrame(info));
@@ -524,7 +600,7 @@ function init() {
       return r;
     },
   }));
-  tg.on('paired', () => brain.state !== 'hidden' && brain.say('📱 Phone paired! Text me anytime, Prince 🐾', { ms: 5000 }));
+  tg.on('paired', () => brain.state !== 'hidden' && !brain.activeReminder && brain.say('📱 Phone paired! Text me anytime, Prince 🐾', { ms: 5000 }));
   tg.on('message', (text) => console.log(`[telegram] message (${text.length} chars)`)); // content stays private
   const away = () => ctx.sensors.idleSeconds() > 120;
   ipcMain.handle('telegram:test', (_e, token) => tg.test(typeof token === 'string' ? token : ''));
@@ -757,7 +833,7 @@ function init() {
     brain,
     settings,
     loginItem: { get: () => ctx.loginItem.get(), set: (on) => ctx.loginItem.set(on) },
-    actions: { openSettings, openConfigFolder, openChat: openChatPanel, quit },
+    actions: { openSettings, openConfigFolder, openChat: openChatPanel, quit, rescue: () => ctx.rescue() },
     getUpdater: () => ctx.updater,
     callGang: () => ctx.friends.callGang(),
   });
@@ -816,6 +892,7 @@ function init() {
   const onDisplays = () => {
     brain.displaysChanged();
     syncDisplay(true);
+    if (!press && !brain.dragging) rearm(); // never cut off a drag that's in progress
   };
   screen.on('display-added', onDisplays);
   screen.on('display-removed', onDisplays);

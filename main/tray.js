@@ -39,6 +39,7 @@ function createTray({ brain, settings, loginItem, actions, getUpdater = () => nu
         : { id: 'toggle', label: 'Tuck Away Pet', click: () => brain.command('tuck') }
     );
     if (sleeping) items.push({ id: 'wake', label: 'Wake Pet', click: () => brain.command('wake') });
+    if (actions.rescue) items.push({ id: 'rescue', label: `Unstick ${settings.get('petName')} (can't click?)`, click: () => actions.rescue() });
     if (callGang) items.push({ id: 'gang', label: 'Call the Gang 🐾', click: () => callGang() });
     items.push(
       { id: 'chat', label: 'Chat… (Ctrl+Click pet)', click: () => actions.openChat() },

@@ -230,6 +230,11 @@ async function endPress(e, cancelled) {
     }, 260);
   }
 }
+// main ended a press whose button-up never arrived (released off-screen, sleep, lock...)
+api.onPressReset(() => {
+  press = null;
+  document.body.classList.remove('dragging');
+});
 canvas.addEventListener('pointerup', (e) => endPress(e, false));
 canvas.addEventListener('pointercancel', (e) => endPress(e, true));
 canvas.addEventListener('lostpointercapture', () => dbg('lostpointercapture'));
@@ -300,6 +305,7 @@ window.__shadowTest = {
     frame: currentFrame,
     paused,
     interactive,
+    pressing: !!press,
     ticking: frameTimer !== null,
     bubble: bubble.classList.contains('hidden') ? null : { text: bubbleText.textContent, sticky: bubble.classList.contains('sticky') },
     canvas: canvas.getBoundingClientRect().toJSON(),
@@ -308,3 +314,4 @@ window.__shadowTest = {
 };
 
 api.ready();
+setInterval(() => api.heartbeat(), 3000); // main reloads this page if these stop (crash/freeze)

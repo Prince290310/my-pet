@@ -429,6 +429,108 @@ async function run(ctx, h) {
     await Promise.race([back, sleep(4000)]);
     check('restored reminders.json reloads', config.reminders.length === 4, `${config.reminders.length} reminders`);
 
+    section('Unsticking (the "can\'t click Shadow" and "reminder won\'t close" bugs)');
+    const stateNow = () => Promise.race([rstate(), sleep(400).then(() => null)]); // the page may be frozen/crashed
+    // a drag during the "done!" dance used to cancel the timer that finishes closing the reminder
+    brain.reminder({ time: hhmm, days: [day], message: 'Drag test' });
+    await waitFor(() => brain.state === 'reminder', 9000);
+    brain.bubbleClicked();
+    brain.dragStart({ x: pet.pos.x + 10, y: pet.pos.y + 10 });
+    brain.dragMove({ x: pet.pos.x + 40, y: pet.pos.y - 60 });
+    brain.dragEnd();
+    await waitFor(() => !brain.activeReminder, 4000);
+    check('dragging during the "done!" dance no longer leaves the reminder half-closed', !brain.activeReminder && !brain.reminderClosing);
+    await waitFor(() => brain.state !== 'fall', 3000);
+    quiet();
+    brain.rest(60000);
+    brain.click();
+    check('...and clicking Shadow works again afterwards', brain.state === 'talk', `state=${brain.state}`);
+    // another line replaced the gold bubble's text
+    quiet();
+    brain.reminder({ time: hhmm, days: [day], message: 'Replaced text test' });
+    await waitFor(() => brain.state === 'reminder', 9000);
+    brain.say('Something else entirely', { ms: 5000 });
+    brain.bubbleClicked();
+    check('clicking the bubble closes the reminder even if other text replaced it', brain.reminderClosing === true);
+    await waitFor(() => !brain.activeReminder, 4000);
+    // Tuck Away during a reminder, then wake: used to stay "hidden" and ignore every click and drag
+    brain.reminder({ time: hhmm, days: [day], message: 'Tuck test' });
+    await waitFor(() => brain.state === 'reminder', 9000);
+    brain.command('tuck');
+    brain.command('wake');
+    check('waking a tucked-away pet shows the open reminder again', brain.state === 'reminder' && brain.bubble && brain.bubble.sticky && pet.win.isVisible());
+    brain.click();
+    check('...and a click closes it', brain.reminderClosing === true);
+    await waitFor(() => !brain.activeReminder, 4000);
+    await waitFor(() => brain.state !== 'fall', 3000);
+    // the mouse button-up never arrives (released off-screen / outside the window) mid-drag
+    const lostUp = async () => {
+      quiet();
+      brain.rest(60000);
+      await sleep(250);
+      const sp = await petPoint();
+      const sw = wb();
+      mouse('mouseMove', sp.x, sp.y);
+      await waitFor(() => pet.interactive, 1000);
+      mouse('mouseDown', sp.x, sp.y, { button: 'left', clickCount: 1 });
+      await sleep(60);
+      fake.cursor = { x: sw.x + sp.x - 80, y: sw.y + sp.y - 50 };
+      await waitFor(() => brain.dragging, 1000);
+      return sp;
+    };
+    let sp = await lostUp();
+    check('(drag in progress, its button-up will never come)', brain.dragging);
+    mouse('mouseDown', sp.x, sp.y, { button: 'left', clickCount: 1 }); // Prince clicks Shadow again
+    await sleep(60);
+    mouse('mouseUp', sp.x, sp.y, { button: 'left', clickCount: 1 });
+    await waitFor(() => brain.state === 'talk', 1500);
+    check('the next click ends a drag whose button-up was lost (and counts as a click)', !brain.dragging && brain.state === 'talk', `state=${brain.state}`);
+    ctx.pressMaxMs = 1200;
+    sp = await lostUp();
+    const ended = await waitFor(async () => !brain.dragging && (await stateNow()).pressing === false, 3000);
+    check('...or it ends by itself after a while', !!ended);
+    ctx.pressMaxMs = undefined;
+    fake.cursor = { x: -99999, y: -99999 };
+    quiet();
+    brain.dragStart({ x: pet.pos.x + 5, y: pet.pos.y + 5 }); // a drag with no mouse press behind it
+    check('a leftover drag with no press behind it is finished', await waitFor(() => !brain.dragging, 5000));
+    await waitFor(() => brain.state !== 'fall', 3000);
+    // Windows moved the window on its own (screen off/on, sleep, DPI change) while Shadow sat still
+    quiet();
+    brain.rest(60000);
+    const want = pet.bounds();
+    pet.win.setBounds({ ...want, x: want.x - 250, y: want.y - 120 });
+    check('a window Windows moved behind his back is put back where Shadow is drawn', await waitFor(() => Math.abs(wb().x - want.x) <= 2 && Math.abs(wb().y - want.y) <= 2, 3000), JSON.stringify(wb()));
+    // the page crashes: reloads and shows the same reminder again
+    brain.reminder({ time: hhmm, days: [day], message: 'Crash test' });
+    await waitFor(() => brain.state === 'reminder', 9000);
+    pet.win.webContents.forcefullyCrashRenderer();
+    const revived = await waitFor(async () => {
+      const st = await stateNow();
+      return st && st.frame >= 0 && st.bubble && st.bubble.sticky && st.bubble.text.includes('Crash test');
+    }, 10000, 250);
+    check('a crashed pet page reloads itself with the reminder still showing', !!revived);
+    brain.dismissReminder();
+    await waitFor(() => !brain.activeReminder, 4000);
+    // the page freezes: the heartbeat watchdog reloads it
+    ctx.heartbeatMaxMs = 4500;
+    js('window.__beforeFreeze = 1; setTimeout(() => { const t = Date.now(); while (Date.now() - t < 60000); }, 50)');
+    const thawed = await waitFor(() => Promise.race([js('window.__beforeFreeze === undefined && window.__shadowTest.state().frame >= 0'), sleep(400).then(() => false)]), 20000, 300);
+    check('a frozen pet page is reloaded by the watchdog', !!thawed);
+    ctx.heartbeatMaxMs = undefined;
+    // tray -> "Unstick Shadow" fixes everything at once
+    const rescueItem = ctx.trayCtl.menu().getMenuItemById('rescue');
+    check('tray menu offers "Unstick Shadow"', !!rescueItem);
+    quiet();
+    brain.dragStart({ x: pet.pos.x + 5, y: pet.pos.y + 5 });
+    rescueItem.click();
+    const unstuck = await waitFor(async () => {
+      const st = await stateNow();
+      return !brain.dragging && pet.win.isVisible() && st && st.frame >= 0 && !st.pressing;
+    }, 10000, 250);
+    check('"Unstick Shadow" ends a stuck drag and reloads him', !!unstuck);
+    await waitFor(() => brain.state !== 'fall', 3000);
+
     section('Tray menu');
     const tray = ctx.trayCtl;
     const find = (id, m = tray.menu()) => m.getMenuItemById(id);

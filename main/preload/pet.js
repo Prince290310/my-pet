@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('shadow', {
   pressEnd: () => ipcRenderer.invoke('pet:press-end'), // -> { dragged }
   bubbleClick: () => ipcRenderer.send('pet:bubble-click'),
   testFrame: (info) => ipcRenderer.send('pet:test-frame', info),
+  heartbeat: () => ipcRenderer.send('pet:heartbeat'),
 
   onInit: on('pet:init'),
   onAnim: on('pet:anim'),
@@ -28,4 +29,5 @@ contextBridge.exposeInMainWorld('shadow', {
   onPause: on('pet:pause'),
   onResume: on('pet:resume'),
   onCursor: on('pet:cursor'),
+  onPressReset: on('pet:press-reset'),
 });

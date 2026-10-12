@@ -51,6 +51,10 @@ Only the panther itself (and its speech bubble) catch the mouse.
 ### Tray menu (panther head icon)
 
 - **Wake Pet / Tuck Away Pet**: hide or show Shadow (the animation loop pauses while tucked away, so it uses ~0 CPU)
+- **Dismiss Reminder**: closes the gold reminder bubble (only shown while one is open)
+- **Unstick Shadow (can't click?)**: if Shadow ever stops reacting to the mouse, this ends any stuck drag,
+  puts his window back where he's drawn and reloads him. Shadow also does all of this by himself after
+  sleep, unlocking the PC or a screen change, and reloads his window if it crashes or freezes.
 - **Chat…**: opens the chat panel
 - **Mute Quips**: no spontaneous lines (clicks and reminders still talk)
 - **Size**: 1x / 2x / 3x

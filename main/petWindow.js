@@ -80,6 +80,11 @@ class PetWindow {
       }, 60);
     });
     this.win.on('restore', () => this.alive() && this.win.setBounds(this.bounds()));
+    // the page crashed (GPU hiccup after sleep, low memory...): load it again instead of leaving a
+    // frozen, unclickable picture on screen
+    this.win.webContents.on('render-process-gone', () => {
+      setTimeout(() => this.alive() && this.win.webContents.isCrashed() && this.win.webContents.reload(), 400);
+    });
     this.win.loadFile(path.join(RENDERER, 'pet', 'index.html'));
     return this.win;
   }

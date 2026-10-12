@@ -106,7 +106,7 @@ class Brain extends EventEmitter {
   say(text, { sticky = false, ms, head, hint } = {}) {
     if (!text) return 0;
     const dur = ms || clamp(2600 + text.length * 55, 2600, 9000);
-    this.bubble = { text, sticky };
+    this.bubble = { text, sticky, head, hint };
     clearTimeout(this.bubbleTimer);
     this.emit('bubble', { text, sticky, head, hint });
     if (!sticky) this.bubbleTimer = setTimeout(() => this.hideBubble(), dur);
@@ -180,6 +180,7 @@ class Brain extends EventEmitter {
     clearInterval(this.sensorTimer);
     clearTimeout(this.quipTimer);
     clearTimeout(this.bubbleTimer);
+    clearTimeout(this.closeTimer);
   }
 
   /** Put the panther somewhere valid: last saved spot if it's still on a screen, else the primary floor. */
@@ -483,11 +484,8 @@ class Brain extends EventEmitter {
     if (!this.dragging) return;
     this.dragging = false;
     this.savePosition();
-    if (this.activeReminder) {
-      this.setState('reminder');
-      this.play('alert');
-      return;
-    }
+    if (!this.activeReminder && this.reminderQueue.length) return this.nextReminder();
+    if (this.activeReminder && !this.reminderClosing) return this.presentReminder();
     const gap = this.floorY() - this.pos.y;
     if (gap < 30 * this.scale) return this.fall(() => (this.chatOpen ? this.chatIdle() : this.rest()));
     // dropped high up: perch there for a while (sitting), then hop down on the next decision
@@ -511,7 +509,7 @@ class Brain extends EventEmitter {
     const p = this.pet.clamp(this.pos.x, this.pos.y, this.display());
     this.pet.moveTo(p.x, p.y);
     this.emit('visibility', true);
-    if (this.activeReminder) return;
+    if (this.activeReminder && !this.reminderClosing) return this.presentReminder();
     this.setState('waking');
     this.play('stretch');
     this.after(this.animMs('stretch') + 150, () => {
@@ -550,13 +548,7 @@ class Brain extends EventEmitter {
     this.emit('reminder-start', r);
     const d = this.display();
     const target = d.workArea.x + (d.workArea.width - this.pet.S) / 2;
-    const arrive = () => {
-      this.setState('reminder');
-      this.facing = 'right';
-      this.play('alert');
-      this.say(`${r.icon || '⏰'} ${r.message}`, { sticky: true, head: r.head, hint: r.hint });
-      this.emit('reminder-shown', r);
-    };
+    const arrive = () => this.presentReminder();
     const go = () => {
       const dist = Math.abs(target - this.pos.x);
       if (dist < 3) return arrive();
@@ -564,6 +556,17 @@ class Brain extends EventEmitter {
     };
     if (!this.onFloor()) this.fall(go);
     else go();
+  }
+
+  /** Stand still with the gold reminder bubble until Prince clicks it. */
+  presentReminder() {
+    const r = this.activeReminder;
+    if (!r) return;
+    this.setState('reminder');
+    this.facing = 'right';
+    this.play('alert');
+    this.say(`${r.icon || '⏰'} ${r.message}`, { sticky: true, head: r.head, hint: r.hint });
+    this.emit('reminder-shown', r);
   }
 
   /** @param {'click'|'menu'} how  click = bubble/pet clicked, menu = "Dismiss"/"Update Later" picked */
@@ -577,18 +580,27 @@ class Brain extends EventEmitter {
     this.setState('happy');
     this.play('happy');
     this.say(this.quip('reminderDone'), { ms: 2600 });
-    this.after(2600, () => {
-      this.activeReminder = null;
-      this.reminderClosing = false;
-      this.emit('reminder-done', r);
-      if (this.reminderQueue.length) this.nextReminder();
-      else if (this.chatOpen) this.chatIdle();
-      else this.rest();
-    });
+    // Its own timer, NOT this.after(): a drag or Tuck Away during the happy dance calls interrupt(),
+    // which used to leave the reminder half-closed forever - after that no click did anything.
+    clearTimeout(this.closeTimer);
+    this.closeTimer = setTimeout(() => this.finishReminder(r), 2600);
+  }
+
+  finishReminder(r) {
+    clearTimeout(this.closeTimer);
+    if (this.activeReminder !== r) return;
+    this.activeReminder = null;
+    this.reminderClosing = false;
+    this.emit('reminder-done', r);
+    if (this.dragging || this.state === 'hidden' || this.state === 'fall') return; // they carry on by themselves
+    if (this.reminderQueue.length) this.nextReminder();
+    else if (this.chatOpen) this.chatIdle();
+    else this.rest();
   }
 
   bubbleClicked() {
-    if (this.activeReminder && this.bubble && this.bubble.sticky) return this.dismissReminder();
+    // any click on the bubble closes an open reminder, even if another line replaced its text
+    if (this.activeReminder) return this.dismissReminder();
     this.hideBubble();
   }
 
