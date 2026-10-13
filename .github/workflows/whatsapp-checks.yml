@@ -41,13 +41,16 @@ jobs:
           if (-not (Test-Path dist/win-unpacked/Shadow.exe)) { "::error title=Packaged engine::the app did not build"; exit 1 }
           $env:ELECTRON_RUN_AS_NODE = '1'
           $env:SHADOW_APP_DIR = (Resolve-Path dist/win-unpacked/resources/app.asar).Path
-          $out = & ./dist/win-unpacked/Shadow.exe scripts/test-whatsweb-qr.js 2>&1
-          $code = $LASTEXITCODE
+          # Shadow.exe is a windowed app: PowerShell only waits for it (and gets its output) through Start-Process
+          $p = Start-Process -FilePath dist/win-unpacked/Shadow.exe -ArgumentList 'scripts/test-whatsweb-qr.js' -NoNewWindow -Wait -PassThru -RedirectStandardOutput packaged-out.txt -RedirectStandardError packaged-err.txt
+          $code = $p.ExitCode
+          $out = @(Get-Content packaged-out.txt) + @(Get-Content packaged-err.txt)
           foreach ($line in $out) {
             $text = ("$line" -replace '%', '%25' -replace "`r", '' -replace "`n", '%0A')
             if ($text -match '^(PASS|SKIP)') { "::notice title=Packaged engine::$text" } elseif ($text -match '^FAIL') { "::error title=Packaged engine::$text" } else { $text }
           }
-          if ($code -ne 0) { "::error title=Packaged engine failed::exit $code"; exit $code }
+          if ($code -ne 0) { "::error title=Packaged engine failed::exit $code"; exit 1 }
+          if (-not ($out -match '^PASS WhatsApp Web loaded')) { "::error title=Packaged engine::no QR code result from the packaged app (output: $($out -join ' | '))"; exit 1 }
       # Each PASS/SKIP line becomes a notice and any failure becomes an error annotation with its message,
       # so results are readable from the run summary (and the checks API) without opening the raw log.
       - name: Compile and check Windows accessibility helper
