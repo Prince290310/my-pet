@@ -92,7 +92,7 @@ test('the exact requested body is sent, including messages longer than ordinary 
   assert.equal(calls[0].message, body);
 });
 test('unconfirmed sends and calls are never retried', async () => {
-  for (const code of ['send_uncertain', 'call_uncertain', 'timeout', 'recipient_unverified', 'ambiguous', 'draft_exists']) {
+  for (const code of ['send_uncertain', 'call_uncertain', 'timeout', 'recipient_unverified', 'ambiguous', 'draft_exists', 'chat_not_opened', 'click_blocked', 'ambiguous_composer']) {
     let count = 0, opened = 0;
     const { control } = setup({}, { run: async () => { count++; return { ok: false, code }; } });
     control.launch = async () => { opened++; return true; };
@@ -100,6 +100,20 @@ test('unconfirmed sends and calls are never retried', async () => {
     assert.equal(count, 1);
     assert.equal(opened, 0);
     assert.ok(!result.startsWith('Sent'));
+  }
+});
+test('selection failure explains the stopped step and never claims an outgoing action succeeded', async () => {
+  for (const type of ['call', 'send']) {
+    const { control, calls } = setup({}, { run: async request => {
+      calls.push(request);
+      return { ok: false, code: 'chat_not_opened', stage: 'verify_chat' };
+    } });
+    const result = await control.run({ type, contact: 'Mom', ...(type === 'send' ? { message: 'Hello' } : {}) });
+    assert.match(result, /could not open and verify the conversation/);
+    assert.match(result, /No message or call was sent/);
+    assert.match(result, /Stopped while verifying recipient/);
+    assert.equal(calls.length, 1);
+    assert.ok(!result.startsWith('Started') && !result.startsWith('Sent'));
   }
 });
 test('only a definite app-not-running result allows one launch and one retry', async () => {

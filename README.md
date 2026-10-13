@@ -103,7 +103,14 @@ If a check fails, expand **Detection details** or use `whatsapp diagnostics`. Th
 counts and known-control availability; they contain no window titles, contact names or message text.
 The check does not restore windows or switch chats. Composer/call buttons may be absent if no chat is open.
 Calls verify the selected chat header and its call button without requiring a message input. Messaging
-also supports a named, readable, focusable composer exposed as an accessibility document/custom control.
+also supports a unique, readable, focusable editor measured in the lower message pane, including
+unnamed editors and accessibility document/custom/pane/group controls. Sidebar search, chat history,
+read-only controls, password fields and ambiguous editors cannot substitute for the composer.
+Search result selection supports custom/pane/group rows. If a row lacks an Invoke action, or selection
+only highlights it, the helper can use the row's accessibility-provided clickable point. It verifies
+the point belongs to that row in the foreground WhatsApp window and rechecks the exact chat header
+before any outgoing action. It never guesses a screen location or uses a fixed click coordinate.
+Typing uses literal Unicode keyboard events, so WebView apps receive input events for search/drafts.
 Diagnostics distinguish a visible call button from an invokable call action. Failed commands report
 the step where they stopped, without including chat content. A `ready` check confirms app/search detection;
 the helper verifies the requested message or call when you issue the command.
@@ -113,6 +120,10 @@ validation against your installed Windows app; Linux tests use a fake helper and
 Developer checks: `npm run test:whatsapp`, `npm test`, and on Windows
 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-whatsapp-helper.ps1`.
 The Windows helper check compiles the accessibility code and rejects invalid requests without touching a chat.
+It also runs the production selector regressions. `scripts/test-whatsapp-ui.ps1` exercises native
+selection of a custom result row, calls without a composer, and typing into an unnamed editor in an
+isolated fake Windows app. The fixture sends nothing over the network, must be run with real WhatsApp
+closed, and reports a skip on hosts without an interactive desktop. It is not a live-WhatsApp test.
 
 The following guide describes the existing companion features, all of which remain available
 with either appearance.

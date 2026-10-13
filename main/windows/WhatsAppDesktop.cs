@@ -26,7 +26,7 @@ namespace Shadow {
         public bool voiceInvoke { get; set; }
         public bool videoInvoke { get; set; }
     }
-    // All selectors refer to WhatsApp's own accessibility tree. No screen-coordinate clicks.
+    // Targets come from WhatsApp's accessibility tree. Mouse fallbacks use its verified clickable point.
     public static class WhatsAppDesktop {
         static readonly string[] SearchNames = { "Search", "Search or start new chat", "Search chats", "Search or start a new chat", "Search input textbox" };
         static readonly string[] ComposeNames = { "Type a message", "Message", "Enter a message", "Message input" };
@@ -46,6 +46,11 @@ namespace Shadow {
         [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr handle);
         [DllImport("user32.dll")] static extern bool IsIconic(IntPtr handle);
         [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr handle, uint command);
+        [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr handle, uint flags);
+        [StructLayout(LayoutKind.Sequential)] struct NativePoint { public int X, Y; }
+        [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(NativePoint point);
+        [DllImport("user32.dll")] static extern int GetSystemMetrics(int index);
+        [DllImport("user32.dll")] static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
         [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr handle, out uint id);
         delegate bool WindowCallback(IntPtr handle, IntPtr state);
         [DllImport("user32.dll")] static extern bool EnumWindows(WindowCallback callback, IntPtr state);
@@ -63,7 +68,7 @@ namespace Shadow {
         [StructLayout(LayoutKind.Sequential)] struct Input { public uint type; public InputData data; }
 
         static WhatsAppResult Result(bool ok, string code) { return new WhatsAppResult { ok = ok, code = code }; }
-        static bool Same(string a, string b) { return String.Equals((a ?? "").Trim(), (b ?? "").Trim(), StringComparison.OrdinalIgnoreCase); }
+        static bool Same(string a, string b) { return WhatsAppLayout.SameName(a, b); }
         static bool HasName(AutomationElement e, string[] names) {
             foreach (string name in names) if (Same(e.Current.Name, name)) return true;
             return false;
@@ -78,30 +83,58 @@ namespace Shadow {
         static AutomationElement Find(AutomationElement root, ControlType type, string[] names) {
             var controls = root.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, type));
             foreach (AutomationElement e in controls)
-                if (Usable(e) && HasName(e, names)) return e;
+                if (HasName(e, names) && Usable(e)) return e;
             return null;
         }
-        static AutomationElement Composer(AutomationElement root) {
+        static WhatsAppBounds Bounds(AutomationElement element) {
+            var rect = element.Current.BoundingRectangle;
+            return new WhatsAppBounds(rect.Left, rect.Top, rect.Width, rect.Height);
+        }
+        static AutomationElement Composer(AutomationElement root, AutomationElement search) {
             var types = new OrCondition(new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit),
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Document),
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Custom));
-            foreach (AutomationElement e in root.FindAll(TreeScope.Descendants, types)) {
-                if (!Usable(e) || !HasName(e, ComposeNames)) continue;
-                object pattern;
-                bool readable = e.TryGetCurrentPattern(ValuePattern.Pattern, out pattern) || e.TryGetCurrentPattern(TextPattern.Pattern, out pattern);
-                if (readable && e.Current.IsKeyboardFocusable) return e;
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Custom),
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Pane),
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Group));
+            var named = new List<AutomationElement>();
+            var structural = new List<AutomationElement>();
+            var searchBox = Bounds(search);
+            var windowBox = Bounds(root);
+            var eligible = new AndCondition(types, new PropertyCondition(AutomationElement.IsKeyboardFocusableProperty, true),
+                new PropertyCondition(AutomationElement.IsEnabledProperty, true), new PropertyCondition(AutomationElement.IsOffscreenProperty, false));
+            foreach (AutomationElement e in root.FindAll(TreeScope.Descendants, eligible)) {
+                var input = Bounds(e);
+                if (!WhatsAppLayout.Composer(input, searchBox, windowBox, true, true, true, false, false)) continue;
+                object value, text;
+                bool hasValue = e.TryGetCurrentPattern(ValuePattern.Pattern, out value);
+                bool readable = hasValue || e.TryGetCurrentPattern(TextPattern.Pattern, out text);
+                bool readOnly = hasValue && ((ValuePattern)value).Current.IsReadOnly;
+                if (!WhatsAppLayout.Composer(input, searchBox, windowBox, true,
+                    e.Current.IsKeyboardFocusable, readable, readOnly, e.Current.IsPassword)) continue;
+                if (HasName(e, ComposeNames)) named.Add(e);
+                structural.Add(e);
             }
-            return null;
+            var found = named.Count > 0 ? named : structural;
+            // Nested accessibility wrappers represent one editor, not two separate inputs.
+            for (int i = found.Count - 1; i >= 0; i--) {
+                bool wrapper = false;
+                for (int j = 0; j < found.Count; j++) if (i != j && Inside(found[i], found[j])) { wrapper = true; break; }
+                if (wrapper) found.RemoveAt(i);
+            }
+            if (found.Count > 1) throw new Failure("ambiguous_composer");
+            return found.Count == 1 ? found[0] : null;
         }
         static bool Invokable(AutomationElement element) {
             object pattern;
             return element != null && element.TryGetCurrentPattern(InvokePattern.Pattern, out pattern);
         }
         public static bool KnownProcessName(string name) {
-            return Same(name, "WhatsApp") || Same(name, "WhatsAppBeta") || Same(name, "WhatsApp.Root") || Same(name, "WhatsApp Desktop");
+            return String.Equals(name, "WhatsApp", StringComparison.OrdinalIgnoreCase) || String.Equals(name, "WhatsAppBeta", StringComparison.OrdinalIgnoreCase) ||
+                String.Equals(name, "WhatsApp.Root", StringComparison.OrdinalIgnoreCase) || String.Equals(name, "WhatsApp Desktop", StringComparison.OrdinalIgnoreCase);
         }
         public static bool KnownPackage(string name) {
-            return Same(name, "5319275A.WhatsAppDesktop_cv1g1gvanyjgm") || Same(name, "5319275A.WhatsAppBeta_cv1g1gvanyjgm") || Same(name, "5319275A.WhatsApp_cv1g1gvanyjgm");
+            return String.Equals(name, "5319275A.WhatsAppDesktop_cv1g1gvanyjgm", StringComparison.OrdinalIgnoreCase) ||
+                String.Equals(name, "5319275A.WhatsAppBeta_cv1g1gvanyjgm", StringComparison.OrdinalIgnoreCase) || String.Equals(name, "5319275A.WhatsApp_cv1g1gvanyjgm", StringComparison.OrdinalIgnoreCase);
         }
         static bool WhatsAppProcess(int id) {
             try {
@@ -203,7 +236,7 @@ namespace Shadow {
         }
         static WhatsAppResult Status() {
             // Report only counters and known-control presence. Never return window titles, names or chat text.
-            var diagnostics = new WhatsAppDiagnostics { helperVersion = 3, appProcesses = RunningProcesses() };
+            var diagnostics = new WhatsAppDiagnostics { helperVersion = 4, appProcesses = RunningProcesses() };
             var result = Result(false, "helper_error");
             result.stage = "status";
             result.diagnostics = diagnostics;
@@ -217,7 +250,8 @@ namespace Shadow {
                     diagnostics.minimized = IsIconic(window.Handle);
                     diagnostics.search = window.HasSearch;
                     if (!diagnostics.minimized) {
-                        diagnostics.composer = Composer(window.Root) != null;
+                        var search = Find(window.Root, ControlType.Edit, SearchNames);
+                        diagnostics.composer = search != null && Composer(window.Root, search) != null;
                         var voice = Find(window.Root, ControlType.Button, VoiceNames);
                         var video = Find(window.Root, ControlType.Button, VideoNames);
                         diagnostics.voiceCall = voice != null;
@@ -264,7 +298,15 @@ namespace Shadow {
             AssertWindow(window);
             target.SetFocus();
             Thread.Sleep(60);
-            if (!Automation.Compare(target, AutomationElement.FocusedElement)) throw new Failure("focus_changed");
+            if (!Inside(target, AutomationElement.FocusedElement)) throw new Failure("focus_changed");
+        }
+        static bool Inside(AutomationElement target, AutomationElement element) {
+            var current = element;
+            for (int depth = 0; depth < 24 && current != null; depth++) {
+                if (Automation.Compare(target, current)) return true;
+                current = TreeWalker.RawViewWalker.GetParent(current);
+            }
+            return false;
         }
         static Input Key(ushort code, bool up, bool unicode) {
             var value = new Input { type = 1 };
@@ -273,23 +315,25 @@ namespace Shadow {
         }
         static void SendKeys(AppWindow window, AutomationElement edit, Input[] inputs) {
             AssertWindow(window);
-            if (!Automation.Compare(edit, AutomationElement.FocusedElement)) throw new Failure("focus_changed");
+            if (!Inside(edit, AutomationElement.FocusedElement)) throw new Failure("focus_changed");
             if (SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(Input))) != inputs.Length) throw new Failure("controls_unavailable");
         }
         static void Write(AppWindow window, AutomationElement edit, string text) {
             AssertWindow(window);
-            object raw;
-            if (edit.TryGetCurrentPattern(ValuePattern.Pattern, out raw) && !((ValuePattern)raw).Current.IsReadOnly) {
-                ((ValuePattern)raw).SetValue(text);
-                return;
-            }
+            // Real input events update WebView/React search filters and contenteditable drafts.
+            // Setting ValuePattern alone can change the visible value without updating app state.
             Focus(window, edit);
             SendKeys(window, edit, new[] { Key(0x11, false, false), Key(0x41, false, false), Key(0x41, true, false), Key(0x11, true, false) });
             // Literal Unicode input; braces, quotes and shell metacharacters are never shortcuts.
+            var buffer = new List<Input>();
             foreach (char ch in text.Replace("\r\n", "\n")) {
-                if (ch == '\n') SendKeys(window, edit, new[] { Key(0x10, false, false), Key(0x0D, false, false), Key(0x0D, true, false), Key(0x10, true, false) });
-                else SendKeys(window, edit, new[] { Key(ch, false, true), Key(ch, true, true) });
+                if (ch == '\n') {
+                    if (buffer.Count > 0) { SendKeys(window, edit, buffer.ToArray()); buffer.Clear(); }
+                    SendKeys(window, edit, new[] { Key(0x10, false, false), Key(0x0D, false, false), Key(0x0D, true, false), Key(0x10, true, false) });
+                } else { buffer.Add(Key(ch, false, true)); buffer.Add(Key(ch, true, true)); }
+                if (buffer.Count >= 256 && !Char.IsHighSurrogate(ch)) { SendKeys(window, edit, buffer.ToArray()); buffer.Clear(); }
             }
+            if (buffer.Count > 0) SendKeys(window, edit, buffer.ToArray());
         }
         static string Read(AutomationElement edit) {
             object raw;
@@ -299,32 +343,71 @@ namespace Shadow {
             else throw new Failure("controls_unavailable");
             return (value ?? "").Replace("\r\n", "\n").TrimEnd('\r', '\n');
         }
-        static void Activate(AppWindow window, AutomationElement element) {
+        static bool Activate(AppWindow window, AutomationElement element) {
             AssertWindow(window);
             object raw;
-            if (element.TryGetCurrentPattern(InvokePattern.Pattern, out raw)) ((InvokePattern)raw).Invoke();
-            else if (element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out raw)) ((SelectionItemPattern)raw).Select();
-            else {
-                Focus(window, element);
-                SendKeys(window, element, new[] { Key(0x0D, false, false), Key(0x0D, true, false) });
+            try {
+                if (element.TryGetCurrentPattern(InvokePattern.Pattern, out raw)) { ((InvokePattern)raw).Invoke(); return false; }
+                if (element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out raw)) { ((SelectionItemPattern)raw).Select(); return false; }
+            } catch (InvalidOperationException) {
+                // Some WebView providers advertise a pattern but reject its action at runtime.
+                // Only chat selection falls back; outgoing sends and calls are never retried here.
             }
+            Click(window, element);
+            return true;
         }
-        static AutomationElement Row(AutomationElement leaf, AutomationElement root) {
+        static void Click(AppWindow window, AutomationElement element) {
+            // UI Automation reports physical pixels. Keep hit testing and virtual-desktop metrics in that space.
+            IntPtr previousDpi = SetThreadDpiAwarenessContext(new IntPtr(-4));
+            if (previousDpi == IntPtr.Zero) throw new Failure("click_blocked");
+            try { ClickPhysical(window, element); }
+            finally { SetThreadDpiAwarenessContext(previousDpi); }
+        }
+        static void ClickPhysical(AppWindow window, AutomationElement element) {
+            AssertWindow(window);
+            if (!Usable(element)) throw new Failure("chat_not_opened");
+            System.Windows.Point point;
+            if (!element.TryGetClickablePoint(out point)) throw new Failure("chat_not_opened");
+            var nativePoint = new NativePoint { X = (int)Math.Round(point.X), Y = (int)Math.Round(point.Y) };
+            if (GetAncestor(WindowFromPoint(nativePoint), 2) != window.Handle ||
+                !Inside(element, AutomationElement.FromPoint(point))) throw new Failure("click_blocked");
+            int x = GetSystemMetrics(76), y = GetSystemMetrics(77), width = GetSystemMetrics(78), height = GetSystemMetrics(79);
+            if (width < 2 || height < 2) throw new Failure("click_blocked");
+            int px = (int)Math.Round((point.X - x) * 65535 / (width - 1));
+            int py = (int)Math.Round((point.Y - y) * 65535 / (height - 1));
+            if (px < 0 || px > 65535 || py < 0 || py > 65535) throw new Failure("click_blocked");
+            var down = new Input { type = 0 };
+            down.data.mouse = new MouseInput { x = px, y = py, flags = 0xC003 };
+            var up = new Input { type = 0 };
+            up.data.mouse = new MouseInput { x = px, y = py, flags = 0xC005 };
+            AssertWindow(window);
+            if (ModalOpen(window.Root)) throw new Failure("dialog_open");
+            if (GetAncestor(WindowFromPoint(nativePoint), 2) != window.Handle || !Inside(element, AutomationElement.FromPoint(point))) throw new Failure("click_blocked");
+            // Position and button events are in one batch. No guessed centre or fixed coordinates.
+            if (SendInput(2, new[] { down, up }, Marshal.SizeOf(typeof(Input))) != 2) throw new Failure("chat_not_opened");
+        }
+        static AutomationElement Row(AutomationElement leaf, AutomationElement root, AutomationElement search) {
             var current = leaf;
-            for (int depth = 0; depth < 7 && current != null && !Automation.Compare(current, root); depth++) {
-                if (current.Current.ControlType == ControlType.ListItem || current.Current.ControlType == ControlType.DataItem || current.Current.ControlType == ControlType.Button) return current;
-                current = TreeWalker.ControlViewWalker.GetParent(current);
+            AutomationElement fallback = null;
+            for (int depth = 0; depth < 12 && current != null && !Automation.Compare(current, root); depth++) {
+                if (!WhatsAppLayout.SidebarRow(Bounds(current), Bounds(leaf), Bounds(search), Bounds(root))) break;
+                var type = current.Current.ControlType;
+                object pattern;
+                if (type == ControlType.ListItem || type == ControlType.DataItem || type == ControlType.Button ||
+                    current.TryGetCurrentPattern(InvokePattern.Pattern, out pattern) || current.TryGetCurrentPattern(SelectionItemPattern.Pattern, out pattern)) return current;
+                if (fallback == null && (type == ControlType.Pane || type == ControlType.Group || type == ControlType.Custom)) fallback = current;
+                current = TreeWalker.RawViewWalker.GetParent(current);
             }
-            return null;
+            return fallback;
         }
         static List<AutomationElement> Matches(AutomationElement root, AutomationElement search, string contact) {
             var rows = new List<AutomationElement>();
             var box = search.Current.BoundingRectangle;
             foreach (AutomationElement e in Elements(root)) {
-                if (!Usable(e) || !Same(e.Current.Name, contact)) continue;
+                if (!Same(e.Current.Name, contact) || !Usable(e)) continue;
                 var rect = e.Current.BoundingRectangle;
                 if (rect.Top < box.Bottom || rect.Left > box.Right) continue;
-                var row = Row(e, root);
+                var row = Row(e, root, search);
                 if (row == null) continue;
                 bool duplicate = false;
                 foreach (var previous in rows) if (Automation.Compare(previous, row)) duplicate = true;
@@ -334,11 +417,11 @@ namespace Shadow {
         }
         static bool HeaderControl(AutomationElement element, AutomationElement root) {
             var current = element;
-            for (int i = 0; i < 4 && current != null && !Automation.Compare(current, root); i++) {
+            for (int i = 0; i < 12 && current != null && !Automation.Compare(current, root); i++) {
                 var type = current.Current.ControlType;
                 string id = current.Current.AutomationId;
                 if (type == ControlType.Header || type == ControlType.Button || HasName(current, InfoNames) || Same(id, "ConversationTitle") || Same(id, "ChatHeader") || Same(id, "ContactName")) return true;
-                current = TreeWalker.ControlViewWalker.GetParent(current);
+                current = TreeWalker.RawViewWalker.GetParent(current);
             }
             return false;
         }
@@ -347,7 +430,7 @@ namespace Shadow {
         }
         static bool HeaderMatches(AutomationElement root, string contact, double sidebarRight, double headerBottom, AutomationElement compose = null) {
             foreach (AutomationElement e in Elements(root)) {
-                if (!Usable(e) || !Same(e.Current.Name, contact) || !HeaderControl(e, root)) continue;
+                if (!Same(e.Current.Name, contact) || !Usable(e) || !HeaderControl(e, root)) continue;
                 var rect = e.Current.BoundingRectangle;
                 // Verify the chat header in the message pane, never a matching message or sidebar row.
                 if (!InChatHeader(rect.Left, rect.Bottom, sidebarRight, headerBottom)) continue;
@@ -374,6 +457,16 @@ namespace Shadow {
                 if (InChatHeader(rect.Left, rect.Bottom, right, headerBottom)) matches.Add(e);
             }
             // A sidebar or message button cannot substitute for the current chat's header button.
+            return matches.Count == 1 ? matches[0] : null;
+        }
+        static AutomationElement SendButton(AutomationElement root, AutomationElement compose, double right) {
+            var input = compose.Current.BoundingRectangle;
+            var matches = new List<AutomationElement>();
+            foreach (AutomationElement e in root.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button))) {
+                if (!HasName(e, SendNames) || !Usable(e)) continue;
+                var rect = e.Current.BoundingRectangle;
+                if (rect.Left >= right && rect.Bottom >= input.Top && rect.Top <= input.Bottom) matches.Add(e);
+            }
             return matches.Count == 1 ? matches[0] : null;
         }
         static bool ValidContact(string contact) {
@@ -428,17 +521,28 @@ namespace Shadow {
                 matches = Matches(root, search, contact);
                 if (matches.Count != 1) return finish(false, matches.Count > 1 ? "ambiguous" : "not_found");
                 stage = "select_chat";
-                Activate(window, matches[0]);
+                bool clicked = Activate(window, matches[0]);
                 stage = "verify_chat";
-                if (Wait(() => {
+                Func<string> verify = () => {
                     AssertWindow(window);
                     if (ModalOpen(root)) throw new Failure("dialog_open");
                     return HeaderMatches(root, contact, sidebarRight, headerBottom) ? "verified" : null;
-                }, 3500) == null) return finish(false, "recipient_unverified");
+                };
+                if (Wait(verify, 2500) == null) {
+                    // SelectionItem.Select can highlight a WebView row without opening the conversation.
+                    // Recheck the exact unique result before one accessibility-derived mouse activation.
+                    if (clicked || Read(search) != contact) return finish(false, "chat_not_opened");
+                    matches = Matches(root, search, contact);
+                    if (matches.Count != 1) return finish(false, matches.Count > 1 ? "ambiguous" : "not_found");
+                    stage = "select_chat";
+                    Click(window, matches[0]);
+                    stage = "verify_chat";
+                    if (Wait(verify, 3500) == null) return finish(false, "chat_not_opened");
+                }
                 AssertRecipient(window, contact, sidebarRight, headerBottom);
                 if (action == "send") {
                     stage = "message_input";
-                    var compose = Wait(() => Composer(root), 3500);
+                    var compose = Wait(() => Composer(root, search), 3500);
                     if (compose == null) return finish(false, "composer_unavailable");
                     AssertRecipient(window, contact, sidebarRight, headerBottom, compose);
                     string expected = message.Replace("\r\n", "\n");
@@ -451,7 +555,7 @@ namespace Shadow {
                     }, 1500) == null) return finish(false, "message_unverified");
                     AssertRecipient(window, contact, sidebarRight, headerBottom, compose);
                     stage = "send_button";
-                    var send = Find(root, ControlType.Button, SendNames);
+                    var send = Wait(() => SendButton(root, compose, sidebarRight), 1500);
                     if (send == null) return finish(false, "send_unavailable");
                     // Sending and calling require an actual InvokePattern, never a guessed Enter key.
                     object invoke;

@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, WindowsBase
 $references = @([System.Windows.Automation.AutomationElement].Assembly.Location, [System.Windows.Automation.ControlType].Assembly.Location, [System.Windows.Rect].Assembly.Location, [System.Diagnostics.Process].Assembly.Location)
-Add-Type -Path (Join-Path $PSScriptRoot '../main/windows/WhatsAppDesktop.cs') -ReferencedAssemblies $references
+Add-Type -Path @((Join-Path $PSScriptRoot '../main/windows/WhatsAppLayout.cs'), (Join-Path $PSScriptRoot '../main/windows/WhatsAppDesktop.cs'), (Join-Path $PSScriptRoot '../tests/WhatsAppLayoutTests.cs')) -ReferencedAssemblies $references
 # These fail validation before accessing any window. No chat is opened, message sent or call placed.
 $invalid = @(
   @('unknown', 'Mom', 'Hello', 'voice'),
@@ -41,3 +41,4 @@ if (-not [Shadow.WhatsAppDesktop]::InChatHeader(300, 60, 250, 90)) { throw 'Vali
 if ([Shadow.WhatsAppDesktop]::InChatHeader(20, 60, 250, 90)) { throw 'Sidebar contact accepted as chat header' }
 if ([Shadow.WhatsAppDesktop]::InChatHeader(300, 300, 250, 90)) { throw 'Message body accepted as chat header' }
 'PASS: recipient header verification does not require a composer and rejects sidebar/body matches'
+[WhatsAppLayoutTests]::Main()

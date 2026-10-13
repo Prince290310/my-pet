@@ -2,15 +2,16 @@ name: WhatsApp automation checks
 on:
   push:
     branches: [main]
-    paths: ['main/whatsapp.js', 'main/windows/**', 'main/settings.js', 'tests/whatsapp.test.js', 'scripts/test-whatsapp-helper.ps1', '.github/workflows/whatsapp-checks.yml']
+    paths: ['main/whatsapp.js', 'main/windows/**', 'main/settings.js', 'tests/whatsapp.test.js', 'tests/WhatsApp*.cs', 'scripts/test-whatsapp*.ps1', '.github/workflows/whatsapp-checks.yml']
   pull_request:
-    paths: ['main/whatsapp.js', 'main/windows/**', 'main/settings.js', 'tests/whatsapp.test.js', 'scripts/test-whatsapp-helper.ps1', '.github/workflows/whatsapp-checks.yml']
+    paths: ['main/whatsapp.js', 'main/windows/**', 'main/settings.js', 'tests/whatsapp.test.js', 'tests/WhatsApp*.cs', 'scripts/test-whatsapp*.ps1', '.github/workflows/whatsapp-checks.yml']
   workflow_dispatch: {}
 permissions:
   contents: read
 jobs:
   windows:
     runs-on: windows-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -21,3 +22,5 @@ jobs:
       - run: node --test tests/whatsapp.test.js
       - name: Compile and check Windows accessibility helper
         run: powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/test-whatsapp-helper.ps1
+      - name: Native chat selection, typing and call fixtures
+        run: powershell.exe -NoLogo -NoProfile -NonInteractive -STA -ExecutionPolicy Bypass -File scripts/test-whatsapp-ui.ps1
