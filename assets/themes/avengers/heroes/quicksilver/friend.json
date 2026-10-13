@@ -1,0 +1,73 @@
+{
+  "frameWidth": 32,
+  "frameHeight": 32,
+  "columns": 8,
+  "animations": {
+    "idle": {
+      "row": 0,
+      "frames": 4,
+      "fps": 4,
+      "loop": true,
+      "flip": true,
+      "note": "idle: quicksilver, speed dash"
+    },
+    "move": {
+      "row": 1,
+      "frames": 4,
+      "fps": 12,
+      "loop": true,
+      "flip": true,
+      "note": "move: quicksilver, speed dash"
+    },
+    "work": {
+      "row": 2,
+      "frames": 4,
+      "fps": 6,
+      "loop": true,
+      "flip": true,
+      "note": "work: quicksilver, speed dash"
+    },
+    "talk": {
+      "row": 3,
+      "frames": 4,
+      "fps": 8,
+      "loop": true,
+      "flip": true,
+      "note": "talk: quicksilver, speed dash"
+    },
+    "sleep": {
+      "row": 4,
+      "frames": 4,
+      "fps": 3,
+      "loop": true,
+      "flip": true,
+      "note": "sleep: quicksilver, speed dash"
+    },
+    "play": {
+      "row": 5,
+      "frames": 4,
+      "fps": 7,
+      "loop": true,
+      "flip": true,
+      "note": "play: quicksilver, speed dash"
+    },
+    "arrive": {
+      "row": 6,
+      "frames": 4,
+      "fps": 8,
+      "loop": false,
+      "flip": true,
+      "note": "arrive: quicksilver, speed dash"
+    },
+    "land": {
+      "row": 7,
+      "frames": 4,
+      "fps": 10,
+      "loop": false,
+      "flip": true,
+      "note": "land: quicksilver, speed dash"
+    }
+  },
+  "character": "quicksilver",
+  "motion": "speed dash"
+}

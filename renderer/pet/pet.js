@@ -258,6 +258,7 @@ api.onInit(async (init) => {
   sheet = null;
   frameData = null;
   document.body.dataset.appearance = init.appearance || 'shadow';
+  if (init.title) document.title = init.title;
   meta = init.meta;
   CELL = meta.frameWidth || 48;
   canvas.width = CELL;

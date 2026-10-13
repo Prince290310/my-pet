@@ -1,0 +1,73 @@
+{
+  "frameWidth": 32,
+  "frameHeight": 32,
+  "columns": 8,
+  "animations": {
+    "idle": {
+      "row": 0,
+      "frames": 4,
+      "fps": 4,
+      "loop": true,
+      "flip": true,
+      "note": "idle: hulk, heavy bound"
+    },
+    "move": {
+      "row": 1,
+      "frames": 4,
+      "fps": 7,
+      "loop": true,
+      "flip": true,
+      "note": "move: hulk, heavy bound"
+    },
+    "work": {
+      "row": 2,
+      "frames": 4,
+      "fps": 6,
+      "loop": true,
+      "flip": true,
+      "note": "work: hulk, heavy bound"
+    },
+    "talk": {
+      "row": 3,
+      "frames": 4,
+      "fps": 8,
+      "loop": true,
+      "flip": true,
+      "note": "talk: hulk, heavy bound"
+    },
+    "sleep": {
+      "row": 4,
+      "frames": 4,
+      "fps": 3,
+      "loop": true,
+      "flip": true,
+      "note": "sleep: hulk, heavy bound"
+    },
+    "play": {
+      "row": 5,
+      "frames": 4,
+      "fps": 7,
+      "loop": true,
+      "flip": true,
+      "note": "play: hulk, heavy bound"
+    },
+    "arrive": {
+      "row": 6,
+      "frames": 4,
+      "fps": 8,
+      "loop": false,
+      "flip": true,
+      "note": "arrive: hulk, heavy bound"
+    },
+    "land": {
+      "row": 7,
+      "frames": 4,
+      "fps": 10,
+      "loop": false,
+      "flip": true,
+      "note": "land: hulk, heavy bound"
+    }
+  },
+  "character": "hulk",
+  "motion": "heavy bound"
+}

@@ -1,0 +1,113 @@
+{
+  "frameWidth": 48,
+  "frameHeight": 48,
+  "columns": 8,
+  "animations": {
+    "idle": {
+      "row": 0,
+      "frames": 8,
+      "fps": 5,
+      "loop": true,
+      "flip": true,
+      "note": "idle: ironman, thruster flight"
+    },
+    "walk_right": {
+      "row": 1,
+      "frames": 8,
+      "fps": 10,
+      "loop": true,
+      "flip": false,
+      "note": "walk_right: ironman, thruster flight"
+    },
+    "walk_left": {
+      "row": 2,
+      "frames": 8,
+      "fps": 10,
+      "loop": true,
+      "flip": false,
+      "note": "walk_left: ironman, thruster flight"
+    },
+    "sit": {
+      "row": 3,
+      "frames": 6,
+      "fps": 3,
+      "loop": true,
+      "flip": false,
+      "note": "sit: ironman, thruster flight"
+    },
+    "sleep": {
+      "row": 4,
+      "frames": 6,
+      "fps": 3,
+      "loop": true,
+      "flip": false,
+      "note": "sleep: ironman, thruster flight"
+    },
+    "talk": {
+      "row": 5,
+      "frames": 4,
+      "fps": 8,
+      "loop": true,
+      "flip": false,
+      "note": "talk: ironman, thruster flight"
+    },
+    "happy": {
+      "row": 6,
+      "frames": 6,
+      "fps": 7,
+      "loop": true,
+      "flip": false,
+      "note": "happy: ironman, thruster flight"
+    },
+    "stretch": {
+      "row": 7,
+      "frames": 6,
+      "fps": 5,
+      "loop": false,
+      "flip": true,
+      "note": "stretch: ironman, thruster flight"
+    },
+    "pounce": {
+      "row": 8,
+      "frames": 8,
+      "fps": 8,
+      "loop": false,
+      "flip": true,
+      "note": "pounce: ironman, thruster flight"
+    },
+    "alert": {
+      "row": 9,
+      "frames": 4,
+      "fps": 6,
+      "loop": true,
+      "flip": false,
+      "note": "alert: ironman, thruster flight"
+    },
+    "groom": {
+      "row": 10,
+      "frames": 6,
+      "fps": 6,
+      "loop": true,
+      "flip": false,
+      "note": "groom: ironman, thruster flight"
+    },
+    "arrive": {
+      "row": 11,
+      "frames": 4,
+      "fps": 8,
+      "loop": false,
+      "flip": true,
+      "note": "arrive: ironman, thruster flight"
+    },
+    "land": {
+      "row": 12,
+      "frames": 4,
+      "fps": 10,
+      "loop": false,
+      "flip": true,
+      "note": "land: ironman, thruster flight"
+    }
+  },
+  "character": "ironman",
+  "motion": "thruster flight"
+}

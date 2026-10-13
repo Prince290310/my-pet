@@ -82,12 +82,12 @@ const ctx = { SELF_TEST, loginItem, realLoginItem: loginItem, sensors: realSenso
 if (SELF_TEST) ctx.sensors = require('./selftest').makeSensors(realSensors);
 
 function loadMeta() {
-  return JSON.parse(fs.readFileSync(path.join(appearance.assetsDir(paths.ASSETS, ctx.settings), 'sprites.json'), 'utf8'));
+  return JSON.parse(fs.readFileSync(path.join(appearance.mainAssetsDir(paths.ASSETS, ctx.settings), 'sprites.json'), 'utf8'));
 }
 
 function sheetDataUrl() {
   // Sent as a data: URL so the renderer can read pixels for click-through hit-testing.
-  return 'data:image/png;base64,' + fs.readFileSync(path.join(appearance.assetsDir(paths.ASSETS, ctx.settings), 'sprites.png')).toString('base64');
+  return 'data:image/png;base64,' + fs.readFileSync(path.join(appearance.mainAssetsDir(paths.ASSETS, ctx.settings), 'sprites.png')).toString('base64');
 }
 
 function openConfigFolder() {
@@ -159,7 +159,7 @@ function init() {
   const settings = (ctx.settings = new Settings(paths.settingsFile()));
   // Run original regressions first; the self-test then explicitly exercises both themes.
   if (SELF_TEST) settings.update({ appearance: 'shadow' });
-  require('./windows').setAppearance(appearance.displayName(settings), appearance.assetsDir(paths.ASSETS, settings));
+  require('./windows').setAppearance(appearance.displayName(settings), appearance.mainAssetsDir(paths.ASSETS, settings));
   const config = (ctx.config = new ConfigStore(paths.configDir()));
   config.on('error', ({ file, message }) => {
     console.warn(`[config] ${file}: ${message}`);
@@ -239,6 +239,7 @@ function init() {
     }
     pet.send('pet:init', {
       meta,
+      title: appearance.displayName(settings),
       sheet: sheetDataUrl(),
       scale: settings.get('scale'),
       workArea: pet.display().workArea,
@@ -588,7 +589,7 @@ function init() {
       history[history.length - 1].text = tutor.firstMessage(cmd); // what the AI should answer
     }
     tutor.touch();
-    const answer = await ai.chat(history[history.length - 1].text, { ...c, ...tutor.context(appearance.isAvengers(settings) ? 'Doctor Strange' : null), history: history.slice(-20) });
+    const answer = await ai.chat(history[history.length - 1].text, { ...c, ...tutor.context(appearance.isAvengers(settings) ? friends.get('sage').def.name : null), history: history.slice(-20) });
     return search.stripCommands(answer) || 'Hoo? Ask me that again, Prince 🦉';
   }
   /** Sage says tutor replies in his own bubble (Shadow just listens). */
@@ -612,6 +613,11 @@ function init() {
     }
     const m = /^(?:call|bring|summon) (.+)$/.exec(l);
     if (m) {
+      if (appearance.isAvengers(settings) && appearance.ROSTER[appearance.mainHero(settings)].aliases.includes(m[1])) {
+        if (brain.state === 'hidden') brain.command('wake');
+        else if (brain.state === 'sleep') brain.wake('command');
+        return `${appearance.displayName(settings)} is here, Prince! ${appearance.presentation(settings).icon}`;
+      }
       const f = friends.list.find(f => f.id === m[1] || (appearance.isAvengers(settings) && f.def.aliases.includes(m[1])));
       if (!f) return null;
       if (!friends.enabled(f.id)) return `${f.def.name} is switched off, Prince. Turn them on in Settings → Friends.`;
@@ -1020,7 +1026,7 @@ function init() {
   // settings window
   ipcMain.handle('settings:load', () => settingsPayload());
   ipcMain.handle('settings:save', async (_e, patch = {}) => {
-    const allowed = ['appearance', 'petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat', 'morningBriefing', 'todoNudges', 'webSearch', 'searchKey', 'pcControl', 'pcCare', 'musicService', 'startupOnWake', 'phoneFiles', 'phoneFilesScope', 'examStudyTime', 'friendsMode', 'friends', 'telegramEnabled', 'telegramToken', 'telegramNotify'];
+    const allowed = ['appearance', 'mainHero', 'petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat', 'morningBriefing', 'todoNudges', 'webSearch', 'searchKey', 'pcControl', 'pcCare', 'musicService', 'startupOnWake', 'phoneFiles', 'phoneFilesScope', 'examStudyTime', 'friendsMode', 'friends', 'telegramEnabled', 'telegramToken', 'telegramNotify'];
     const clean = Object.fromEntries(Object.entries(patch).filter(([k]) => allowed.includes(k)));
     const before = settings.get('calendarUrl');
     settings.update(clean);
@@ -1038,17 +1044,17 @@ function init() {
   ipcMain.handle('update:install', () => ctx.updater.install());
 
   settings.on('change', (all, changed) => {
-    if (changed.includes('appearance') || changed.includes('petName')) {
-      require('./windows').setAppearance(appearance.displayName(settings), appearance.assetsDir(paths.ASSETS, settings));
+    if (changed.includes('appearance') || changed.includes('mainHero') || changed.includes('petName')) {
+      require('./windows').setAppearance(appearance.displayName(settings), appearance.mainAssetsDir(paths.ASSETS, settings));
       pet.win.setTitle(appearance.displayName(settings));
       const chat = getChatWindow();
       if (chat) chat.webContents.send('chat:appearance', chatInfo());
     }
-    if (changed.includes('appearance')) {
+    if (changed.includes('appearance') || changed.includes('mainHero')) {
       meta = ctx.meta = loadMeta();
       brain.meta = meta;
       pet.win.setTitle(appearance.displayName(settings));
-      pet.send('pet:init', { meta, sheet: sheetDataUrl(), scale: all.scale, workArea: pet.display().workArea, appearance: all.appearance, test: SELF_TEST, debug: !!process.env.SHADOW_DEBUG });
+      pet.send('pet:init', { meta, title: appearance.displayName(settings), sheet: sheetDataUrl(), scale: all.scale, workArea: pet.display().workArea, appearance: all.appearance, test: SELF_TEST, debug: !!process.env.SHADOW_DEBUG });
       if (brain.anim) pet.send('pet:anim', { name: brain.anim, facing: brain.facing });
       friends.setAppearance();
     }

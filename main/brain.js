@@ -17,6 +17,7 @@
 
 const { EventEmitter } = require('events');
 const appearance = require('./appearance');
+const heroMotion = require('./hero-motion');
 
 const MOVE_HZ = 30; // window movement updates per second (pixel animation itself is capped at 12 fps)
 
@@ -170,8 +171,9 @@ class Brain extends EventEmitter {
     this.scheduleQuip();
     this.setState('waking');
     this.facing = Math.random() < 0.5 ? 'left' : 'right';
-    this.play('stretch');
-    this.after(this.animMs('stretch') + 150, () => {
+    const intro = appearance.isAvengers(this.settings) ? 'arrive' : 'stretch';
+    this.play(intro);
+    this.after(this.animMs(intro) + 150, () => {
       if (!this.muted) this.say(this.quip('greetings'));
       this.rest(rand(2500, 4500));
     });
@@ -272,7 +274,11 @@ class Brain extends EventEmitter {
     const dir = targetX >= this.pos.x ? 1 : -1;
     this.facing = dir > 0 ? 'right' : 'left';
     const s = this.scale;
-    const base = speed || rand(11, 22) * s; // screen px / second
+    const hero = appearance.isAvengers(this.settings) ? appearance.mainHero(this.settings) : null;
+    const motion = heroMotion.profile(hero);
+    const base = speed || rand(11, 22) * s * (motion ? motion.speed : 1); // screen px / second
+    const startX = this.pos.x;
+    const distance = Math.abs(targetX - startX);
     // stride ~1.6 sprite px per frame -> feet don't slide; capped at 12 fps
     const fps = clamp(Math.round(base / s / 1.6), 5, 12);
     this.setState('walk');
@@ -288,10 +294,15 @@ class Brain extends EventEmitter {
       let nx = this.pos.x + dir * base * ease * wobble * dt;
       const arrived = dir > 0 ? nx >= targetX : nx <= targetX;
       if (arrived) nx = targetX;
-      this.pet.moveTo(nx, y);
+      const progress = distance ? Math.min(1, Math.abs(nx - startX) / distance) : 1;
+      const liftedY = y - heroMotion.lift(hero, progress, s);
+      this.pet.moveTo(nx, Math.max(this.display().workArea.y, arrived ? y : liftedY));
       if (arrived) {
         this.stopMove();
-        if (then) then();
+        if (motion && this.meta.animations.land) {
+          this.play('land');
+          this.after(this.animMs('land'), () => then ? then() : this.rest());
+        } else if (then) then();
       }
     });
   }
@@ -301,7 +312,9 @@ class Brain extends EventEmitter {
     this.setState('pounce');
     const [minX, maxX] = this.pet.xRange(this.display());
     const s = this.scale;
-    const leap = 34 * s;
+    const hero = appearance.isAvengers(this.settings) ? appearance.mainHero(this.settings) : null;
+    const motion = heroMotion.profile(hero);
+    const leap = (hero === 'quicksilver' ? 100 : hero === 'hulk' ? 48 : 34) * s;
     if (this.facing === 'right' && this.pos.x + leap > maxX) this.facing = 'left';
     else if (this.facing === 'left' && this.pos.x - leap < minX) this.facing = 'right';
     const dir = this.facing === 'right' ? 1 : -1;
@@ -316,8 +329,11 @@ class Brain extends EventEmitter {
       this.startMove((dt) => {
         t = Math.min(dur, t + dt);
         const u = t / dur;
-        this.pet.moveTo(clamp(x0 + dir * leap * u, minX, maxX), y0 - Math.sin(Math.PI * u) * 14 * s);
-        if (u >= 1) this.stopMove();
+        this.pet.moveTo(clamp(x0 + dir * leap * u, minX, maxX), Math.max(this.display().workArea.y, y0 - Math.sin(Math.PI * u) * (motion ? motion.leap : 14) * s));
+        if (u >= 1) {
+          this.stopMove();
+          if (motion) this.play('land');
+        }
       });
     });
     this.after(this.animMs('pounce') + 200, () => this.rest(rand(900, 2500)));

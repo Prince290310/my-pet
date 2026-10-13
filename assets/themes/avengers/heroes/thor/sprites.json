@@ -1,0 +1,113 @@
+{
+  "frameWidth": 48,
+  "frameHeight": 48,
+  "columns": 8,
+  "animations": {
+    "idle": {
+      "row": 0,
+      "frames": 8,
+      "fps": 5,
+      "loop": true,
+      "flip": true,
+      "note": "idle: thor, lightning landing"
+    },
+    "walk_right": {
+      "row": 1,
+      "frames": 8,
+      "fps": 10,
+      "loop": true,
+      "flip": false,
+      "note": "walk_right: thor, lightning landing"
+    },
+    "walk_left": {
+      "row": 2,
+      "frames": 8,
+      "fps": 10,
+      "loop": true,
+      "flip": false,
+      "note": "walk_left: thor, lightning landing"
+    },
+    "sit": {
+      "row": 3,
+      "frames": 6,
+      "fps": 3,
+      "loop": true,
+      "flip": false,
+      "note": "sit: thor, lightning landing"
+    },
+    "sleep": {
+      "row": 4,
+      "frames": 6,
+      "fps": 3,
+      "loop": true,
+      "flip": false,
+      "note": "sleep: thor, lightning landing"
+    },
+    "talk": {
+      "row": 5,
+      "frames": 4,
+      "fps": 8,
+      "loop": true,
+      "flip": false,
+      "note": "talk: thor, lightning landing"
+    },
+    "happy": {
+      "row": 6,
+      "frames": 6,
+      "fps": 7,
+      "loop": true,
+      "flip": false,
+      "note": "happy: thor, lightning landing"
+    },
+    "stretch": {
+      "row": 7,
+      "frames": 6,
+      "fps": 5,
+      "loop": false,
+      "flip": true,
+      "note": "stretch: thor, lightning landing"
+    },
+    "pounce": {
+      "row": 8,
+      "frames": 8,
+      "fps": 8,
+      "loop": false,
+      "flip": true,
+      "note": "pounce: thor, lightning landing"
+    },
+    "alert": {
+      "row": 9,
+      "frames": 4,
+      "fps": 6,
+      "loop": true,
+      "flip": false,
+      "note": "alert: thor, lightning landing"
+    },
+    "groom": {
+      "row": 10,
+      "frames": 6,
+      "fps": 6,
+      "loop": true,
+      "flip": false,
+      "note": "groom: thor, lightning landing"
+    },
+    "arrive": {
+      "row": 11,
+      "frames": 4,
+      "fps": 8,
+      "loop": false,
+      "flip": true,
+      "note": "arrive: thor, lightning landing"
+    },
+    "land": {
+      "row": 12,
+      "frames": 4,
+      "fps": 10,
+      "loop": false,
+      "flip": true,
+      "note": "land: thor, lightning landing"
+    }
+  },
+  "character": "thor",
+  "motion": "lightning landing"
+}

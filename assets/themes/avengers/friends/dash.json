@@ -9,23 +9,23 @@
       "fps": 4,
       "loop": true,
       "flip": true,
-      "note": "idle: cap"
+      "note": "idle: cap, shield run"
     },
     "move": {
       "row": 1,
-      "frames": 6,
+      "frames": 4,
       "fps": 10,
       "loop": true,
       "flip": true,
-      "note": "move: cap"
+      "note": "move: cap, shield run"
     },
     "work": {
       "row": 2,
       "frames": 4,
-      "fps": 5,
+      "fps": 6,
       "loop": true,
       "flip": true,
-      "note": "work: cap"
+      "note": "work: cap, shield run"
     },
     "talk": {
       "row": 3,
@@ -33,7 +33,7 @@
       "fps": 8,
       "loop": true,
       "flip": true,
-      "note": "talk: cap"
+      "note": "talk: cap, shield run"
     },
     "sleep": {
       "row": 4,
@@ -41,7 +41,7 @@
       "fps": 3,
       "loop": true,
       "flip": true,
-      "note": "sleep: cap"
+      "note": "sleep: cap, shield run"
     },
     "play": {
       "row": 5,
@@ -49,8 +49,25 @@
       "fps": 7,
       "loop": true,
       "flip": true,
-      "note": "play: cap"
+      "note": "play: cap, shield run"
+    },
+    "arrive": {
+      "row": 6,
+      "frames": 4,
+      "fps": 8,
+      "loop": false,
+      "flip": true,
+      "note": "arrive: cap, shield run"
+    },
+    "land": {
+      "row": 7,
+      "frames": 4,
+      "fps": 10,
+      "loop": false,
+      "flip": true,
+      "note": "land: cap, shield run"
     }
   },
-  "character": "cap"
+  "character": "cap",
+  "motion": "shield run"
 }

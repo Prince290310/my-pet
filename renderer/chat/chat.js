@@ -76,7 +76,7 @@ window.chat.onAppearance(showIdentity);
   addMsg(
     'pet',
     info.ready
-      ? `Hey Prince! ${info.petName} here. Kya scene hai? Ask me anything ${info.appearance.id === 'avengers' ? '⚡' : '😼'} Try "remind me in 20 min to drink water", "maths exam on 20 nov chapters 1-8" or "catch the treat" for a break.`
+      ? `Hey Prince! ${info.petName} here. Kya scene hai? Ask me anything ${info.appearance.id === 'avengers' ? info.appearance.icon : '😼'} Try "remind me in 20 min to drink water", "maths exam on 20 nov chapters 1-8" or "catch the treat" for a break.`
       : `Hey Prince! For full chat I need a brain - Settings → AI Brain (free key, 2 minutes). Reminders and your to-do list already work: try "remind me at 6 pm to call Mom" or "todo: physics homework".`
   );
   input.focus();

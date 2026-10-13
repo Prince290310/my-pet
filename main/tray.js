@@ -14,7 +14,7 @@ const appearance = require('./appearance');
  * @param {object} o.actions { openSettings, openConfigFolder, openChat, quit }
  */
 function createTray({ brain, settings, loginItem, actions, getUpdater = () => null, callGang = null }) {
-  const icon = nativeImage.createFromPath(path.join(appearance.assetsDir(ASSETS, settings), 'tray.png')); // tray@2x.png picked up automatically
+  const icon = nativeImage.createFromPath(path.join(appearance.mainAssetsDir(ASSETS, settings), 'tray.png')); // tray@2x.png picked up automatically
   const tray = new Tray(icon);
 
   function template() {
@@ -22,7 +22,7 @@ function createTray({ brain, settings, loginItem, actions, getUpdater = () => nu
     const sleeping = brain.state === 'sleep';
     const scale = settings.get('scale');
     const items = [
-      { label: `${appearance.isAvengers(settings) ? '⚡' : '🐾'} ${appearance.displayName(settings)}`, enabled: false },
+      { label: `${appearance.presentation(settings).icon} ${appearance.displayName(settings)}`, enabled: false },
       { type: 'separator' },
     ];
     const updater = getUpdater();
@@ -86,7 +86,7 @@ function createTray({ brain, settings, loginItem, actions, getUpdater = () => nu
     if (tray.isDestroyed()) return;
     menu = Menu.buildFromTemplate(template());
     tray.setContextMenu(menu);
-    tray.setImage(nativeImage.createFromPath(path.join(appearance.assetsDir(ASSETS, settings), 'tray.png')));
+    tray.setImage(nativeImage.createFromPath(path.join(appearance.mainAssetsDir(ASSETS, settings), 'tray.png')));
     tray.setToolTip(`${appearance.displayName(settings)} - ${appearance.isAvengers(settings) ? 'Avengers desktop companion' : 'your panther'}${brain.state === 'hidden' ? ' (tucked away)' : ''}`);
   }
 
@@ -98,7 +98,7 @@ function createTray({ brain, settings, loginItem, actions, getUpdater = () => nu
   brain.on('reminder-dismissed', rebuild);
   brain.on('reminder-done', rebuild);
   settings.on('change', (_all, changed) => {
-    if (changed.some((k) => ['muteQuips', 'scale', 'petName', 'appearance'].includes(k))) rebuild();
+    if (changed.some((k) => ['muteQuips', 'scale', 'petName', 'appearance', 'mainHero'].includes(k))) rebuild();
   });
   rebuild();
 

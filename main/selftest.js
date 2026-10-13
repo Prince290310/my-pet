@@ -2014,8 +2014,16 @@ async function run(ctx, h) {
     await sleep(300);
     await shot('settings-startup-exams', swSt.webContents);
     swSt.close();
+    // Before 5 AM the briefing checks do not provide their usual implicit delay.
+    // Electron closes windows asynchronously; wait before reopening Settings or nudging.
+    const settingsClosed = await waitFor(() => swSt.isDestroyed() && !require('./windows').getSettingsWindow(), 3000);
+    check('startup Settings finishes closing before the next section', settingsClosed);
+    if (!settingsClosed) throw new Error('Startup Settings did not finish closing');
     settings.update({ startupRoutine: [] });
     chat3.close();
+    const chatClosed = await waitFor(() => !h.getChatWindow() && !brain.chatOpen, 3000);
+    check('chat finishes closing before idle-quip checks', chatClosed);
+    if (!chatClosed) throw new Error('Chat did not finish closing');
     quiet();
     brain.rest(60000);
 
@@ -2154,7 +2162,7 @@ async function run(ctx, h) {
     await waitFor(async () => (await rstate()).character === 'ironman' && (await rstate()).frame >= 0, 3000);
     check('Save activates a rendered humanoid Iron Man', ctx.meta.character === 'ironman' && (await rstate()).character === 'ironman' && await js('document.getElementById("pet").toDataURL()') !== originalPixels);
     check('theme selection is persisted', JSON.parse(fs.readFileSync(settings.file, 'utf8')).appearance === 'avengers');
-    check('the team contains the requested heroes and retains all six jobs', friends.list.map(f => f.def.name).join() === 'Spider-Man,Captain America,Thor,Doctor Strange,Hulk,Star-Lord' && friends.list.map(f => f.def.job).join() === 'Researcher,Messenger,Launcher,Tutor,PC caretaker,Music DJ');
+    check('the team contains the requested heroes and retains all six jobs', friends.list.map(f => f.def.name).join() === 'Spider-Man,Captain America,Thor,Doctor Strange,Hulk,Quicksilver' && friends.list.map(f => f.def.job).join() === 'Researcher,Messenger,Launcher,Tutor,PC caretaker,Music DJ');
     check('appearance changes preserve all other saved preferences', JSON.stringify({ ...settings.all(), appearance: null }) === preserved);
     check('custom personality and reminder files stay untouched', Object.entries(originalConfigFiles).every(([n, value]) => fs.readFileSync(config.file(n), 'utf8') === value));
     check('tray uses Iron Man and Avengers assembly', ctx.trayCtl.menu().items[0].label.includes('Iron Man') && ctx.trayCtl.menu().getMenuItemById('gang').label.includes('Avengers'));
@@ -2170,7 +2178,7 @@ async function run(ctx, h) {
     }
     brain.rest(60000);
     await sleep(200);
-    for (const alias of ['spider man', 'thor', 'captain america', 'doctor strange', 'hulk', 'star lord']) {
+    for (const alias of ['spider man', 'thor', 'captain america', 'doctor strange', 'hulk', 'quick silver']) {
       const reply = await ctx.handleMessage(`call ${alias}`, []);
       check(`chat can summon ${alias}`, reply.text.includes('Come here'));
     }
@@ -2199,7 +2207,46 @@ async function run(ctx, h) {
     settings.update({ appearance: 'avengers' });
     await waitFor(async () => (await rstate()).character === 'ironman' && (await rstate()).frame >= 0, 3000);
     check('rapid theme switches keep the final sprite and animation alive', (await rstate()).character === 'ironman' && (await rstate()).ticking);
+
+    section('Selectable heroes and signature movements');
+    const motion = require('./hero-motion');
+    check('invalid hero IDs cannot select arbitrary files', validateSettings({ mainHero: '../../other' }).mainHero === 'ironman');
+    await js('(async()=>fill(await window.settingsApi.load()))()', swTheme.webContents);
+    check('Settings offers all seven main heroes', await js('document.getElementById("mainHero").options.length', swTheme.webContents) === 7);
+    for (const [id, hero] of Object.entries(appearance.ROSTER)) {
+      quiet();
+      brain.rest(60000);
+      await js(`document.getElementById('mainHero').value = ${JSON.stringify(id)}; document.getElementById('form').requestSubmit()`, swTheme.webContents);
+      await waitFor(() => settings.get('mainHero') === id, 3000);
+      const rendered = await waitFor(async () => (await rstate()).character === id && (await rstate()).frame >= 0, 3000);
+      check(`${hero.name} can lead and render immediately`, rendered && pet.win.getTitle() === hero.name && ctx.meta.character === id);
+      check(`${hero.name} selection persists`, JSON.parse(fs.readFileSync(settings.file, 'utf8')).mainHero === id);
+      const identities = [ctx.meta.character, ...friends.list.map(f => f.meta.character)];
+      check(`${hero.name} keeps a complete team without duplicates`, new Set(identities).size === 7 && Object.keys(appearance.ROSTER).every(h => identities.includes(h)));
+      await waitFor(() => js(`document.getElementById('name').textContent === ${JSON.stringify(hero.name.toUpperCase())}`, themedChat.webContents), 3000);
+      check(`${hero.name} chat, tray and AI identity follow the selection`, ctx.aiContext().petName === hero.name && ctx.trayCtl.menu().items[0].label.includes(hero.name) && await js('document.getElementById("name").textContent', themedChat.webContents) === hero.name.toUpperCase());
+      const [left, right] = pet.xRange(pet.display());
+      brain.interrupt();
+      pet.moveTo((left + right) / 2, brain.floorY());
+      let arrived = false, peak = 0;
+      brain.walkTo(pet.pos.x + 80, { speed: 200, then: () => { arrived = true; brain.rest(60000); } });
+      await waitFor(() => { peak = Math.max(peak, brain.floorY() - pet.pos.y); return arrived; }, 4000, 20);
+      check(`${hero.name} uses its distinct bounded movement and lands`, arrived && peak > 0 && Math.abs(pet.pos.y - brain.floorY()) < 1 && pet.pos.x >= left && pet.pos.x <= right, `${motion.profile(id).kind}, lift=${peak.toFixed(1)}`);
+      const selectedReply = await ctx.handleMessage(`call ${hero.aliases[0]}`, []);
+      check(`calling main hero ${hero.name} finds the lead`, selectedReply.text.includes(`${hero.name} is here`));
+      for (const animation of ['arrive', 'land', 'walk_right', 'pounce']) {
+        brain.play(animation);
+        await sleep(100);
+        check(`${hero.name} ${animation} animation is visible`, (await rstate()).anim === animation && await js('Array.from(document.getElementById("pet").getContext("2d").getImageData(0,0,48,48).data).some((v,i)=>i%4===3&&v>0)'));
+      }
+      await shot(`main-${id}`);
+    }
+    check('Quicksilver has the fastest movement profile', motion.profile('quicksilver').speed > Math.max(...Object.entries(motion.PROFILES).filter(([id]) => id !== 'quicksilver').map(([, p]) => p.speed)));
+    await js('document.querySelector(".appearance").scrollIntoView(); document.querySelector(".logo").decode()', swTheme.webContents);
+    await shot('hero-picker', swTheme.webContents);
+    settings.update({ mainHero: 'ironman' });
     settings.update({ appearance: 'shadow' });
+    check('original theme ignores hero selection and restores original sprites', appearance.displayName(settings) === 'Shadow' && friends.list.every(f => !f.def.heroId) && !ctx.meta.character);
     friends.sendHome();
     swTheme.close();
     themedChat.close();

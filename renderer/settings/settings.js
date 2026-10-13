@@ -243,10 +243,16 @@ function showExams(list) {
 function showAppearance(value) {
   const avengers = value === 'avengers';
   $('teamPreview').src = avengers ? '../../assets/themes/avengers/team.png' : '../../assets/icon.png';
-  $('teamPreview').alt = avengers ? 'Iron Man, Spider-Man, Captain America, Thor, Doctor Strange, Hulk and Star-Lord pixel sprites' : 'Original Shadow panther';
+  $('teamPreview').alt = avengers ? 'Iron Man, Spider-Man, Captain America, Thor, Doctor Strange, Hulk and Quicksilver pixel sprites' : 'Original Shadow panther';
   $('teamPreview').classList.toggle('original', !avengers);
-  $('teamDescription').textContent = avengers ? 'Iron Man leads Spider-Man, Thor, Captain America, Doctor Strange, Hulk and Star-Lord. Every teammate keeps a job.' : 'Your original panther with Atlas, Dash, Bolt, Sage, Zen and Tempo.';
+  $('teamDescription').textContent = avengers ? 'Choose any of the seven heroes to lead. Iron Man takes the chosen hero’s supporting slot, so your team stays complete and every job is covered.' : 'Your original panther with Atlas, Dash, Bolt, Sage, Zen and Tempo.';
+  $('mainHeroField').classList.toggle('hidden', !avengers);
+  $('heroMotion').classList.toggle('hidden', !avengers);
+  showHeroMotion();
 }
+const HERO_MOVES = { ironman: 'Thruster flight and repulsor landings', spiderman: 'Web swings and acrobatic arrivals', cap: 'Shield runs and defensive landings', thor: 'Hammer-powered leaps and lightning landings', strange: 'Portal arrivals and mystic glides', hulk: 'Heavy bounds, ground slams and landing dust', quicksilver: 'Fast dashes with blue and silver speed trails' };
+function showHeroMotion() { $('heroMotion').textContent = HERO_MOVES[$('mainHero').value] || ''; }
+$('mainHero').addEventListener('change', showHeroMotion);
 $('appearance').addEventListener('change', () => showAppearance($('appearance').value));
 $('restoreShadow').addEventListener('click', async () => {
   try {
@@ -256,6 +262,8 @@ $('restoreShadow').addEventListener('click', async () => {
 });
 function fill({ settings: s, appearance: theme, providers: list, startWithWindows, configDir, calendar, update, friends, telegram, spotify, exams }) {
   $('appearance').value = s.appearance;
+  $('mainHero').replaceChildren(...theme.heroes.map(hero => { const option = document.createElement('option'); option.value = hero.id; option.textContent = hero.name; return option; }));
+  $('mainHero').value = s.mainHero;
   showAppearance(s.appearance);
   document.documentElement.dataset.appearance = s.appearance;
   document.title = `${theme.name} Settings`;
@@ -263,7 +271,7 @@ function fill({ settings: s, appearance: theme, providers: list, startWithWindow
   document.querySelector('.sub').textContent = s.appearance === 'avengers' ? 'Your Avengers command center. Changes apply when you hit Save.' : 'Tune your panther. Changes apply instantly when you hit Save.';
   $('friendsDescription').textContent = s.appearance === 'avengers' ? 'Your Avengers team — each hero has a job and shows up to do it.' : "Shadow's gang - each one has a job and shows up to do it.";
   $('callGang').textContent = s.appearance === 'avengers' ? 'AVENGERS, ASSEMBLE! ⚡' : 'CALL THE GANG 🐾';
-  $('nameHelp').textContent = s.appearance === 'avengers' ? 'The default name Shadow appears as Iron Man in Avengers mode. Enter a custom name if you prefer.' : '';
+  $('nameHelp').textContent = s.appearance === 'avengers' ? 'The default name Shadow displays your selected hero’s name. Enter a custom name if you prefer.' : '';
   $('pcControlLabel').textContent = `Let ${theme.name} open apps & folders and lock / sleep / screenshot my PC`;
   $('pcCareLabel').textContent = `${s.appearance === 'avengers' ? 'Hulk' : 'Zen'} warns me about low battery, full storage, RAM/CPU and internet`;
   $('petName').value = s.petName;
@@ -370,6 +378,7 @@ form.addEventListener('submit', async (e) => {
   try {
     const saved = await window.settingsApi.save({
       appearance: $('appearance').value,
+      mainHero: $('mainHero').value,
       petName: $('petName').value,
       scale: Number(form.querySelector('input[name="scale"]:checked').value),
       quipMinMinutes: min,

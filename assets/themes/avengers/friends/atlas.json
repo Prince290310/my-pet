@@ -9,7 +9,7 @@
       "fps": 4,
       "loop": true,
       "flip": true,
-      "note": "idle: spiderman"
+      "note": "idle: spiderman, web swing"
     },
     "move": {
       "row": 1,
@@ -17,7 +17,7 @@
       "fps": 10,
       "loop": true,
       "flip": true,
-      "note": "move: spiderman"
+      "note": "move: spiderman, web swing"
     },
     "work": {
       "row": 2,
@@ -25,7 +25,7 @@
       "fps": 6,
       "loop": true,
       "flip": true,
-      "note": "work: spiderman"
+      "note": "work: spiderman, web swing"
     },
     "talk": {
       "row": 3,
@@ -33,7 +33,7 @@
       "fps": 8,
       "loop": true,
       "flip": true,
-      "note": "talk: spiderman"
+      "note": "talk: spiderman, web swing"
     },
     "sleep": {
       "row": 4,
@@ -41,7 +41,7 @@
       "fps": 3,
       "loop": true,
       "flip": true,
-      "note": "sleep: spiderman"
+      "note": "sleep: spiderman, web swing"
     },
     "play": {
       "row": 5,
@@ -49,8 +49,25 @@
       "fps": 7,
       "loop": true,
       "flip": true,
-      "note": "play: spiderman"
+      "note": "play: spiderman, web swing"
+    },
+    "arrive": {
+      "row": 6,
+      "frames": 4,
+      "fps": 8,
+      "loop": false,
+      "flip": true,
+      "note": "arrive: spiderman, web swing"
+    },
+    "land": {
+      "row": 7,
+      "frames": 4,
+      "fps": 10,
+      "loop": false,
+      "flip": true,
+      "note": "land: spiderman, web swing"
     }
   },
-  "character": "spiderman"
+  "character": "spiderman",
+  "motion": "web swing"
 }

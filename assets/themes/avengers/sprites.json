@@ -9,7 +9,7 @@
       "fps": 5,
       "loop": true,
       "flip": true,
-      "note": "idle: armored humanoid Iron Man"
+      "note": "idle: ironman, thruster flight"
     },
     "walk_right": {
       "row": 1,
@@ -17,7 +17,7 @@
       "fps": 10,
       "loop": true,
       "flip": false,
-      "note": "walk_right: armored humanoid Iron Man"
+      "note": "walk_right: ironman, thruster flight"
     },
     "walk_left": {
       "row": 2,
@@ -25,7 +25,7 @@
       "fps": 10,
       "loop": true,
       "flip": false,
-      "note": "walk_left: armored humanoid Iron Man"
+      "note": "walk_left: ironman, thruster flight"
     },
     "sit": {
       "row": 3,
@@ -33,7 +33,7 @@
       "fps": 3,
       "loop": true,
       "flip": false,
-      "note": "sit: armored humanoid Iron Man"
+      "note": "sit: ironman, thruster flight"
     },
     "sleep": {
       "row": 4,
@@ -41,7 +41,7 @@
       "fps": 3,
       "loop": true,
       "flip": false,
-      "note": "sleep: armored humanoid Iron Man"
+      "note": "sleep: ironman, thruster flight"
     },
     "talk": {
       "row": 5,
@@ -49,7 +49,7 @@
       "fps": 8,
       "loop": true,
       "flip": false,
-      "note": "talk: armored humanoid Iron Man"
+      "note": "talk: ironman, thruster flight"
     },
     "happy": {
       "row": 6,
@@ -57,7 +57,7 @@
       "fps": 7,
       "loop": true,
       "flip": false,
-      "note": "happy: armored humanoid Iron Man"
+      "note": "happy: ironman, thruster flight"
     },
     "stretch": {
       "row": 7,
@@ -65,7 +65,7 @@
       "fps": 5,
       "loop": false,
       "flip": true,
-      "note": "stretch: armored humanoid Iron Man"
+      "note": "stretch: ironman, thruster flight"
     },
     "pounce": {
       "row": 8,
@@ -73,7 +73,7 @@
       "fps": 8,
       "loop": false,
       "flip": true,
-      "note": "pounce: armored humanoid Iron Man"
+      "note": "pounce: ironman, thruster flight"
     },
     "alert": {
       "row": 9,
@@ -81,7 +81,7 @@
       "fps": 6,
       "loop": true,
       "flip": false,
-      "note": "alert: armored humanoid Iron Man"
+      "note": "alert: ironman, thruster flight"
     },
     "groom": {
       "row": 10,
@@ -89,8 +89,25 @@
       "fps": 6,
       "loop": true,
       "flip": false,
-      "note": "groom: armored humanoid Iron Man"
+      "note": "groom: ironman, thruster flight"
+    },
+    "arrive": {
+      "row": 11,
+      "frames": 4,
+      "fps": 8,
+      "loop": false,
+      "flip": true,
+      "note": "arrive: ironman, thruster flight"
+    },
+    "land": {
+      "row": 12,
+      "frames": 4,
+      "fps": 10,
+      "loop": false,
+      "flip": true,
+      "note": "land: ironman, thruster flight"
     }
   },
-  "character": "ironman"
+  "character": "ironman",
+  "motion": "thruster flight"
 }

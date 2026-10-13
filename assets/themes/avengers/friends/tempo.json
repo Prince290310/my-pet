@@ -9,23 +9,23 @@
       "fps": 4,
       "loop": true,
       "flip": true,
-      "note": "idle: starlord"
+      "note": "idle: quicksilver, speed dash"
     },
     "move": {
       "row": 1,
       "frames": 4,
-      "fps": 8,
+      "fps": 12,
       "loop": true,
       "flip": true,
-      "note": "move: starlord"
+      "note": "move: quicksilver, speed dash"
     },
     "work": {
       "row": 2,
       "frames": 4,
-      "fps": 8,
+      "fps": 6,
       "loop": true,
       "flip": true,
-      "note": "work: starlord"
+      "note": "work: quicksilver, speed dash"
     },
     "talk": {
       "row": 3,
@@ -33,7 +33,7 @@
       "fps": 8,
       "loop": true,
       "flip": true,
-      "note": "talk: starlord"
+      "note": "talk: quicksilver, speed dash"
     },
     "sleep": {
       "row": 4,
@@ -41,16 +41,33 @@
       "fps": 3,
       "loop": true,
       "flip": true,
-      "note": "sleep: starlord"
+      "note": "sleep: quicksilver, speed dash"
     },
     "play": {
       "row": 5,
       "frames": 4,
-      "fps": 8,
+      "fps": 7,
       "loop": true,
       "flip": true,
-      "note": "play: starlord"
+      "note": "play: quicksilver, speed dash"
+    },
+    "arrive": {
+      "row": 6,
+      "frames": 4,
+      "fps": 8,
+      "loop": false,
+      "flip": true,
+      "note": "arrive: quicksilver, speed dash"
+    },
+    "land": {
+      "row": 7,
+      "frames": 4,
+      "fps": 10,
+      "loop": false,
+      "flip": true,
+      "note": "land: quicksilver, speed dash"
     }
   },
-  "character": "starlord"
+  "character": "quicksilver",
+  "motion": "speed dash"
 }

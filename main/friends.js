@@ -19,6 +19,7 @@ const fs = require('fs');
 const path = require('path');
 const { PetWindow } = require('./petWindow');
 const appearance = require('./appearance');
+const heroMotion = require('./hero-motion');
 
 const CELL = 32;
 const STEP_MS = 33;
@@ -111,7 +112,7 @@ class Friend {
     this.anim = null;
     this.mover = null;
     this.timers = new Set();
-    this.meta = JSON.parse(fs.readFileSync(path.join(mgr.assets, 'friends', `${def.id}.json`), 'utf8'));
+    this.meta = JSON.parse(fs.readFileSync(appearance.friendAsset(mgr.rootAssets, mgr.settings, def.id, 'json'), 'utf8'));
   }
 
   get id() {
@@ -130,7 +131,7 @@ class Friend {
   onReady() {
     this.ready = true;
     const w = this.win;
-    w.send('pet:init', { meta: this.meta, sheet: this.mgr.sheet(this.id), scale: this.mgr.scale(), workArea: w.display().workArea, appearance: this.mgr.settings.get('appearance'), test: false });
+    w.send('pet:init', { meta: this.meta, title: this.def.name, sheet: this.mgr.sheet(this.id), scale: this.mgr.scale(), workArea: w.display().workArea, appearance: this.mgr.settings.get('appearance'), test: false });
     if (this.state !== 'away') {
       w.win.showInactive();
       w.win.setAlwaysOnTop(true, 'screen-saver');
@@ -191,22 +192,22 @@ class Friend {
   }
 
   /** Walk/hop/fly to x (and y), then call then(). */
-  moveTo(tx, ty, then) {
+  moveTo(tx, ty, then, { arriving = false } = {}) {
     this.stopMove();
     this.facing = tx >= this.pos.x ? 'right' : 'left';
-    this.play('move', true);
+    this.play(arriving && this.def.heroId ? 'arrive' : 'move', true);
     const sx = this.pos.x;
     const sy = this.pos.y;
     const dist = Math.hypot(tx - sx, ty - sy);
     const speed = this.def.speed * this.mgr.scale() * 0.5;
-    const total = Math.min(3500, Math.max(400, (dist / speed) * 1000)); // long trips go faster
+    const total = Math.min(3500, Math.max(this.def.heroId === 'quicksilver' ? 160 : 400, (dist / speed) * 1000)); // long trips go faster
     const t0 = Date.now();
     this.mover = setInterval(() => {
       const k = Math.min(1, (Date.now() - t0) / total);
       const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
       // flyers swoop in along an arc; walkers stay on the floor
-      const arc = this.def.flies ? Math.sin(k * Math.PI) * -Math.min(160, dist * 0.35) : 0;
-      this.place(sx + (tx - sx) * e, sy + (ty - sy) * e + arc);
+      const arc = this.def.heroId ? -heroMotion.lift(this.def.heroId, k, this.mgr.scale()) : this.def.flies ? Math.sin(k * Math.PI) * -Math.min(160, dist * 0.35) : 0;
+      this.place(sx + (tx - sx) * e, Math.max(this.mgr.display().workArea.y, sy + (ty - sy) * e + arc));
       if (k >= 1) {
         this.stopMove();
         if (then) then();
@@ -240,13 +241,16 @@ class Friend {
     this.moveTo(target, floor, () => {
       this.state = 'here';
       this.facing = this.mgr.shadowX() >= this.pos.x ? 'right' : 'left';
-      this.play('idle', true);
       const cb = this.arrived;
       this.arrived = null;
       this.mgr.emit('arrived', this);
-      if (cb) cb();
-      this.scheduleIdle();
-    });
+      const finish = () => { this.play('idle', true); if (cb) cb(); this.scheduleIdle(); };
+      if (this.def.heroId) {
+        this.play('land', true);
+        const a = this.meta.animations.land;
+        this.after(a.frames / a.fps * 1000, finish);
+      } else finish();
+    }, { arriving: true });
   }
 
   /** Walk off the nearest screen edge and hide. */
@@ -422,7 +426,7 @@ class FriendsManager extends EventEmitter {
     this.sheets = {};
     this.list.forEach((f, i) => {
       f.def = appearance.friendDef(DEFS[i], this.settings);
-      f.meta = JSON.parse(fs.readFileSync(path.join(this.assets, 'friends', `${f.id}.json`), 'utf8'));
+      f.meta = JSON.parse(fs.readFileSync(appearance.friendAsset(this.rootAssets, this.settings, f.id, 'json'), 'utf8'));
       if (f.win && f.win.alive()) {
         f.win.win.setTitle(f.def.name);
         f.onReady();
@@ -456,7 +460,7 @@ class FriendsManager extends EventEmitter {
   }
 
   sheet(id) {
-    if (!this.sheets[id]) this.sheets[id] = 'data:image/png;base64,' + fs.readFileSync(path.join(this.assets, 'friends', `${id}.png`)).toString('base64');
+    if (!this.sheets[id]) this.sheets[id] = 'data:image/png;base64,' + fs.readFileSync(appearance.friendAsset(this.rootAssets, this.settings, id, 'png')).toString('base64');
     return this.sheets[id];
   }
 

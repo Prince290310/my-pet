@@ -3,6 +3,23 @@
 The default appearance is now a team of **humanoid pixel-art heroes**, led by **Iron Man**.
 The original Shadow panther and every animal friend are still included.
 
+**Choose your lead:** Settings → Appearance → Main hero → SAVE. All seven heroes are selectable.
+If you choose a supporting hero, Iron Man takes that hero's supporting job so there are no duplicates
+and every feature stays available. Quicksilver now replaces Star-Lord and keeps the music role.
+
+| Hero | Signature movement |
+| --- | --- |
+| Iron Man | Thruster flight and repulsor landings |
+| Spider-Man | Web swings and acrobatic arrivals |
+| Captain America | Shield runs and defensive landings |
+| Thor | Hammer leaps and lightning landings |
+| Doctor Strange | Portal arrivals and mystic glides |
+| Hulk | Heavy bounds, ground slams and landing dust |
+| Quicksilver | Fast dashes with blue and silver speed trails |
+
+Each hero has main-companion and teammate sprite sheets, including arrival and landing animations.
+The selected hero also changes the chat identity, personality, window icon and tray avatar.
+
 ![Avengers pixel team](assets/preview/avengers-team.png)
 
 | Character | Job | Original friend / compatible command name |
@@ -13,7 +30,7 @@ The original Shadow panther and every animal friend are still included.
 | Thor | Apps, folders and PC controls | Bolt |
 | Doctor Strange | Lessons, quizzes and homework | Sage |
 | Hulk | PC health and Downloads care | Zen |
-| Star-Lord | Music and playlists | Tempo |
+| Quicksilver | Music and playlists | Tempo |
 
 Say **“call the Avengers”**, **“Avengers, assemble!”**, **“call Spider-Man”**, **“call Thor”**,
 or another teammate's name in chat. The original command names also keep working.
@@ -21,12 +38,18 @@ or another teammate's name in chat. The original command names also keep working
 **To return to the original look:** Settings → Appearance → **RESTORE SHADOW & FRIENDS**.
 This switches the original sprites, friend names, dialogue, AI identity, tray and chat styling
 back immediately. It preserves your reminders, integrations, custom personality files, friend switches,
-and other preferences. To enable the team again, select **Avengers — Iron Man & team** and click **SAVE**.
-Your default saved name “Shadow” displays as “Iron Man” in Avengers mode; a custom name is respected.
+and other preferences. To enable the team again, select **Avengers — choose your hero** and click **SAVE**.
+Your default saved name “Shadow” displays your selected hero's name in Avengers mode; a custom name is respected.
 
 Run `npm run sprites:avengers` to regenerate only the new theme. `npm run sprites` and the build
 pre-step regenerate both themes. The new assets live in `assets/themes/avengers/`; the original
 `assets/sprites.*`, `assets/friends/`, icons and config files are unchanged.
+
+**Screen control:** the app already supports screenshot commands, opening installed apps (including
+WhatsApp), and finding/playing YouTube videos. Screenshot permission does not add full desktop
+automation. Reading WhatsApp chats, typing/sending replies, and making WhatsApp calls are not
+implemented by this update; they would require a local Windows screen-reading and accessibility-control
+module with explicit task commands and a way to stop an action.
 
 The following guide describes the existing companion features, all of which remain available
 with either appearance.

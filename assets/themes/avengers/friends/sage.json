@@ -6,26 +6,26 @@
     "idle": {
       "row": 0,
       "frames": 4,
-      "fps": 3,
+      "fps": 4,
       "loop": true,
       "flip": true,
-      "note": "idle: strange"
+      "note": "idle: strange, portal glide"
     },
     "move": {
       "row": 1,
       "frames": 4,
-      "fps": 9,
+      "fps": 10,
       "loop": true,
       "flip": true,
-      "note": "move: strange"
+      "note": "move: strange, portal glide"
     },
     "work": {
       "row": 2,
       "frames": 4,
-      "fps": 4,
+      "fps": 6,
       "loop": true,
       "flip": true,
-      "note": "work: strange"
+      "note": "work: strange, portal glide"
     },
     "talk": {
       "row": 3,
@@ -33,7 +33,7 @@
       "fps": 8,
       "loop": true,
       "flip": true,
-      "note": "talk: strange"
+      "note": "talk: strange, portal glide"
     },
     "sleep": {
       "row": 4,
@@ -41,7 +41,7 @@
       "fps": 3,
       "loop": true,
       "flip": true,
-      "note": "sleep: strange"
+      "note": "sleep: strange, portal glide"
     },
     "play": {
       "row": 5,
@@ -49,8 +49,25 @@
       "fps": 7,
       "loop": true,
       "flip": true,
-      "note": "play: strange"
+      "note": "play: strange, portal glide"
+    },
+    "arrive": {
+      "row": 6,
+      "frames": 4,
+      "fps": 8,
+      "loop": false,
+      "flip": true,
+      "note": "arrive: strange, portal glide"
+    },
+    "land": {
+      "row": 7,
+      "frames": 4,
+      "fps": 10,
+      "loop": false,
+      "flip": true,
+      "note": "land: strange, portal glide"
     }
   },
-  "character": "strange"
+  "character": "strange",
+  "motion": "portal glide"
 }

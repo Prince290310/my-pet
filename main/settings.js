@@ -9,6 +9,7 @@ const { cleanCalendarUrl } = require('./calendar');
 
 const DEFAULTS = Object.freeze({
   appearance: 'avengers', // avengers | shadow (original theme, restored instantly)
+  mainHero: 'ironman', // Selected Avengers leader; original theme ignores this preference.
   petName: 'Shadow',
   scale: 2, // 1x / 2x / 3x
   quipMinMinutes: 20, // random idle quip every min..max minutes
@@ -75,6 +76,7 @@ function validate(raw) {
   const name = typeof s.petName === 'string' ? s.petName.trim().slice(0, 24) : '';
   const out = {
     appearance: ['avengers', 'shadow'].includes(s.appearance) ? s.appearance : DEFAULTS.appearance,
+    mainHero: ['ironman', 'spiderman', 'cap', 'thor', 'strange', 'hulk', 'quicksilver'].includes(s.mainHero) ? s.mainHero : DEFAULTS.mainHero,
     petName: name || DEFAULTS.petName,
     scale: [1, 2, 3].includes(Number(s.scale)) ? Number(s.scale) : DEFAULTS.scale,
     quipMinMinutes: int(s.quipMinMinutes, 1, 720, DEFAULTS.quipMinMinutes),
