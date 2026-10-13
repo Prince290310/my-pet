@@ -4,7 +4,7 @@
  * Main process entry: creates the pet window, brain, tray, reminders, calendar and IPC wiring.
  */
 
-const { app, ipcMain, screen, Menu, shell, nativeTheme, powerMonitor, desktopCapturer, globalShortcut } = require('electron');
+const { app, ipcMain, screen, Menu, shell, nativeTheme, powerMonitor, desktopCapturer, globalShortcut, nativeImage } = require('electron');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -38,7 +38,9 @@ const { StartupRoutine, parseStartupCommand } = require('./startup');
 const { FileShare, parseFileCommand, parseBrowseCommand, parseNavCommand, mb } = require('./files');
 const { ExamPlanner, parseExamCommand } = require('./exams');
 const { CatchGame, QuizRace, Scores, parseGameCommand } = require('./games');
-const { HudData, HudDisplay, parseHudCommand, HOTKEYS } = require('./hud');
+const { HudData, HudDisplay, parseHudCommand, HOTKEYS, JARVIS_HOTKEYS } = require('./hud');
+const { Jarvis, parseJarvisOpen, isScreenRequest, boxToWindow, consoleRules, screenRules } = require('./jarvis');
+const { ActivityLog, ReportScheduler, buildBrief, buildDebrief, reportText, parseReportCommand } = require('./briefing');
 const { PetWindow } = require('./petWindow');
 const { Brain } = require('./brain');
 const { createTray } = require('./tray');
@@ -122,11 +124,15 @@ function petMenuTemplate() {
     { type: 'separator' },
     { label: 'Chat…', click: () => openChatPanel() },
     ...(ctx.hud ? [{ label: `${appearance.isAvengers(ctx.settings) ? 'Iron Man HUD' : 'HUD'}${ctx.hudKey ? ` (${hudKeyLabel()})` : ''}`, click: () => ctx.hud.show('menu') }] : []),
+    ...(ctx.hud ? [{ label: `${consoleName()} Console${ctx.jarvisKey ? ` (${jarvisKeyLabel()})` : ''}`, click: () => ctx.hud.show('menu', { mode: 'jarvis' }) }] : []),
     { label: 'Tuck Away', click: () => brain.command('tuck') },
   ];
 }
 
 const hudKeyLabel = () => (HOTKEYS[ctx.settings.get('hudHotkey')] || HOTKEYS.off).label;
+const jarvisKeyLabel = () => (JARVIS_HOTKEYS[ctx.settings.get('jarvisHotkey')] || JARVIS_HOTKEYS.off).label;
+/** J.A.R.V.I.S. in the Avengers theme, the pet's own name otherwise. */
+const consoleName = () => (appearance.isAvengers(ctx.settings) ? 'J.A.R.V.I.S.' : appearance.displayName(ctx.settings).toUpperCase());
 
 function showPetMenu() {
   const { pet } = ctx;
@@ -141,7 +147,7 @@ function settingsPayload() {
     spotify: ctx.spotify ? ctx.spotify.info() : null,
     exams: ctx.exams ? ctx.exams.upcoming().map((e) => ({ id: e.id, subject: e.subject, date: e.date, days: e.plan.length, done: e.plan.filter((d) => d.done).length })) : [],
     appearance: appearance.presentation(ctx.settings),
-    hud: { key: hudKeyLabel(), bound: !!ctx.hudKey, taken: !!ctx.hudKeyTaken },
+    hud: { key: hudKeyLabel(), bound: !!ctx.hudKey, taken: !!ctx.hudKeyTaken, jarvisKey: jarvisKeyLabel(), jarvisBound: !!ctx.jarvisKey, jarvisTaken: !!ctx.jarvisKeyTaken, consoleName: consoleName() },
     providers: ai.publicProviders(),
     calendar: ctx.calendar ? ctx.calendar.status() : null,
     update: ctx.updater ? ctx.updater.status() : null,
@@ -546,6 +552,7 @@ function init() {
   const TEMPO_LINES = { play: '▶️ Hit it!', pause: '⏸️ Pausing!', next: '⏭️ Next track!', previous: '⏮️ Rewind!', status: '🎵 Let me listen…', search: '🎧 Digging the crates…' };
   async function runMusic(cmd) {
     const done = friends.job('tempo', TEMPO_LINES[cmd.action]);
+    if (cmd.action === 'search' && ctx.activity) ctx.activity.note('song', cmd.query);
     let out;
     try {
       out = await music.run(cmd);
@@ -680,8 +687,10 @@ function init() {
     }
     if (cmd.type === 'catch') {
       if (origin === 'phone') return 'Catch the treat is played with the mouse on your PC, Prince 🖱️ Try "quiz race" from here!';
+      ctx.activity.note('game', 'Catch the treat');
       return catchGame.start();
     }
+    ctx.activity.note('game', `Quiz race${cmd.topic ? ` on ${cmd.topic}` : ''}`);
     const c = aiContext();
     const p = ai.PROVIDERS[c.provider];
     const askAi = p.needsKey && !c.apiKey ? null : (prompt) => ai.chat(prompt, { ...c, history: [] });
@@ -822,12 +831,14 @@ function init() {
     onFile: async ({ buffer, name, caption }) => {
       if (!settings.get('phoneFiles')) return 'File transfer is switched off on the PC (Settings → Phone).';
       const saved = files.save(buffer, name, caption);
+      ctx.activity.note('file-received', saved.name);
       friends.quickJob('dash', '📥 Delivery from your phone!', 5000);
       if (!brain.activeReminder && brain.state !== 'hidden') brain.say(`📥 ${saved.name} arrived from your phone → ${saved.folder}`, { ms: 6000 });
       return `📥 Saved ${saved.name} (${mb(saved.size)}) to ${saved.folder} on your PC${saved.renamed ? '. It\'s a program/script file, so I added ".download" to its name - it can\'t run by accident' : ''} ✓`;
     },
   }));
   tg.on('file-sent', (name) => !brain.activeReminder && brain.state !== 'hidden' && brain.say(`📤 Sent ${name} to your phone`, { ms: 5000 }));
+  tg.on('file-sent', (name) => ctx.activity.note('file-sent', name));
   tg.on('paired', () => brain.state !== 'hidden' && !brain.activeReminder && brain.say('📱 Phone paired! Text me anytime, Prince 🐾', { ms: 5000 }));
   tg.on('message', (text) => console.log(`[telegram] message (${text.length} chars)`)); // content stays private
   const away = () => ctx.sensors.idleSeconds() > 120;
@@ -839,15 +850,22 @@ function init() {
    * Everything Shadow can do from a message - used by the chat panel and by Telegram (telegram.js).
    * Returns { text, sources }.
    */
-  async function handleMessage(message, history, origin = 'pc') {
+  /**
+   * origin: 'pc' (chat panel), 'phone' (Telegram) or 'hud' (the J.A.R.V.I.S. console - the answer shows
+   * in the HUD, so Shadow doesn't say it too). opts.image / opts.rules: a screenshot and answer format
+   * for the AI (jarvis.js).
+   */
+  async function handleMessage(message, history, origin = 'pc', opts = {}) {
     // Parse before the general chat length limit so outgoing messages are never silently truncated.
     const whatsappCmd = parseWhatsAppCommand(message);
     const text = String(message || '').trim().slice(0, 2000);
     if (!text) return { text: '' };
     history.push({ role: 'user', text });
     let reply;
+    const speak = (out) => origin !== 'hud' && brain.chatReply(out);
     const done1 = (out, { animate = true } = {}) => {
       history.push({ role: 'pet', text: out });
+      if (origin === 'hud') return { text: out, sources: [] };
       if (animate) brain.chatReply(out);
       else brain.say(out, { ms: 3500 });
       return { text: out, sources: [] };
@@ -883,10 +901,24 @@ function init() {
     const examCmd = parseExamCommand(text);
     if (examCmd) {
       if (examCmd.type === 'add' && !examCmd.error) friends.quickJob('sage', '📅 Making your plan!', 5000);
+      if (examCmd.type === 'done' && exams.today().length) ctx.activity.note('study', exams.today().map(({ exam, day }) => `${exam.subject || 'Exam'}: ${day.topics.slice(0, 3).join(', ')}`).join(' + '));
       return done1(exams.run(examCmd));
     }
     const hudCmd = parseHudCommand(text);
     if (hudCmd) return done1(await runHud(hudCmd, origin));
+    // "brief me" / "debrief" (briefing.js) and "jarvis" (the HUD console)
+    const reportCmd = parseReportCommand(text);
+    if (reportCmd) {
+      if (origin === 'phone') return done1(reportText(await reportData(reportCmd.type)));
+      await showReport(reportCmd.type, 'chat');
+      return done1(reportCmd.type === 'brief' ? '☀️ Your briefing is up on the HUD, Prince.' : '📊 Your debrief is up on the HUD, Prince.');
+    }
+    if (parseJarvisOpen(text)) {
+      if (origin === 'phone') return done1(`${consoleName()} lives in the HUD on your PC, Prince - but ask me anything right here.`);
+      if (origin === 'hud') return done1("Right here, Prince. What's the mission?");
+      hud.show('chat', { mode: 'jarvis' });
+      return done1(`⚡ ${consoleName()} online - type in the HUD console.${ctx.jarvisKey ? ` (${jarvisKeyLabel()} anytime)` : ''}`);
+    }
     // files for the phone: "send me my notes", "browse D:", and "3" / "back" / "more" in an open list
     const appAsked = apps.pendingChoice ? apps.pendingChoice.at : 0;
     const fileCmd = (files.active(appAsked) && parseNavCommand(text)) || parseFileCommand(text) || parseBrowseCommand(text);
@@ -937,7 +969,7 @@ function init() {
         out = err instanceof ai.AiError ? ai.friendly(err, aiContext()) : 'Sage lost his notes, Prince. Try again? 🦉';
       }
       history.push({ role: 'pet', text: out });
-      tutorBubble(out);
+      if (origin !== 'hud') tutorBubble(out);
       return { text: out, sources: [] };
     }
     const searchCmd = search.parseSearchCommand(text);
@@ -952,7 +984,7 @@ function init() {
       }
       if (atlasDone) atlasDone(out.sources && out.sources.length ? 'Found it! 📰' : 'Hmm, nothing good 😕');
       history.push({ role: 'pet', text: out.text });
-      brain.chatReply(out.text);
+      speak(out.text);
       return { text: out.text, sources: out.sources || [] };
     }
     // "remind me at 6 pm to call Mom", "todo: buy milk", "done 2", ... - handled right here,
@@ -962,7 +994,7 @@ function init() {
       reply = ctx.tasks.run(cmd);
       dashFor(cmd.type, reply);
       history.push({ role: 'pet', text: reply });
-      brain.chatReply(reply);
+      speak(reply);
       return { text: reply, sources: [] };
     }
     const searchOn = settings.get('webSearch');
@@ -972,6 +1004,8 @@ function init() {
       pc: settings.get('pcControl') ? apps.aiInstructions() : '',
       music: music.available ? music.aiInstructions() : '',
       history: history.slice(-20),
+      ...(opts.rules ? { rules: opts.rules } : {}),
+      ...(opts.image ? { image: opts.image } : {}),
     };
     let sources = [];
     try {
@@ -1015,8 +1049,8 @@ function init() {
         reply = 'I didn\'t get that one, Prince. Try "remind me at 6 pm to call Mom", "remind me in 20 min to drink water" or "todo: physics homework".';
       }
     }
-    brain.chatReply(reply);
-    return { text: reply, sources };
+    speak(reply);
+    return { text: reply, sources, vision: !!opts.image };
   }
   /** Shadow says it's searching and Atlas the parrot flies in. Returns Atlas's done(line). */
   function searchingBubble() {
@@ -1031,6 +1065,7 @@ function init() {
   }
   // Dash also delivers reminders as they fire (not update notices or the morning briefing)
   brain.on('reminder-start', (r) => {
+    if (!['update', 'briefing', 'care'].includes(r.kind) && ctx.activity) ctx.activity.note('reminder', r.message);
     if (!['update', 'briefing', 'care', 'exam'].includes(r.kind) && !brain.reminderClosing) friends.quickJob('dash', '📨 Delivery for Prince!', 7000);
     if (!['update', 'briefing'].includes(r.kind) && ctx.telegram && away()) ctx.telegram.notify(`${r.icon || '⏰'} ${r.message}`);
   });
@@ -1055,7 +1090,7 @@ function init() {
   // settings window
   ipcMain.handle('settings:load', () => settingsPayload());
   ipcMain.handle('settings:save', async (_e, patch = {}) => {
-    const allowed = ['appearance', 'mainHero', 'petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat', 'morningBriefing', 'todoNudges', 'webSearch', 'searchKey', 'pcControl', 'pcCare', 'whatsappAutomation', 'whatsappCallType', 'musicService', 'startupOnWake', 'phoneFiles', 'phoneFilesScope', 'examStudyTime', 'hudHotkey', 'hudSeconds', 'hudSound', 'weatherCity', 'friendsMode', 'friends', 'telegramEnabled', 'telegramToken', 'telegramNotify'];
+    const allowed = ['appearance', 'mainHero', 'petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat', 'morningBriefing', 'todoNudges', 'webSearch', 'searchKey', 'pcControl', 'pcCare', 'whatsappAutomation', 'whatsappCallType', 'musicService', 'startupOnWake', 'phoneFiles', 'phoneFilesScope', 'examStudyTime', 'hudHotkey', 'hudSeconds', 'hudSound', 'weatherCity', 'jarvisHotkey', 'hudBrief', 'hudBriefDelay', 'hudDebrief', 'hudDebriefTime', 'friendsMode', 'friends', 'telegramEnabled', 'telegramToken', 'telegramNotify'];
     const clean = Object.fromEntries(Object.entries(patch).filter(([k]) => allowed.includes(k)));
     const before = settings.get('calendarUrl');
     settings.update(clean);
@@ -1157,6 +1192,7 @@ function init() {
         name: 'Prince',
         tutor: friends.get('sage').def.name,
         sound: settings.get('hudSound'),
+        consoleName: consoleName(),
       };
     },
   }));
@@ -1185,28 +1221,163 @@ function init() {
     if (cmd.report) return '📊 Status report is up on your HUD, Prince.';
     return `${appearance.isAvengers(settings) ? '⚡ HUD online' : '🐾 HUD up'}, Prince.${ctx.hudKey ? ` (${hudKeyLabel()} opens it anytime)` : ''}`;
   }
-  // the hotkey (Settings → HUD); another app may already own it - Settings then says so
-  const bindHudKey = () => {
-    if (ctx.hudKey) globalShortcut.unregister(ctx.hudKey);
-    ctx.hudKey = '';
-    ctx.hudKeyTaken = false;
-    const accel = (HOTKEYS[settings.get('hudHotkey')] || HOTKEYS.off).accel;
+  // the hotkeys (Settings → HUD); another app may already own one - Settings then says so
+  const bindKey = (name, map, settingKey, fn) => {
+    if (ctx[`${name}Key`]) globalShortcut.unregister(ctx[`${name}Key`]);
+    ctx[`${name}Key`] = '';
+    ctx[`${name}KeyTaken`] = false;
+    const accel = (map[settings.get(settingKey)] || map.off).accel;
     if (!accel) return;
     let ok = false;
     try {
-      ok = globalShortcut.register(accel, () => hud.toggle('hotkey'));
+      ok = globalShortcut.register(accel, fn);
     } catch {
       ok = false;
     }
-    if (ok) ctx.hudKey = accel;
-    else ctx.hudKeyTaken = true;
+    if (ok) ctx[`${name}Key`] = accel;
+    else ctx[`${name}KeyTaken`] = true;
   };
+  const toggleJarvis = () => (hud.visible && hud.mode === 'jarvis' ? hud.hide('hotkey') : hud.show('hotkey', { mode: 'jarvis' }));
+  const bindHudKey = () => bindKey('hud', HOTKEYS, 'hudHotkey', () => hud.toggle('hotkey'));
+  const bindJarvisKey = () => bindKey('jarvis', JARVIS_HOTKEYS, 'jarvisHotkey', toggleJarvis);
   ctx.bindHudKey = bindHudKey;
   bindHudKey();
+  bindJarvisKey();
   settings.on('change', (_all, changed) => {
     if (changed.includes('hudHotkey')) bindHudKey();
+    if (changed.includes('jarvisHotkey')) bindJarvisKey();
     if (changed.includes('weatherCity')) hudData.cache.weather.clear();
   });
+
+  // ---- J.A.R.V.I.S. (jarvis.js): the HUD's command console - type anything, or ask about the screen
+  ctx.jarvisHistory = [];
+  let scanWaiter = null;
+  ipcMain.on('hud:scan-ready', (e) => {
+    if (!fromHud(e) || !scanWaiter) return;
+    scanWaiter();
+    scanWaiter = null;
+  });
+  /** Tell the HUD page what the scan is doing; 'capture' waits until it has gone see-through. */
+  const onScan = (phase) =>
+    new Promise((resolve) => {
+      if (!hud.visible || !hud.alive()) return resolve();
+      hud.w.send('hud:scan', { phase });
+      if (phase !== 'capture') return resolve();
+      scanWaiter = resolve;
+      setTimeout(() => scanWaiter === resolve && (scanWaiter = null, resolve()), 700);
+    });
+  /** The screen the HUD is on, as a JPEG for the AI (max 1600 px wide). Shadow & co. step aside. */
+  async function captureScreen() {
+    const display = hud.window() ? screen.getDisplayMatching(hud.window().getBounds()) : screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    const others = [pet.win, getChatWindow(), ...friends.windows().map((w) => w.win)].filter((w) => w && !w.isDestroyed() && w.isVisible());
+    others.forEach((w) => w.hide());
+    let img;
+    try {
+      await new Promise((r) => setTimeout(r, 160)); // the HUD's see-through frame reaches the screen
+      if (ctx.jarvisHooks && ctx.jarvisHooks.capture) {
+        const raw = await ctx.jarvisHooks.capture(display);
+        img = Buffer.isBuffer(raw) ? nativeImage.createFromBuffer(raw) : raw;
+      } else {
+        const size = { width: Math.round(display.size.width * display.scaleFactor), height: Math.round(display.size.height * display.scaleFactor) };
+        const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: size });
+        const src = sources.find((x) => String(x.display_id) === String(display.id)) || sources[0];
+        if (!src) throw new Error('no screen found');
+        img = src.thumbnail;
+      }
+    } finally {
+      others.forEach((w) => !w.isDestroyed() && w.showInactive());
+    }
+    if (!img || img.isEmpty()) throw new Error('the screenshot came out empty');
+    if (img.getSize().width > 1600) img = img.resize({ width: 1600, quality: 'good' });
+    return { image: { mime: 'image/jpeg', data: img.toJPEG(80).toString('base64') }, display: display.bounds };
+  }
+  const jarvis = (ctx.jarvis = new Jarvis({
+    capture: captureScreen,
+    see: (question, image, history) => ai.chat(question, { ...aiContext(), rules: screenRules(consoleName()), image, history: history.slice(-8) }),
+    handle: async (text, { image } = {}) => {
+      const r = await handleMessage(text, ctx.jarvisHistory, 'hud', { image, rules: image ? screenRules(consoleName()) : consoleRules(consoleName()) });
+      if (ctx.jarvisHistory.length > 40) ctx.jarvisHistory.splice(0, ctx.jarvisHistory.length - 40);
+      return r;
+    },
+  }));
+  ipcMain.on('hud:console', (e) => fromHud(e) && hud.show('button', { mode: 'jarvis' }));
+  ipcMain.on('hud:report-now', (_e, kind) => ['brief', 'debrief'].includes(kind) && showReport(kind, 'settings').catch(() => {})); // Settings buttons
+  ipcMain.on('hud:open-link', (e, url) => fromHud(e) && sourceUrls.has(url) && /^https?:\/\//i.test(url) && openUrl(url));
+  ipcMain.on('hud:ask', async (e, text) => {
+    if (!fromHud(e) || typeof text !== 'string') return;
+    let r;
+    const c = aiContext();
+    if (isScreenRequest(text) && ai.PROVIDERS[c.provider].needsKey && !c.apiKey) {
+      r = { text: `To read your screen I need an AI brain that can see, Prince - add a free Google Gemini key in Settings → AI Brain (2 minutes).`, error: true };
+    } else {
+      try {
+        r = await jarvis.ask(text, { onScan });
+      } catch (err) {
+        if (!(err instanceof ai.AiError)) console.warn('[jarvis]', err);
+        r = { text: err instanceof ai.AiError ? ai.friendly(err, c) : `That didn't work, Prince (${err.message}).`, error: true };
+      }
+    }
+    if (!hud.alive()) return;
+    hud.w.send('hud:scan', { phase: 'done' });
+    const out = { text: r.text || '…', sources: r.sources || [], screen: !!r.screen, error: !!r.error };
+    if (r.box && r.display && hud.window()) out.rect = boxToWindow(r.box, r.display, hud.window().getBounds());
+    hud.w.send('hud:answer', out);
+  });
+
+  // ---- the briefing (15 min after the laptop opens) and the debrief every 12 hours (briefing.js)
+  const activity = (ctx.activity = new ActivityLog({ file: path.join(app.getPath('userData'), 'activity.json') }));
+  setInterval(() => activity.minute(ctx.sensors.idleSeconds() < 120), 60 * 1000);
+  async function reportData(kind) {
+    const [weather, quick, slow] = await Promise.all([hudData.weather().catch(() => null), hudData.quickSystem().catch(() => ({})), hudData.slowSystem().catch(() => ({}))]);
+    const base = { now: Date.now(), tasks: ctx.tasks, exams, calendar: ctx.calendar, weather, sys: { ...quick, ...slow }, studyTime: settings.get('examStudyTime'), updateReady: !!(ctx.updater && ctx.updater.ready) };
+    return kind === 'brief' ? buildBrief(base) : buildDebrief({ ...base, log: activity });
+  }
+  /** A nicer, spoken-style summary from the AI (if there is one) replaces the built-in sentence. */
+  async function polishReport(report) {
+    const c = aiContext();
+    if (ai.PROVIDERS[c.provider].needsKey && !c.apiKey) return;
+    try {
+      const rules = `\nYou are ${consoleName()}, Prince's assistant. Write the summary line for this ${report.kind === 'brief' ? 'morning briefing' : 'debrief'} in 2 short sentences (max 45 words), speaking to Prince. Plain text, no lists, no emojis. Use only facts from the report.`;
+      const line = await Promise.race([ai.chat(reportText(report), { ...c, rules, history: [] }), new Promise((_r, no) => setTimeout(() => no(new Error('slow')), 12000))]);
+      if (line && line.length < 400) hud.updateReport({ summary: line });
+    } catch {
+      /* keep the built-in sentence */
+    }
+  }
+  async function showReport(kind, why) {
+    const report = await reportData(kind);
+    hud.show(why, { mode: kind, report });
+    polishReport(report);
+    return report;
+  }
+  ctx.showReport = showReport;
+  const reports = (ctx.reports = new ReportScheduler({
+    settings,
+    log: activity,
+    idleSeconds: () => ctx.sensors.idleSeconds(),
+    busy: () => catchGame.running() || brain.state === 'off' || (hud.visible && hud.mode === 'jarvis'), // never over a game, or while he types
+    show: (kind) => {
+      showReport(kind, 'auto').catch((err) => console.warn('[reports]', err.message));
+      return true;
+    },
+    phone: (kind) => {
+      if (!settings.get('telegramEnabled') || !settings.get('telegramNotify') || !tg.owner() || !tg.running) return false;
+      reportData(kind)
+        .then((r) => tg.send(tg.owner(), reportText(r)))
+        .catch(() => {});
+      return true;
+    },
+  }));
+  if (!SELF_TEST) {
+    setInterval(() => reports.tick(), 30 * 1000);
+    if (process.argv.includes('--startup')) reports.opened('boot'); // Windows just started
+  }
+  let lockedAt = 0;
+  powerMonitor.on('resume', () => reports.opened('resume')); // the lid opened
+  powerMonitor.on('lock-screen', () => (lockedAt = Date.now()));
+  powerMonitor.on('unlock-screen', () => lockedAt && Date.now() - lockedAt >= 30 * 60 * 1000 && reports.opened('unlock'));
+  powerMonitor.on('suspend', () => reports.suspended());
+
   app.on('will-quit', () => globalShortcut.unregisterAll());
   powerMonitor.on('suspend', () => hud.hide('sleep'));
 
@@ -1214,7 +1385,7 @@ function init() {
     brain,
     settings,
     loginItem: { get: () => ctx.loginItem.get(), set: (on) => ctx.loginItem.set(on) },
-    actions: { openSettings, openConfigFolder, openChat: openChatPanel, quit, rescue: () => ctx.rescue(), showHud: () => hud.show('tray'), hudKey: () => (ctx.hudKey ? hudKeyLabel() : '') },
+    actions: { openSettings, openConfigFolder, openChat: openChatPanel, quit, rescue: () => ctx.rescue(), showHud: () => hud.show('tray'), hudKey: () => (ctx.hudKey ? hudKeyLabel() : ''), showJarvis: () => hud.show('tray', { mode: 'jarvis' }), jarvisLabel: () => `${consoleName()} Console${ctx.jarvisKey ? ` (${jarvisKeyLabel()})` : ''}` },
     getUpdater: () => ctx.updater,
     callGang: () => ctx.friends.callGang(),
   });

@@ -116,6 +116,8 @@ api.onShow((d) => {
   body.classList.add('on', head.theme === 'shadow' ? 'shadow' : 'stark');
   if (interactive) body.classList.add('held');
   on = true;
+  $('c-name').textContent = head.consoleName || 'J.A.R.V.I.S.';
+  setMode(d.mode || 'hud', d.report);
   $('sub').textContent = head.sub;
   decode($('title'), head.title);
   setStatus('BOOTING…', '');
@@ -164,6 +166,157 @@ api.onCursor((c) => {
 });
 
 $('close').addEventListener('click', () => api.close());
+$('open-console').addEventListener('click', () => api.openConsole());
+$('r-ok').addEventListener('click', () => api.close());
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') api.close();
+});
+
+// ------------------------------------------------------------------ modes: hud · jarvis · brief · debrief
+let mode = 'hud';
+function setMode(m, report) {
+  mode = m;
+  body.classList.remove('mode-hud', 'mode-jarvis', 'mode-brief', 'mode-debrief');
+  body.classList.add(`mode-${m}`);
+  if (m !== 'jarvis') lockOff();
+  if (report) renderReport(report);
+  if (m === 'jarvis') focusInput();
+}
+api.onMode(({ mode: m, report }) => setMode(m, report));
+api.onFocus(() => focusInput());
+function focusInput() {
+  if (mode !== 'jarvis') return;
+  requestAnimationFrame(() => $('q').focus());
+}
+
+// ------------------------------------------------------------------ J.A.R.V.I.S. console
+let thinking = null;
+$('ask').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const q = $('q').value.trim();
+  if (!q || thinking) return;
+  $('q').value = '';
+  const log = $('log');
+  log.append(el('div', 'ex-q', q));
+  thinking = el('div', 'thinking', 'PROCESSING');
+  log.append(thinking);
+  $('c-state').textContent = 'WORKING';
+  log.scrollTop = log.scrollHeight;
+  lockOff();
+  api.ask(q);
+});
+
+/** Text appears letter by letter, the way a HUD would print it. */
+function typeOut(node, text, done) {
+  const total = String(text);
+  const ms = Math.min(1400, Math.max(250, total.length * 9));
+  const t0 = performance.now();
+  const step = (now) => {
+    const k = Math.min(1, (now - t0) / ms);
+    node.textContent = total.slice(0, Math.ceil(total.length * k));
+    const log = $('log');
+    log.scrollTop = log.scrollHeight;
+    if (k < 1 && on) requestAnimationFrame(step);
+    else {
+      node.textContent = total;
+      if (done) done();
+    }
+  };
+  if (test) {
+    node.textContent = total; // the self-test reads it straight away
+    if (done) done();
+    return;
+  }
+  requestAnimationFrame(step);
+}
+
+api.onAnswer((r) => {
+  if (thinking) thinking.remove();
+  thinking = null;
+  $('c-state').textContent = '';
+  body.classList.remove('scanning', 'capturing');
+  const log = $('log');
+  const a = el('div', `ex-a${r.error ? ' err' : ''}${r.screen ? ' screen' : ''}`);
+  log.append(a);
+  typeOut(a, r.text || '…');
+  if (Array.isArray(r.sources) && r.sources.length) {
+    const src = el('div', 'ex-src');
+    for (const x of r.sources.slice(0, 3)) {
+      const b = el('button', 'hit', x.title || x.url);
+      b.title = x.url;
+      b.addEventListener('click', () => api.openLink(x.url));
+      src.append(b);
+    }
+    log.append(src);
+  }
+  while (log.children.length > 24) log.firstChild.remove(); // keep the last few exchanges
+  if (r.rect) lockOn(r.rect, r.label);
+  focusInput();
+});
+
+api.onScan(({ phase }) => {
+  if (phase === 'capture') {
+    body.classList.add('capturing'); // see-through for the screenshot
+    if (thinking) thinking.textContent = 'SCANNING SCREEN';
+    $('c-state').textContent = 'SCANNING';
+    requestAnimationFrame(() => requestAnimationFrame(() => api.scanReady()));
+  } else if (phase === 'analyze') {
+    body.classList.remove('capturing');
+    body.classList.add('scanning');
+    if (thinking) thinking.textContent = 'ANALYZING';
+    $('c-state').textContent = 'ANALYZING';
+  } else {
+    body.classList.remove('capturing', 'scanning');
+  }
+});
+
+function lockOn(r, label) {
+  const box = $('lock');
+  box.style.left = `${r.x}px`;
+  box.style.top = `${r.y}px`;
+  box.style.width = `${r.w}px`;
+  box.style.height = `${r.h}px`;
+  box.querySelector('span').textContent = label || 'TARGET';
+  box.classList.remove('on');
+  void box.offsetWidth;
+  box.classList.add('on');
+}
+function lockOff() {
+  $('lock').classList.remove('on');
+}
+
+// ------------------------------------------------------------------ briefing / debrief card
+function renderReport(r) {
+  $('r-title').textContent = r.title;
+  $('r-sub').textContent = r.sub;
+  typeOut($('r-summary'), r.summary);
+  const tiles = $('r-tiles');
+  tiles.replaceChildren(
+    ...r.tiles.map((t) => {
+      const d = el('div', `tile ${t.tone || ''}${String(t.value).length > 4 ? ' long' : ''}`);
+      d.append(el('i', '', t.icon), el('b', '', t.value), el('small', '', t.label));
+      return d;
+    })
+  );
+  const secs = $('r-sections');
+  secs.replaceChildren(
+    ...r.sections.map((sec) => {
+      const box = el('div', 'sec');
+      const ul = el('ul');
+      for (const it of sec.items) {
+        const li = el('li', it.tone || '');
+        li.append(el('i', '', it.icon), el('span', '', it.text));
+        if (it.when) li.append(el('em', '', it.when));
+        ul.append(li);
+      }
+      box.append(el('h3', '', sec.title), ul);
+      return box;
+    })
+  );
+}
+api.onReport((patch) => {
+  if (patch.summary) typeOut($('r-summary'), patch.summary);
+});
 document.querySelectorAll('.ctl button').forEach((b) =>
   b.addEventListener('click', () => {
     if (b.disabled) return;
@@ -411,6 +564,12 @@ window.__hudTest = {
     statusClass: $('status').className,
     timerMs: $('timer').classList.contains('run') ? $('timer').style.getPropertyValue('--ms') : 'off',
     playing: $('music').classList.contains('playing'),
+    mode,
+    focused: document.activeElement === $('q'),
+    log: $('log').innerText,
+    thinking: !!thinking,
+    lock: $('lock').classList.contains('on') ? { x: parseFloat($('lock').style.left), y: parseFloat($('lock').style.top), w: parseFloat($('lock').style.width), h: parseFloat($('lock').style.height) } : null,
+    report: { title: $('r-title').textContent, sub: $('r-sub').textContent, summary: $('r-summary').textContent, text: $('report').innerText },
   }),
   rect: (sel) => {
     const r = document.querySelector(sel).getBoundingClientRect();

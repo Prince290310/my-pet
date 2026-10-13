@@ -86,7 +86,7 @@ const TIMEOUT_MS = 45 * 1000;
 class AiError extends Error {
   constructor(kind, detail = '', status = 0) {
     super(detail || kind);
-    this.kind = kind; // no-key | auth | rate | model | offline | timeout | refusal | sdk | config | empty | server
+    this.kind = kind; // no-key | auth | rate | model | offline | timeout | refusal | sdk | config | empty | server | no-vision
     this.status = status;
   }
 }
@@ -143,6 +143,19 @@ function toMessages(message, history) {
   }
   while (msgs.length && msgs[0].role !== 'user') msgs.shift(); // conversations must start with the user
   return msgs;
+}
+
+/**
+ * A picture goes with the last user message (J.A.R.V.I.S. reading the screen, jarvis.js).
+ * image = { mime: 'image/jpeg', data: <base64> }
+ */
+function withImage(messages, image, claude) {
+  if (!image || !messages.length) return messages;
+  const last = messages[messages.length - 1];
+  const picture = claude
+    ? { type: 'image', source: { type: 'base64', media_type: image.mime, data: image.data } }
+    : { type: 'image_url', image_url: { url: `data:${image.mime};base64,${image.data}` } };
+  return [...messages.slice(0, -1), { role: last.role, content: [picture, { type: 'text', text: String(last.content) }] }];
 }
 
 function cleanReply(text) {
@@ -268,10 +281,19 @@ async function chat(message, context = {}) {
   const r = resolve(context);
   if (r.p.needsKey && !r.apiKey) throw new AiError('no-key');
   // context.long: Sage's lessons/quizzes go to the chat panel and may be longer than a bubble (tutor.js)
-  const rules = context.long ? require('./tutor').LONG_RULES : bubbleRules(context.petName || 'Shadow');
+  // context.rules: J.A.R.V.I.S. answers in the HUD (jarvis.js) have their own, longer format
+  const rules = context.rules || (context.long ? require('./tutor').LONG_RULES : bubbleRules(context.petName || 'Shadow'));
   const system = `${context.personality || ''}\n${rules}\n${context.tutor ? `${context.tutor}\n` : ''}${nowAndCalendar(context)}`;
-  const messages = toMessages(String(message), context.history);
-  return r.id === 'claude' ? chatClaude(r, system, messages) : chatOpenAICompatible(r, system, messages);
+  const messages = withImage(toMessages(String(message), context.history), context.image, r.id === 'claude');
+  try {
+    return await (r.id === 'claude' ? chatClaude(r, system, messages) : chatOpenAICompatible(r, system, messages));
+  } catch (err) {
+    // a brain that can't see pictures usually answers 400 / "image" / "vision"
+    if (context.image && err instanceof AiError && ['server', 'model'].includes(err.kind) && (err.status === 400 || /image|vision|multimodal|modalit/i.test(err.message))) {
+      throw new AiError('no-vision', err.message, err.status);
+    }
+    throw err;
+  }
 }
 
 /** Friendly, in-character line for an error. */
@@ -303,6 +325,8 @@ function friendly(err, context = {}) {
       return `My brain settings are incomplete, Prince (${err.message}). Check Settings → AI Brain.`;
     case 'empty':
       return '...purr? (My brain went quiet. Ask me again, Prince.)';
+    case 'no-vision':
+      return `${r.p.short}${r.model ? ` (${r.model})` : ''} can't look at pictures, Prince. Switch to Google Gemini (free) in Settings → AI Brain to let me read your screen.`;
     default:
       return `My brain glitched${err.status ? ` (error ${err.status})` : ''}. Try again in a bit, Prince?`;
   }
@@ -347,4 +371,4 @@ function publicProviders() {
   }));
 }
 
-module.exports = { askPet, chat, friendly, testConnection, publicProviders, PROVIDERS, DEFAULT_PROVIDER, AiError, toMessages, cleanReply, nowAndCalendar };
+module.exports = { askPet, chat, friendly, testConnection, publicProviders, PROVIDERS, DEFAULT_PROVIDER, AiError, toMessages, withImage, cleanReply, nowAndCalendar };

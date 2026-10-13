@@ -316,6 +316,13 @@ function fill({ settings: s, appearance: theme, providers: list, startWithWindow
   $('weatherCity').value = s.weatherCity;
   $('hudSound').checked = s.hudSound;
   showHudKey(hud);
+  $('jarvisTitle').textContent = `${hud ? hud.consoleName : 'J.A.R.V.I.S.'} console`;
+  $('jarvisHotkey').value = s.jarvisHotkey;
+  $('hudBrief').checked = s.hudBrief;
+  $('hudBriefDelay').value = String(s.hudBriefDelay);
+  $('hudDebrief').checked = s.hudDebrief;
+  $('hudDebriefTime').value = s.hudDebriefTime;
+  showDebriefTwin();
 
   providers = list;
   keys = { ...s.apiKeys };
@@ -412,6 +419,11 @@ form.addEventListener('submit', async (e) => {
       hudSeconds: Number($('hudSeconds').value),
       hudSound: $('hudSound').checked,
       weatherCity: $('weatherCity').value.trim(),
+      jarvisHotkey: $('jarvisHotkey').value,
+      hudBrief: $('hudBrief').checked,
+      hudBriefDelay: Number($('hudBriefDelay').value),
+      hudDebrief: $('hudDebrief').checked,
+      hudDebriefTime: $('hudDebriefTime').value,
       friendsMode: (form.querySelector('input[name="friendsMode"]:checked') || {}).value,
       friends: Object.fromEntries([...document.querySelectorAll('input[data-friend]')].map((b) => [b.dataset.friend, b.checked])),
       webSearch: $('webSearch').checked,
@@ -542,11 +554,23 @@ $('testTg').addEventListener('click', async () => {
 
 $('callGang').addEventListener('click', () => window.settingsApi.callGang());
 
-/** Whether the HUD hotkey works (another app may already use it). */
+/** Whether the HUD hotkeys work (another app may already use one). */
 function showHudKey(hud) {
-  const note = $('hudKeyNote');
+  keyNote($('hudKeyNote'), hud && { key: hud.key, taken: hud.taken }, 'No hotkey - open it from the chat ("hud") or the tray menu.');
+  keyNote($('jarvisKeyNote'), hud && { key: hud.jarvisKey, taken: hud.jarvisTaken }, 'No hotkey - say "jarvis" in the chat or use the tray menu.');
+}
+/** "21:00" -> the twin debrief 12 hours later ("and 9:00 AM"). */
+function showDebriefTwin() {
+  const [h, m] = ($('hudDebriefTime').value || '21:00').split(':').map(Number);
+  const t = (h + 12) % 24;
+  $('debriefTwin').textContent = `and ${t % 12 || 12}:${String(m).padStart(2, '0')} ${t < 12 ? 'AM' : 'PM'}`;
+}
+$('hudDebriefTime').addEventListener('input', showDebriefTwin);
+$('briefNow').addEventListener('click', () => window.settingsApi.reportNow('brief'));
+$('debriefNow').addEventListener('click', () => window.settingsApi.reportNow('debrief'));
+function keyNote(note, hud, none) {
   if (!hud || !hud.key) {
-    note.textContent = 'No hotkey - open it from the chat ("hud") or the tray menu.';
+    note.textContent = none;
     note.className = 'note';
   } else if (hud.taken) {
     note.textContent = `${hud.key} is already used by another app - pick a different one.`;

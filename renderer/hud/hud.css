@@ -796,6 +796,383 @@ h3 span {
   margin-top: 10px;
 }
 
+/* ------------------------------------------------------------------ J.A.R.V.I.S. console */
+#open-console {
+  position: absolute;
+  right: -84px;
+  top: -4px;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--dim);
+  border-radius: 50%;
+  background: var(--panel);
+}
+#open-console svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: var(--gold);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+#open-console:hover {
+  border-color: var(--gold);
+}
+#console {
+  position: absolute;
+  left: 50%;
+  bottom: 7.5vh;
+  width: min(720px, 44vw);
+  transform: translateX(-50%);
+  display: none;
+}
+body.mode-jarvis #console {
+  display: block;
+  animation: consoleIn 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes consoleIn {
+  from { opacity: 0; transform: translate(-50%, 30px); }
+}
+#console h2 {
+  margin-bottom: 8px;
+}
+#c-state {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--gold);
+  order: 3;
+}
+#console h2::after {
+  order: 2;
+}
+#log {
+  max-height: 34vh;
+  overflow-y: auto;
+  padding-right: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--dim) transparent;
+}
+#log:empty::before {
+  content: 'Type a command, or ask about your screen: "what\'s this error?", "explain this question".';
+  display: block;
+  color: var(--dim);
+  font-size: 12.5px;
+  padding: 2px 0 6px;
+}
+.ex-q {
+  margin: 10px 0 4px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--gold);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ex-q::before {
+  content: '› ';
+}
+.ex-a {
+  margin: 0 0 6px;
+  padding-left: 10px;
+  border-left: 2px solid var(--hud);
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ex-a.err {
+  border-left-color: var(--red);
+}
+.ex-a.screen {
+  border-left-color: var(--gold);
+}
+.ex-src {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px 12px;
+}
+.ex-src button {
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid var(--dim);
+  color: var(--hud);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ex-src button:hover {
+  border-color: var(--hud);
+  background: var(--faint);
+}
+.thinking {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  color: var(--gold);
+  margin: 4px 0 6px 10px;
+}
+.thinking::after {
+  content: '';
+  animation: dots 1.2s steps(4) infinite;
+}
+@keyframes dots {
+  0% { content: ''; }
+  25% { content: '.'; }
+  50% { content: '..'; }
+  75% { content: '...'; }
+}
+#ask {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--dim);
+  background: rgb(0 0 0 / 0.35);
+}
+#ask:focus-within {
+  border-color: var(--hud);
+  box-shadow: 0 0 14px rgb(var(--c) / 0.25);
+}
+#ask .prompt {
+  color: var(--gold);
+  font-family: var(--mono);
+  font-size: 15px;
+}
+#q {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: 0;
+  outline: none;
+  color: var(--text);
+  font: 14px var(--font);
+  caret-color: var(--gold);
+}
+#q::placeholder {
+  color: var(--dim);
+}
+#ask button {
+  color: var(--hud);
+  font-size: 15px;
+  padding: 0 4px;
+}
+/* the clock steps up out of the console's way */
+#core {
+  transition: top 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), width 0.5s, height 0.5s, opacity 0.4s;
+}
+body.mode-jarvis #core {
+  top: 30%;
+  width: min(27vh, 270px);
+  height: min(27vh, 270px);
+}
+body.mode-jarvis #time {
+  font-size: clamp(30px, 4.6vh, 50px);
+}
+body.mode-jarvis #greet,
+body.mode-jarvis #date {
+  font-size: 9.5px;
+  letter-spacing: 0.2em;
+}
+
+/* ------------------------------------------------------------------ report card (briefing / debrief) */
+#report {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(640px, 44vw);
+  max-height: 84vh;
+  overflow: hidden;
+  transform: translate(-50%, -50%);
+  display: none;
+}
+body.mode-brief #report,
+body.mode-debrief #report {
+  display: block;
+  animation: reportIn 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) 0.2s both;
+}
+@keyframes reportIn {
+  0% { opacity: 0; transform: translate(-50%, -46%) scale(0.96); }
+  40% { opacity: 0.9; }
+  50% { opacity: 0.35; }
+  65% { opacity: 1; }
+  100% { opacity: 1; transform: translate(-50%, -50%); }
+}
+body.mode-brief #core,
+body.mode-debrief #core {
+  opacity: 0;
+  visibility: hidden;
+}
+#report h2 {
+  font-size: 15px;
+  margin-bottom: 2px;
+}
+#r-sub {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  color: var(--gold);
+}
+#r-summary {
+  margin: 12px 0 14px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text);
+  min-height: 2.9em;
+}
+#r-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  gap: 8px;
+}
+.tile {
+  padding: 8px 6px 7px;
+  border: 1px solid var(--faint);
+  background: rgb(var(--c) / 0.05);
+  text-align: center;
+  min-width: 0;
+}
+.tile i {
+  display: block;
+  font-style: normal;
+  font-size: 16px;
+}
+.tile b {
+  display: block;
+  margin: 2px 0;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.tile small {
+  display: block;
+  font-size: 8.5px;
+  letter-spacing: 0.2em;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tile.long b {
+  font-size: 17px;
+  margin: 6px 0 4px;
+}
+.tile.warn b { color: var(--gold); }
+.tile.bad b { color: var(--red); }
+.tile.good b { color: var(--ok); }
+#r-sections {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 20px;
+}
+#r-sections .sec:first-child {
+  grid-column: 1 / -1;
+}
+#r-sections ul li {
+  display: flex;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+#r-sections li span {
+  flex: 1;
+  min-width: 0;
+}
+#r-sections li em {
+  font-style: normal;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--gold);
+  white-space: nowrap;
+}
+#r-sections li.warn span { color: var(--gold); }
+#r-sections li.bad span { color: var(--red); }
+#r-sections li.good span { color: var(--ok); }
+.r-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+#r-ok {
+  padding: 6px 16px;
+  border: 1px solid var(--hud);
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  color: var(--hud);
+}
+#r-ok:hover {
+  background: rgb(var(--c) / 0.18);
+}
+
+/* ------------------------------------------------------------------ screen scan + target lock */
+body.capturing #visor,
+body.capturing #top,
+body.capturing #core,
+body.capturing .col,
+body.capturing #console,
+body.capturing #report,
+body.capturing #status,
+body.capturing #lock {
+  opacity: 0 !important;
+  animation: none !important;
+  transition: none !important;
+}
+body.scanning .beam {
+  animation: beam 1.3s linear infinite !important;
+}
+body.scanning #visor .scan {
+  background: repeating-linear-gradient(0deg, rgb(255 200 87 / 0.07) 0 1px, transparent 1px 4px);
+}
+#lock {
+  position: absolute;
+  display: none;
+  border: 1px solid rgb(255 95 86 / 0.55);
+  box-shadow: 0 0 0 1px rgb(255 95 86 / 0.15), inset 0 0 30px rgb(255 95 86 / 0.12);
+  pointer-events: none;
+}
+#lock.on {
+  display: block;
+  animation: lockOn 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+#lock::before,
+#lock::after,
+#lock i::before,
+#lock i::after {
+  content: '';
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border: 0 solid var(--red);
+}
+#lock::before { left: -4px; top: -4px; border-width: 3px 0 0 3px; }
+#lock::after { right: -4px; top: -4px; border-width: 3px 3px 0 0; }
+#lock i::before { left: -4px; bottom: -4px; border-width: 0 0 3px 3px; }
+#lock i::after { right: -4px; bottom: -4px; border-width: 0 3px 3px 0; }
+#lock span {
+  position: absolute;
+  left: -1px;
+  top: -22px;
+  padding: 2px 8px;
+  background: var(--red);
+  color: #1a0505;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.26em;
+}
+@keyframes lockOn {
+  0% { opacity: 0; transform: scale(1.6); }
+  60% { opacity: 1; transform: scale(0.97); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
 /* ------------------------------------------------------------------ status line */
 #status {
   position: absolute;

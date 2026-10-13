@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { PROVIDERS, DEFAULT_PROVIDER } = require('./ai');
 const { cleanCalendarUrl } = require('./calendar');
-const { HOTKEYS, HUD_SECONDS, cityName } = require('./hud');
+const { HOTKEYS, JARVIS_HOTKEYS, HUD_SECONDS, cityName } = require('./hud');
 
 const DEFAULTS = Object.freeze({
   appearance: 'avengers', // avengers | shadow (original theme, restored instantly)
@@ -46,6 +46,11 @@ const DEFAULTS = Object.freeze({
   hudSeconds: 12, // the HUD fades out after this long (0 = stays until you close it)
   hudSound: true, // short power-up sound when it opens
   weatherCity: '', // city for the HUD / "weather" (Open-Meteo - free, no key)
+  jarvisHotkey: 'ctrl-alt-j', // the J.A.R.V.I.S. console in the HUD (jarvis.js)
+  hudBrief: true, // the HUD briefs you some minutes after you open the laptop (briefing.js)
+  hudBriefDelay: 15, // ...this many minutes after
+  hudDebrief: true, // a debrief every 12 hours
+  hudDebriefTime: '21:00', // ...at this time and 12 hours later
   telegramEnabled: false, // control Shadow from your phone (telegram.js)
   telegramToken: '', // your bot's token from @BotFather (a password - stays on this PC)
   telegramChatId: 0, // the paired Telegram chat (only this one is listened to)
@@ -121,6 +126,11 @@ function validate(raw) {
     hudSeconds: HUD_SECONDS.includes(Number(s.hudSeconds)) ? Number(s.hudSeconds) : DEFAULTS.hudSeconds,
     hudSound: s.hudSound === undefined ? DEFAULTS.hudSound : Boolean(s.hudSound),
     weatherCity: typeof s.weatherCity === 'string' ? cityName(s.weatherCity) : '',
+    jarvisHotkey: Object.prototype.hasOwnProperty.call(JARVIS_HOTKEYS, s.jarvisHotkey) ? s.jarvisHotkey : DEFAULTS.jarvisHotkey,
+    hudBrief: s.hudBrief === undefined ? DEFAULTS.hudBrief : Boolean(s.hudBrief),
+    hudBriefDelay: [0, 5, 10, 15, 30, 60].includes(Number(s.hudBriefDelay)) ? Number(s.hudBriefDelay) : DEFAULTS.hudBriefDelay,
+    hudDebrief: s.hudDebrief === undefined ? DEFAULTS.hudDebrief : Boolean(s.hudDebrief),
+    hudDebriefTime: typeof s.hudDebriefTime === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(s.hudDebriefTime) ? s.hudDebriefTime : DEFAULTS.hudDebriefTime,
     telegramEnabled: Boolean(s.telegramEnabled),
     telegramToken: typeof s.telegramToken === 'string' && /^\d{5,15}:[A-Za-z0-9_-]{30,60}$/.test(s.telegramToken.trim()) ? s.telegramToken.trim() : '',
     telegramChatId: Number.isSafeInteger(Number(s.telegramChatId)) ? Number(s.telegramChatId) : 0,

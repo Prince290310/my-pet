@@ -329,6 +329,8 @@ main/            Electron main process
   care.js          Zen: battery/storage/RAM/CPU/internet watch, pc health, tidy Downloads
   music.js         Tempo: play/pause/next, what's playing, play-a-mood searches
   hud.js           Iron Man HUD: system/mission/music/weather data, the overlay, "weather"
+  jarvis.js        J.A.R.V.I.S.: the HUD console, reading the screen, target boxes
+  briefing.js      the HUD's briefing (after the laptop opens) and 12-hour debrief, activity log
   telegram.js      control Shadow from your phone through your own Telegram bot
   settings.js      settings.json load/validate/save
   tray.js          tray icon + menu
@@ -836,4 +838,42 @@ helmet display** boots up over your screen, then fades out after 12 seconds.
 - In the original theme it becomes the purple **SHADOW HUD**.
 - It opens on the screen your mouse is on, and works on small laptop screens too (the mission board
   fades out at the bottom instead of overlapping).
+
+### J.A.R.V.I.S. console
+
+Press **Ctrl + Alt + J** (or say `jarvis`, click **>_** in the HUD header, or use the tray). A console
+opens at the bottom of the HUD. Type anything Shadow understands there and the answer appears right
+in the HUD, for example `play lofi`, `remind me at 6 to revise chapter 5`, `send notes.pdf to my phone`
+or `when is my maths exam?`.
+
+![J.A.R.V.I.S. console](assets/preview/hud-jarvis.png)
+
+**It can read your screen:** ask `what's this error?`, `explain this question`, `solve this`,
+`what's on my screen?` or `help me with this`. The HUD turns see-through for a moment, the screen is
+captured, and J.A.R.V.I.S. explains it, with a red **TARGET** box around the part that matters.
+Follow-ups like `why?` or `show the steps` look at the same screenshot for 5 minutes.
+- The screen is only captured when you ask, and it goes only to your AI brain. **Google Gemini's
+  free key** can read screens; a brain that can't see pictures says so.
+- Esc, the hotkey again or ✕ closes it. Click into another app and it fades out 10 seconds later.
+- In the original theme it's the **SHADOW** console.
+
+### Briefing and debrief
+
+- **MISSION BRIEFING**: **15 minutes after you open your laptop** (Windows starts, it wakes from
+  sleep, or you unlock it after 30+ minutes away), the HUD opens with your day: the schedule in time
+  order (calendar, reminders, study time), the exam countdown, to-dos, the weather and heads-ups
+  (rain, low battery, exam tomorrow, an update waiting). It shows at most once every 3 hours. If you
+  close the lid before the 15 minutes are up, it waits for the next time.
+- **MISSION DEBRIEF**: **every 12 hours** (9 PM and 9 AM by default): screen time, tasks ticked off,
+  study done, reminders, files sent or received, songs, what's still open and the next 12 hours. If
+  you're away from the PC, it goes to your phone (Telegram) 30 minutes later instead.
+- Say `brief me` / `my day` or `debrief` / `how was my day` anytime. From the phone you get them as
+  a message.
+- With an AI brain, J.A.R.V.I.S. rewrites the summary line in his own words.
+- Settings → HUD: switch either off, set the briefing delay (0 to 60 min) and the debrief time.
+  **BRIEF ME NOW** and **DEBRIEF NOW** try them.
+- Screen time is counted as minutes at the PC (mouse or keyboard used in that minute). The activity
+  log keeps only counts and short labels for 3 days (`%APPDATA%\Shadow\activity.json`).
+
+![Mission briefing](assets/preview/hud-briefing.png)
 

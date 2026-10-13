@@ -154,6 +154,40 @@
         <p class="note">Weather comes from Open-Meteo - free, no account. Only the city name is sent.</p>
         <label class="check"><input id="hudSound" type="checkbox" /><i></i>Power-up sound when it opens</label>
         <button type="button" id="hudShow" class="ghost">SHOW HUD NOW</button>
+
+        <h3 id="jarvisTitle">J.A.R.V.I.S. console</h3>
+        <p class="note">Type any command in the HUD, or ask about your screen: <b>"what's this error?"</b>, <b>"explain this question"</b>. The screen is only captured when you ask, and goes to your AI brain (Gemini's free key can read screens).</p>
+        <label class="field"><span>Console hotkey</span>
+          <select id="jarvisHotkey">
+            <option value="ctrl-alt-j">Ctrl + Alt + J</option>
+            <option value="alt-shift-j">Alt + Shift + J</option>
+            <option value="ctrl-alt-k">Ctrl + Alt + K</option>
+            <option value="ctrl-shift-f11">Ctrl + Shift + F11</option>
+            <option value="off">Off (tray / "jarvis" in chat)</option>
+          </select>
+        </label>
+        <p class="note" id="jarvisKeyNote" role="status"></p>
+
+        <h3>Briefing &amp; debrief</h3>
+        <label class="check"><input id="hudBrief" type="checkbox" /><i></i>Brief me about my day after I open my laptop</label>
+        <label class="field"><span>Briefing comes</span>
+          <select id="hudBriefDelay">
+            <option value="0">right away</option>
+            <option value="5">5 minutes later</option>
+            <option value="10">10 minutes later</option>
+            <option value="15">15 minutes later</option>
+            <option value="30">30 minutes later</option>
+            <option value="60">1 hour later</option>
+          </select>
+        </label>
+        <label class="check"><input id="hudDebrief" type="checkbox" /><i></i>Debrief every 12 hours (away from the PC? it goes to my phone)</label>
+        <label class="field"><span>Debrief at</span>
+          <div class="inline"><input id="hudDebriefTime" type="time" required /><em id="debriefTwin">and 9:00 AM</em></div>
+        </label>
+        <div class="inline">
+          <button type="button" id="briefNow" class="ghost">BRIEF ME NOW</button>
+          <button type="button" id="debriefNow" class="ghost">DEBRIEF NOW</button>
+        </div>
       </section>
 
       <section class="startup">

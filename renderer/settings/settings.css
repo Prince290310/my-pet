@@ -71,6 +71,13 @@ h2 {
   align-items: center;
   gap: 10px;
 }
+section.hud h3 {
+  margin: 22px 0 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  font: 10px/1.2 var(--font-arcade);
+  color: #c9bcff;
+}
 .badge {
   font: 700 11px/1 var(--font-pixel);
   padding: 4px 6px;
@@ -346,7 +353,8 @@ input[type='time'] {
   margin: 0 0 12px;
 }
 #spStatus.bad,
-#hudKeyNote.warn {
+#hudKeyNote.warn,
+#jarvisKeyNote.warn {
   color: #ff6f91;
 }
 .team-preview { display: block; width: 100%; height: auto; image-rendering: pixelated; border: 1px solid var(--line); margin: 12px 0; }

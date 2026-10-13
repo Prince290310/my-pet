@@ -27,4 +27,5 @@ contextBridge.exposeInMainWorld('settingsApi', {
   removeExam: (id) => ipcRenderer.invoke('exams:remove', String(id)),
   addExam: (form) => ipcRenderer.invoke('exams:add', form),
   showHud: () => ipcRenderer.send('hud:show'),
+  reportNow: (kind) => ipcRenderer.send('hud:report-now', String(kind)),
 });

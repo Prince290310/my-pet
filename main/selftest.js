@@ -2307,6 +2307,207 @@ async function run(ctx, h) {
       swHud.close();
       await waitFor(() => !require('./windows').getSettingsWindow(), 3000);
 
+
+      section('J.A.R.V.I.S. console (fake AI + fake screenshot - nothing leaves the PC)');
+      const jv = require('./jarvis');
+      const rp = require('./briefing');
+      const { nativeImage } = require('electron');
+      check('screen questions: "what\'s this error?", "explain this question", "solve this", "what\'s on my screen"', ["what's this error?", 'explain this question', 'solve this', "what's on my screen", 'help me with this', 'Jarvis, why is this not working?'].every(jv.isScreenRequest));
+      check('...but not ordinary questions or commands', !['explain photosynthesis', 'play lofi', 'remind me at 6 to study', 'todo: fix this bug tomorrow', 'what is the weather'].some(jv.isScreenRequest));
+      check('"jarvis" / "open jarvis" open the console', ['jarvis', 'open jarvis', 'hey jarvis'].every(jv.parseJarvisOpen) && !jv.parseJarvisOpen('jarvis play lofi'));
+      check('the AI\'s target box is read and removed from the answer', JSON.stringify(jv.parseBox('Fix it.\n[[box | 100, 200, 300, 400]]')) === '{"text":"Fix it.","box":[100,200,300,400]}' && jv.parseBox('[[box | 9, 9, 1, 1]] ok').box === null);
+
+      const jSeen = [];
+      const jAi = http.createServer((req, res) => {
+        let body = '';
+        req.on('data', (d) => (body += d));
+        req.on('end', () => {
+          const j = JSON.parse(body || '{}');
+          const last = j.messages[j.messages.length - 1];
+          const parts = Array.isArray(last.content) ? last.content : [{ type: 'text', text: last.content }];
+          const img = parts.find((x) => x.type === 'image_url');
+          const text = (parts.find((x) => x.type === 'text') || {}).text || '';
+          jSeen.push({ model: j.model, image: img ? img.image_url.url.slice(0, 23) : '', text, system: j.messages[0].content, count: j.messages.length });
+          const send = (code, obj) => {
+            res.writeHead(code, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(obj));
+          };
+          if (img && j.model === 'text-only') return send(400, { error: { message: 'This model does not support image input' } });
+          let reply = `Console answer: ${text}`;
+          if (img && /^why/i.test(text)) reply = 'Because users is still undefined on the first render.';
+          else if (img) reply = "That's a TypeError: users is undefined.\n1. Start with useState([])\n[[box | 200, 250, 260, 750]]";
+          else if (/Write the summary line/.test(j.messages[0].content)) reply = 'Polished summary from the AI, Prince.';
+          send(200, { choices: [{ message: { role: 'assistant', content: reply } }] });
+        });
+      });
+      await new Promise((r) => jAi.listen(0, '127.0.0.1', r));
+      settings.update({ aiProvider: 'custom', aiBaseUrl: `http://127.0.0.1:${jAi.address().port}/v1`, aiModel: 'vision-model', apiKeys: { custom: 'good' } });
+      const shots = [];
+      ctx.jarvisHooks = {
+        capture: async () => {
+          shots.push({ seeThrough: await hjs('document.body.classList.contains("capturing")'), petHidden: !pet.win.isVisible() });
+          return nativeImage.createFromPath(path.join(require('./paths').ASSETS, 'icon.png'));
+        },
+      };
+
+      quiet();
+      hr = await ctx.handleMessage('jarvis', []);
+      const jUp = await waitFor(async () => hwin().isVisible() && (await hstate()).mode === 'jarvis', 4000);
+      check('"jarvis" opens the HUD with the console', jUp && hr.text.startsWith('⚡ SHADOW online') && hud.mode === 'jarvis', hr.text);
+      check('...and the console takes the keyboard (the HUD is focusable only now)', process.platform === 'linux' || hwin().isFocusable());
+      const askConsole = async (q) => {
+        const before = await hjs('document.querySelectorAll("#log .ex-a").length');
+        await hjs(`document.getElementById('q').value = ${JSON.stringify(q)}; document.getElementById('ask').requestSubmit();`);
+        await waitFor(async () => (await hjs('document.querySelectorAll("#log .ex-a").length')) > before, 8000);
+        return hjs('(() => { const a = [...document.querySelectorAll("#log .ex-a")].pop(); return { text: a ? a.textContent : "", cls: a ? a.className : "" }; })()');
+      };
+      quiet();
+      let ja = await askConsole('remind me in 20 min to drink water');
+      check('typed commands work in the console (a reminder)', /drink water/.test(ja.text) && ctx.tasks.pendingReminders().some((r) => r.text === 'drink water'), ja.text);
+      check('...the answer is in the HUD, not in a speech bubble', !(brain.bubble && /drink water/.test(brain.bubble.text || '')));
+      ja = await askConsole("what's this error?");
+      const vis = jSeen[jSeen.length - 1] || {};
+      check('"what\'s this error?" captures the screen (HUD see-through, Shadow steps aside)', shots.length === 1 && shots[0].seeThrough && shots[0].petHidden, JSON.stringify(shots));
+      check('...sends it to the AI as a picture, with the screen rules', vis.image === 'data:image/jpeg;base64,' && /screenshot of his screen/.test(vis.system) && vis.text === "what's this error?", JSON.stringify({ ...vis, system: '' }));
+      check('...and shows the explanation', ja.text.startsWith("That's a TypeError") && !ja.text.includes('[[box') && ja.cls.includes('screen'), ja.text);
+      const lockRect = (await hstate()).lock;
+      const hb2 = hwin().getBounds();
+      check('...with a target lock around the part that matters', !!lockRect && Math.abs(lockRect.x - hb2.width * 0.25) < 30 && lockRect.w > hb2.width * 0.4, JSON.stringify(lockRect));
+      ja = await askConsole('why?');
+      const fol = jSeen[jSeen.length - 1] || {};
+      check('follow-up "why?" looks at the same screenshot again', ja.text.startsWith('Because users') && fol.image === 'data:image/jpeg;base64,' && fol.count > 2 && shots.length === 1, ja.text);
+      ctx.jarvis.forget();
+      ja = await askConsole('who built the arc reactor');
+      const plain = jSeen[jSeen.length - 1] || {};
+      check('ordinary questions go to the AI without any screenshot, in console format', ja.text === 'Console answer: who built the arc reactor' && !plain.image && /HUD console/.test(plain.system), ja.text);
+      settings.update({ aiModel: 'text-only' });
+      ja = await askConsole('explain this question');
+      check('a brain that can\'t see pictures gets a clear "switch to Gemini" answer', /can't look at pictures/.test(ja.text) && ja.cls.includes('err'), ja.text);
+      settings.update({ aiProvider: 'gemini', apiKeys: {} });
+      const shotsBefore = shots.length;
+      ja = await askConsole('solve this');
+      check('no AI key: says how to get one, and takes no screenshot', /Gemini key/.test(ja.text) && shots.length === shotsBefore, ja.text);
+      settings.update({ aiProvider: 'custom', aiModel: 'vision-model', apiKeys: { custom: 'good' } });
+      await shot('hud-jarvis', hwin().webContents);
+      await hjs(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
+      check('Esc closes it', await waitFor(() => !hwin().isVisible() && !hud.visible, 3000));
+      check('...and the HUD is never focusable outside the console', process.platform === 'linux' || !hwin().isFocusable());
+      hud.show('test');
+      await waitFor(() => hwin().isVisible(), 3000);
+      await hjs('document.getElementById("open-console").click()');
+      check('the >_ button in the HUD header opens the console', await waitFor(async () => hud.mode === 'jarvis' && (await hstate()).mode === 'jarvis', 3000));
+      hud.hide('test');
+      await waitFor(() => !hwin().isVisible(), 3000);
+      check('console hotkey Ctrl+Alt+J is registered (or reported as taken)', (ctx.jarvisKey === 'CommandOrControl+Alt+J' && globalShortcut.isRegistered(ctx.jarvisKey)) || ctx.jarvisKeyTaken, `${ctx.jarvisKey}`);
+      settings.update({ jarvisHotkey: 'off' });
+      check('...and can be switched off', ctx.jarvisKey === '' && !globalShortcut.isRegistered('CommandOrControl+Alt+J'));
+      settings.update({ jarvisHotkey: 'ctrl-alt-j' });
+      const trayJ = ctx.trayCtl.menu().getMenuItemById('jarvis');
+      check('tray + right-click menu have the console', !!trayJ && /^SHADOW Console/.test(trayJ.label) && h.petMenuTemplate().some((i) => /Console/.test(i.label || '')), trayJ && trayJ.label);
+      trayJ.click();
+      check('...the tray item opens it', await waitFor(() => hwin().isVisible() && hud.mode === 'jarvis', 3000));
+      hud.hide('test');
+      await waitFor(() => !hwin().isVisible(), 3000);
+
+      section('Briefing & debrief');
+      check('"brief me" / "my day" / "debrief" / "how was my day"', ['brief me', 'my day', "what's my day looking like", 'briefing'].every((t) => (rp.parseReportCommand(t) || {}).type === 'brief') && ['debrief', 'how was my day', 'mission report'].every((t) => (rp.parseReportCommand(t) || {}).type === 'debrief') && !rp.parseReportCommand('brief history of time'));
+      const actT = Date.now();
+      const alog = new rp.ActivityLog({ file: null, clock: () => actT });
+      for (let i = 0; i < 30; i++) alog.minute(true);
+      alog.minute(false);
+      alog.note('song', 'kesariya');
+      check('activity log: minutes at the PC + events', alog.activeMinutes(actT - 3600e3, actT + 1) === 30 && alog.events(actT - 1000, actT + 1, 'song').length === 1);
+      ctx.telegram.emit('file-sent', 'notes.pdf');
+      check('files sent to the phone are logged for the debrief', ctx.activity.events(Date.now() - 60000, Date.now() + 1, 'file-sent').some((e) => e.text === 'notes.pdf'));
+
+      quiet();
+      hr = await ctx.handleMessage('brief me', []);
+      const bUp = await waitFor(async () => hwin().isVisible() && (await hstate()).mode === 'brief', 4000);
+      const brief = (await hstate()).report;
+      check('"brief me" shows the MISSION BRIEFING card', bUp && brief.title === 'MISSION BRIEFING' && hr.text.startsWith('☀️ Your briefing is up'), hr.text);
+      check('...with today\'s exam, to-dos, reminders and weather', /MATHS EXAM/.test(brief.text) && /Submit lab record/.test(brief.text) && /drink water/.test(brief.text) && /MUMBAI/i.test(brief.text), brief.text.replace(/\n/g, ' | ').slice(0, 300));
+      check('...stays up a minute to read', (await hstate()).timerMs === '60000ms', (await hstate()).timerMs);
+      check('...and the AI rewrites the summary line when it can', await waitFor(async () => (await hstate()).report.summary === 'Polished summary from the AI, Prince.', 5000), (await hstate()).report.summary);
+      await sleep(700);
+      await shot('hud-briefing', hwin().webContents);
+      await hjs('document.getElementById("r-ok").click()');
+      check('GOT IT closes it', await waitFor(() => !hwin().isVisible(), 3000));
+      hr = await ctx.handleMessage('debrief', []);
+      await waitFor(async () => hwin().isVisible() && (await hstate()).mode === 'debrief', 4000);
+      const deb = (await hstate()).report;
+      check('"debrief" shows the last 12 hours: screen time, tasks done, files', deb.title === 'MISSION DEBRIEF' && /SCREEN TIME/.test(deb.text) && /Finish physics assignment/.test(deb.text) && /Sent notes\.pdf to your phone/.test(deb.text) && /NEXT 12 HOURS/.test(deb.text), deb.text.replace(/\n/g, ' | ').slice(0, 300));
+      await sleep(700);
+      await shot('hud-debrief', hwin().webContents);
+      hud.hide('test');
+      await waitFor(() => !hwin().isVisible(), 3000);
+      hr = await ctx.handleMessage('brief me', [], 'phone');
+      check('from the phone: the briefing as a message', hr.text.startsWith('☀️ MISSION BRIEFING') && /OBJECTIVES/.test(hr.text) && !hud.visible, hr.text.slice(0, 80));
+      hr = await ctx.handleMessage('how was my day', [], 'phone');
+      check('from the phone: the debrief as a message', hr.text.startsWith('📊 MISSION DEBRIEF') && /COMPLETED/.test(hr.text), hr.text.slice(0, 80));
+
+      // the timing rules, on a fake clock
+      let T = new Date(2026, 9, 13, 20, 0).getTime();
+      let idle = 0;
+      const shown = [];
+      const phoned = [];
+      const fs2 = { hudBrief: true, hudBriefDelay: 15, hudDebrief: true, hudDebriefTime: '21:00' };
+      const slog = new rp.ActivityLog({ file: null, clock: () => T });
+      const sch = new rp.ReportScheduler({ settings: { get: (k) => fs2[k] }, log: slog, idleSeconds: () => idle, clock: () => T, show: (k) => (shown.push(k), true), phone: (k) => (phoned.push(k), true) });
+      check('a fresh install doesn\'t debrief straight away', slog.data.lastDebriefSlot === '2026-10-13T09:00' && sch.tick() === null);
+      sch.opened('resume');
+      T += 10 * 60e3;
+      const early = sch.tick();
+      T += 6 * 60e3;
+      check('briefing 15 minutes after the laptop opens (not before)', early === null && sch.tick() === 'brief' && shown.join() === 'brief');
+      check('...not again within 3 hours of the last one', sch.opened('unlock') === false);
+      T = new Date(2026, 9, 13, 21, 0).getTime();
+      check('debrief at 9 PM', sch.tick() === 'debrief' && sch.tick() === null && slog.data.lastDebriefSlot === '2026-10-13T21:00');
+      T = new Date(2026, 9, 14, 9, 0).getTime();
+      idle = 900;
+      const waitAway = sch.tick();
+      T += 31 * 60e3;
+      check('...and 12 hours later; away from the PC it goes to the phone after 30 minutes', waitAway === null && sch.tick() === 'debrief-phone' && phoned.join() === 'debrief');
+      T = new Date(2026, 9, 15, 1, 0).getTime();
+      idle = 0;
+      check('a debrief missed while the PC was off is skipped, not shown hours late', sch.tick() === null && slog.data.lastDebriefSlot === '2026-10-14T21:00');
+      sch.opened('resume');
+      sch.suspended();
+      T += 20 * 60e3;
+      check('closing the laptop again before the 15 minutes cancels the briefing', sch.tick() === null && shown.filter((k) => k === 'brief').length === 1);
+      sch.opened('resume');
+      idle = 5000;
+      T += 3 * 3600e3;
+      check('...and if Prince never comes back, it\'s dropped after 2 hours', sch.tick() === null && !sch.pending);
+      fs2.hudBrief = false;
+      check('switched off in Settings: no briefing', sch.opened('boot') === false);
+
+      // the real one: laptop opened, delay 0
+      settings.update({ hudBriefDelay: 0 });
+      ctx.activity.data.lastBriefAt = 0;
+      ctx.reports.opened('resume');
+      check('opening the laptop -> the HUD briefs (real wiring)', ctx.reports.tick() === 'brief' && (await waitFor(async () => hwin().isVisible() && (await hstate()).mode === 'brief', 4000)));
+      hud.hide('test');
+      await waitFor(() => !hwin().isVisible(), 3000);
+      settings.update({ hudBriefDelay: 15 });
+
+      h.openSettings();
+      const swJ = await waitFor(() => require('./windows').getSettingsWindow(), 3000);
+      await waitFor(() => js('!!document.getElementById("hudDebriefTime") && document.getElementById("hudDebriefTime").value !== ""', swJ.webContents), 3000);
+      const jf = await js(`({ key: document.getElementById('jarvisHotkey').value, brief: document.getElementById('hudBrief').checked, delay: document.getElementById('hudBriefDelay').value, debrief: document.getElementById('hudDebrief').checked, time: document.getElementById('hudDebriefTime').value, twin: document.getElementById('debriefTwin').textContent, title: document.getElementById('jarvisTitle').textContent, note: document.getElementById('jarvisKeyNote').textContent })`, swJ.webContents);
+      check('Settings → HUD: console hotkey, briefing delay, debrief time (+ its 12-hour twin)', jf.key === 'ctrl-alt-j' && jf.brief && jf.delay === '15' && jf.debrief && jf.time === '21:00' && jf.twin === 'and 9:00 AM' && jf.title === 'SHADOW console', JSON.stringify(jf));
+      await js(`document.getElementById('hudBriefDelay').value = '30'; document.getElementById('hudDebriefTime').value = '22:30'; document.getElementById('hudDebriefTime').dispatchEvent(new Event('input')); document.getElementById('form').requestSubmit()`, swJ.webContents);
+      check('...SAVE stores them', await waitFor(() => settings.get('hudBriefDelay') === 30 && settings.get('hudDebriefTime') === '22:30', 3000) && (await js('document.getElementById("debriefTwin").textContent', swJ.webContents)) === 'and 10:30 AM');
+      await js('document.getElementById("debriefNow").click()', swJ.webContents);
+      check('DEBRIEF NOW shows it', await waitFor(async () => hwin().isVisible() && (await hstate()).mode === 'debrief', 4000));
+      hud.hide('test');
+      await waitFor(() => !hwin().isVisible(), 3000);
+      swJ.close();
+      await waitFor(() => !require('./windows').getSettingsWindow(), 3000);
+      settings.update({ hudBriefDelay: 15, hudDebriefTime: '21:00', aiProvider: 'gemini', aiModel: '', aiBaseUrl: '', apiKeys: {} });
+      ctx.jarvis.forget();
+      delete ctx.jarvisHooks;
+      await new Promise((r) => jAi.close(r));
+
       settings.update({ hudSeconds: 12, hudSound: true, weatherCity: '' });
       ctx.exams.data.exams = keptExams;
       ctx.exams.save();
@@ -2466,6 +2667,7 @@ async function run(ctx, h) {
     }
     check('appearance changes preserve all other saved preferences', JSON.stringify({ ...settings.all(), appearance: null }) === preserved);
     check('custom personality and reminder files stay untouched', Object.entries(originalConfigFiles).every(([n, value]) => fs.readFileSync(config.file(n), 'utf8') === value));
+    check('the console becomes J.A.R.V.I.S.', ctx.hud.head().consoleName === 'J.A.R.V.I.S.' && ctx.trayCtl.menu().getMenuItemById('jarvis').label.startsWith('J.A.R.V.I.S. Console'));
     check('the HUD becomes the STARK HUD (Iron Man colours)', ctx.hud.head().title === 'STARK HUD' && ctx.hud.head().theme === 'stark' && ctx.trayCtl.menu().getMenuItemById('hud').label.startsWith('Iron Man HUD'));
     check('tray uses Iron Man and Avengers assembly', ctx.trayCtl.menu().items[0].label.includes('Iron Man') && ctx.trayCtl.menu().getMenuItemById('gang').label.includes('Avengers'));
     check('AI identity follows the Avengers theme without changing the config', ctx.aiContext().petName === 'Iron Man' && ctx.aiContext().personality.includes('an Iron Man desktop companion') && config.personality === originalPersonality);

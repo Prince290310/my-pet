@@ -30,6 +30,14 @@ const HOTKEYS = {
   'ctrl-shift-f12': { accel: 'CommandOrControl+Shift+F12', label: 'Ctrl+Shift+F12' },
   off: { accel: '', label: '' },
 };
+/** Settings → HUD → J.A.R.V.I.S. console hotkey. */
+const JARVIS_HOTKEYS = {
+  'ctrl-alt-j': { accel: 'CommandOrControl+Alt+J', label: 'Ctrl+Alt+J' },
+  'alt-shift-j': { accel: 'Alt+Shift+J', label: 'Alt+Shift+J' },
+  'ctrl-alt-k': { accel: 'CommandOrControl+Alt+K', label: 'Ctrl+Alt+K' },
+  'ctrl-shift-f11': { accel: 'CommandOrControl+Shift+F11', label: 'Ctrl+Shift+F11' },
+  off: { accel: '', label: '' },
+};
 const HUD_SECONDS = [0, 8, 12, 20, 30, 60]; // 0 = stays until you close it
 
 // WMO weather codes (Open-Meteo) -> words + icon
@@ -423,6 +431,8 @@ class HudDisplay extends EventEmitter {
     this.cursorWasInside = false;
     this.busy = new Set(); // parts being fetched right now
     this.lastMusic = 0;
+    this.mode = 'hud'; // hud | jarvis (the console, takes the keyboard) | brief | debrief (report card)
+    this.report = null;
   }
 
   alive() {
@@ -437,8 +447,14 @@ class HudDisplay extends EventEmitter {
     return this.visible ? this.hide(why) : this.show(why);
   }
 
-  /** Bring the HUD up on the screen the mouse is on. */
-  show(why = 'chat') {
+  /**
+   * Bring the HUD up on the screen the mouse is on.
+   * mode: 'hud' | 'jarvis' (console, focused) | 'brief' / 'debrief' (with `report` in the centre)
+   */
+  show(why = 'chat', { mode = 'hud', report = null } = {}) {
+    if (this.visible && this.ready && this.alive()) return this.switchTo(mode, report);
+    this.mode = mode;
+    this.report = report;
     clearTimeout(this.closing);
     this.closing = null;
     const display = this.sensors.displayAt(this.sensors.cursor());
@@ -456,6 +472,9 @@ class HudDisplay extends EventEmitter {
       };
       w.win.webContents.on('render-process-gone', gone);
       w.win.on('closed', gone);
+      // the console has the keyboard: clicking into another app starts the fade, coming back stops it
+      w.win.on('blur', () => this.visible && this.mode === 'jarvis' && !this.hovering && this.fadeIn(10000));
+      w.win.on('focus', () => this.visible && this.mode === 'jarvis' && this.fadeIn(0));
     } else {
       this.w.win.setBounds(wa);
     }
@@ -468,7 +487,8 @@ class HudDisplay extends EventEmitter {
       this.w.win.showInactive();
       this.w.win.setAlwaysOnTop(true, 'screen-saver');
       this.w.win.moveTop();
-      this.w.send('hud:show', { head: this.head(), test: this.test, width: wa.width, height: wa.height });
+      this.w.send('hud:show', { head: this.head(), test: this.test, width: wa.width, height: wa.height, mode: this.mode, report: this.report });
+      this.focusConsole(this.mode === 'jarvis');
       this.refresh(true);
       this.startTimers();
     };
@@ -493,6 +513,7 @@ class HudDisplay extends EventEmitter {
     this.setInteractive(false);
     this.emit('hide', why);
     if (!this.alive()) return true;
+    this.focusConsole(false);
     this.w.send('hud:hide');
     clearTimeout(this.closing);
     this.closing = setTimeout(() => this.hidden(), this.timing.leaveMs + 400); // in case the page never answers
@@ -514,20 +535,68 @@ class HudDisplay extends EventEmitter {
     this.hovering = on;
     this.w.win.setIgnoreMouseEvents(!on, { forward: !this.test });
     if (!on && this.deadline) this.extend(3000); // moved off a panel: a little more time to read
+    if (!on && this.mode === 'jarvis' && !this.w.win.isFocused() && !this.deadline) this.fadeIn(10000); // left the console for another app
   }
 
-  /** Make sure the HUD stays up at least `ms` more (auto-fade only). */
+  /** Make sure the HUD stays up at least `ms` more (only while it's fading by itself). */
   extend(ms) {
-    if (!this.visible || !this.seconds()) return;
+    if (!this.visible || !this.deadline) return;
     this.deadline = Math.max(this.deadline, Date.now() + ms);
     if (this.alive()) this.w.send('hud:timer', { ms: this.deadline - Date.now() });
   }
 
+  /** Start fading out in `ms` (0 = stay up). */
+  fadeIn(ms) {
+    if (!this.visible) return;
+    this.deadline = ms ? Date.now() + ms : 0;
+    if (this.alive()) this.w.send('hud:timer', { ms });
+  }
+
+  /** How long this mode stays up by itself (0 = until closed). The console stays while it's in use. */
+  fadeMs() {
+    const secs = this.seconds();
+    if (this.mode === 'jarvis' || !secs) return 0;
+    if (this.mode === 'brief' || this.mode === 'debrief') return Math.max(60, secs) * 1000; // time to read it
+    return secs * 1000;
+  }
+
+  /** Already up: switch what it shows (and who has the keyboard). */
+  switchTo(mode, report = null) {
+    this.mode = mode;
+    if (report) this.report = report;
+    if (!this.alive()) return true;
+    this.w.send('hud:mode', { mode, report: report || null });
+    this.focusConsole(mode === 'jarvis');
+    this.fadeIn(this.fadeMs());
+    return true;
+  }
+
+  /** The console takes the keyboard (the HUD is otherwise never focusable). */
+  focusConsole(on) {
+    if (!this.alive()) return;
+    const win = this.w.win;
+    if (on) {
+      win.setFocusable(true);
+      win.focus();
+      win.webContents.focus();
+      this.w.send('hud:focus');
+    } else if (win.isFocusable()) {
+      win.setFocusable(false);
+    }
+  }
+
+  /** The AI's nicer summary arrived after the report was already up. */
+  updateReport(patch) {
+    if (!this.report) return;
+    Object.assign(this.report, patch);
+    if (this.visible && this.alive()) this.w.send('hud:report', patch);
+  }
+
   startTimers() {
     this.stopTimers();
-    const secs = this.seconds();
-    this.deadline = secs ? Date.now() + secs * 1000 : 0;
-    if (this.alive()) this.w.send('hud:timer', { ms: secs ? secs * 1000 : 0 });
+    const ms = this.fadeMs();
+    this.deadline = ms ? Date.now() + ms : 0;
+    if (this.alive()) this.w.send('hud:timer', { ms });
     const every = (ms, fn) => this.timers.push(setInterval(fn, ms));
     every(this.timing.system, () => this.push('system'));
     // the song: every 5 s at first, then every 15 s if the HUD is left open (each check runs PowerShell)
@@ -600,4 +669,4 @@ class HudDisplay extends EventEmitter {
   }
 }
 
-module.exports = { HudData, HudDisplay, parseHudCommand, cityName, sky, HOTKEYS, HUD_SECONDS };
+module.exports = { HudData, HudDisplay, parseHudCommand, cityName, sky, HOTKEYS, JARVIS_HOTKEYS, HUD_SECONDS };

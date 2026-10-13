@@ -47,6 +47,7 @@ function createTray({ brain, settings, loginItem, actions, getUpdater = () => nu
       const key = actions.hudKey ? actions.hudKey() : '';
       items.push({ id: 'hud', label: `${appearance.isAvengers(settings) ? 'Iron Man HUD' : 'Show HUD'}${key ? ` (${key})` : ''}`, click: () => actions.showHud() });
     }
+    if (actions.showJarvis) items.push({ id: 'jarvis', label: actions.jarvisLabel(), click: () => actions.showJarvis() });
     items.push(
       { id: 'chat', label: 'Chat… (Ctrl+Click pet)', click: () => actions.openChat() },
       {
@@ -103,7 +104,7 @@ function createTray({ brain, settings, loginItem, actions, getUpdater = () => nu
   brain.on('reminder-dismissed', rebuild);
   brain.on('reminder-done', rebuild);
   settings.on('change', (_all, changed) => {
-    if (changed.some((k) => ['muteQuips', 'scale', 'petName', 'appearance', 'mainHero', 'hudHotkey'].includes(k))) rebuild();
+    if (changed.some((k) => ['muteQuips', 'scale', 'petName', 'appearance', 'mainHero', 'hudHotkey', 'jarvisHotkey'].includes(k))) rebuild();
   });
   rebuild();
 
