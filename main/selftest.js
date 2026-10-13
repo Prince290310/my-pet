@@ -1254,7 +1254,7 @@ async function run(ctx, h) {
     await js('document.getElementById("waWeb").scrollIntoView({ block: "center" })', swWhatsApp.webContents);
     await new Promise((r) => setTimeout(r, 400)); // let it repaint after scrolling
     await shot('whatsapp-web-qr', swWhatsApp.webContents);
-    check('LINK WHATSAPP starts WhatsApp Web and shows its QR code to scan', qrShown && (await waText()).includes('Scan the QR code') && await js('document.getElementById("waLink").disabled', swWhatsApp.webContents), await waText());
+    check('LINK WHATSAPP starts WhatsApp Web and shows its QR code to scan (with CANCEL)', qrShown && (await waText()).includes('Scan the QR code') && !(await waShown('waLink')) && (await waShown('waUnlink')) && (await js('document.getElementById("waUnlink").textContent', swWhatsApp.webContents)) === 'CANCEL', await waText());
     webClients[0].emit('authenticated');
     webClients[0].emit('ready');
     await waitFor(async () => (await waText()).startsWith('Linked as'), 3000);

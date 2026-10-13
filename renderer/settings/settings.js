@@ -528,10 +528,11 @@ function showWaWeb(st) {
   $('waQrBox').hidden = !(st.state === 'qr' && st.qrImage);
   if (st.qrImage) $('waQr').src = st.qrImage;
   const busy = ['starting', 'qr', 'linking'].includes(st.state);
-  $('waLink').hidden = st.state === 'ready';
+  $('waLink').hidden = st.state === 'ready' || busy;
   $('waLink').disabled = busy || !st.available;
-  $('waLink').textContent = st.linked && st.state !== 'qr' ? 'RECONNECT' : 'LINK WHATSAPP';
+  $('waLink').textContent = st.linked ? 'RECONNECT' : 'LINK WHATSAPP';
   $('waUnlink').hidden = !(st.linked || st.state === 'ready' || busy);
+  $('waUnlink').textContent = st.linked || st.state === 'ready' ? 'UNLINK' : 'CANCEL'; // before the code is scanned it just stops
 }
 window.settingsApi.onWaWebStatus(showWaWeb);
 window.settingsApi.waWebStatus().then(showWaWeb).catch(() => {});
