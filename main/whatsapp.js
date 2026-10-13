@@ -3,7 +3,7 @@
 const { execFile } = require('node:child_process');
 const path = require('node:path');
 
-const HELP = 'WhatsApp commands: "message Mom on WhatsApp: I will be home at 8", "reply to Mom on WhatsApp: Yes", "call Mom", "call Mom on WhatsApp", "video call Mom", "message 98765 43210 on WhatsApp: hi", "save Mom\'s WhatsApp number as +91 98765 43210", "whatsapp contacts", "whatsapp status", "whatsapp diagnostics", "stop whatsapp". With a saved number Shadow opens the chat straight from WhatsApp\'s own link (most reliable); otherwise use the exact saved chat name. Calling an Avenger name summons that character; add "on WhatsApp" to call a person with the same name.';
+const HELP = 'WhatsApp commands: "link whatsapp" (once - scan the QR code in Settings), "message Mom on WhatsApp: I will be home at 8", "reply to Mom on WhatsApp: Yes", "message family group on WhatsApp: dinner at 9", "call Mom", "call Mom on WhatsApp", "video call Mom", "message 98765 43210 on WhatsApp: hi", "save Mom\'s WhatsApp number as +91 98765 43210", "whatsapp contacts", "whatsapp status", "whatsapp diagnostics", "stop whatsapp". Once linked, messages go through WhatsApp Web in the background and names are matched against your real WhatsApp contacts and groups. Calling an Avenger name summons that character; add "on WhatsApp" to call a person with the same name.';
 const MAX_CONTACTS = 100;
 const NUMBER = String.raw`(\+?[\d][\d\s().-]{6,22}\d)`;
 
@@ -36,6 +36,7 @@ function parseWhatsAppCommand(input, { allowBareCall = false } = {}) {
   if (/^(?:whatsapp (?:status|check)|check whatsapp)[.!]?$/i.test(text)) return { type: 'status' };
   if (/^whatsapp diagnostics[.!]?$/i.test(text)) return { type: 'diagnostics' };
   if (/^whatsapp help[.!]?$/i.test(text)) return { type: 'help' };
+  if (/^(?:link|connect|pair|set ?up) (?:my )?whatsapp(?: web)?[.!]?$/i.test(text)) return { type: 'web-link' };
   let m;
   // the contacts book: names -> numbers, so commands can open the chat by number
   if (/^(?:(?:show|list|see)(?: me)? )?(?:my )?whatsapp (?:contacts|numbers)[.!?]?$/i.test(text)) return { type: 'contacts' };
@@ -111,13 +112,38 @@ function diagnosticsText(result) {
   return `Result: ${code}\nHelper version: ${count('helperVersion')}\nWhatsApp processes: ${count('appProcesses')}\nVisible app windows: ${count('appWindows')}\nInaccessible app windows: ${count('inaccessibleWindows')}\nMinimized: ${flag('minimized')}\nChat search accessible: ${flag('search')}\nMessage input accessible: ${flag('composer')}\nVoice call button accessible: ${flag('voiceCall')}\nVideo call button accessible: ${flag('videoCall')}\nVoice call action accessible: ${flag('voiceInvoke')}\nVideo call action accessible: ${flag('videoInvoke')}`;
 }
 
+/** Replies for the WhatsApp Web engine (whatsweb.js). */
+function webReply(r, target) {
+  const who = r.name || target;
+  switch (r.code) {
+    case 'sent':
+      return `Sent your message to ${who} on WhatsApp ✓`;
+    case 'queued':
+      return `Your message to ${who} is queued in WhatsApp but not confirmed yet - check your internet. It goes out by itself once it's back.`;
+    case 'ambiguous':
+      return `More than one WhatsApp chat matches "${target}": ${(r.options || []).join(', ')}. Use the full name. Nothing was sent.`;
+    case 'not_found':
+      return `I couldn't find "${target}" in your WhatsApp contacts or groups. Check the name as it appears in WhatsApp - or use their number. Nothing was sent.`;
+    case 'not_on_whatsapp':
+      return 'That number is not on WhatsApp. Nothing was sent.';
+    case 'web_not_ready':
+      return 'WhatsApp Web is still connecting - try again in a few seconds.';
+    default:
+      return `WhatsApp didn't accept the message${r.error ? ` (${r.error})` : ''}. Nothing was sent.`;
+  }
+}
+
 class WhatsAppControl {
-  constructor({ settings, platform = process.platform, hooks = {}, launch } = {}) {
+  /** @param {object} o  web: the WhatsApp Web engine (whatsweb.js); messages go through it once it's linked */
+  constructor({ settings, platform = process.platform, hooks = {}, launch, web = null, onLink = null } = {}) {
     this.settings = settings;
     this.platform = platform;
     this.hooks = hooks;
     this.launch = launch;
+    this.web = web;
+    this.onLink = onLink; // "link whatsapp": main.js starts the engine and shows the QR code in Settings
     this.pending = null;
+    this.webBusy = false;
   }
   enabled() { return this.settings.get('whatsappAutomation') && this.settings.get('pcControl'); }
   stop() {
@@ -212,14 +238,63 @@ class WhatsAppControl {
     this.settings.update({ whatsappContacts: next });
     return `Saved ${name}: ${showPhone(phone)} ✓ Now "message ${name} on WhatsApp: hi" or "call ${name} on WhatsApp" opens their chat directly.`;
   }
+  /** Which route a command takes: 'web' (WhatsApp Web engine), 'connecting', or 'app' (the WhatsApp app on screen). */
+  route() {
+    if (!this.web) return 'app';
+    if (this.web.ready()) return 'web';
+    if (!this.settings.get('waWebLinked')) return 'app';
+    if (['off', 'error'].includes(this.web.state) && this.settings.get('whatsappAutomation')) this.web.start(); // linked but stopped: reconnect
+    return ['starting', 'linking'].includes(this.web.state) ? 'connecting' : 'app';
+  }
+  /** Messages and calls through the WhatsApp Web engine. */
+  async runWeb(cmd) {
+    if (this.webBusy) return 'A WhatsApp command is already running. Wait for it or say "stop whatsapp".';
+    this.webBusy = true;
+    try {
+      const typed = looksLikeNumber(cmd.contact);
+      const number = typed ? normalizePhone(cmd.contact) : this.numberFor(cmd.contact);
+      const target = typed ? '' : cmd.contact;
+      if (cmd.type === 'send') return webReply(await this.web.send(target, cmd.message, { number }), target || showPhone(number));
+      // calls: WhatsApp Web can't place them - find the number, then the WhatsApp app calls it by number
+      if (!this.enabled()) return 'Calls press the call button in the WhatsApp app, so PC controls must be on too (Settings → Behaviour).';
+      const r = await this.web.resolve(target, { number });
+      if (!r.ok) return webReply({ code: r.reason, options: r.options }, target || showPhone(number)).replace('Nothing was sent.', 'No call was started.');
+      if (r.group) return 'Group calls aren\'t supported yet - call one person at a time. No call was started.';
+      const callType = cmd.callType || this.settings.get('whatsappCallType') || 'voice';
+      const request = { action: 'call', contact: r.name || target, phone: normalizePhone(`+${r.number}`) || r.number, callType };
+      return this.describe(await this.execute(request), request);
+    } catch (err) {
+      return `WhatsApp Web ran into a problem (${String((err && err.message) || err).slice(0, 100)}). Nothing was sent.`;
+    } finally {
+      this.webBusy = false;
+    }
+  }
   async run(cmd) {
     if (cmd.type === 'help') return HELP;
     if (['contacts', 'contact-add', 'contact-remove'].includes(cmd.type)) return this.editContacts(cmd);
+    if (cmd.type === 'web-link') {
+      if (!this.web) return HELP;
+      if (this.web.ready()) return `WhatsApp Web is already linked${this.web.me && this.web.me.name ? ` (${this.web.me.name})` : ''} ✓`;
+      if (this.onLink) this.onLink();
+      return 'Opening Settings → WhatsApp: scan the QR code with your phone (WhatsApp → Linked devices → Link a device).';
+    }
     if (cmd.type === 'stop') return this.stop();
-    if (cmd.type === 'status') return (await this.check()).text;
+    if (cmd.type === 'status') {
+      const w = this.web;
+      const linkedState = w && { starting: 'connecting…', linking: 'connecting…', qr: 'waiting for its QR code to be scanned in Settings', error: `stopped (${w.error}) - it reconnects with your next message`, off: 'off - it starts with your next message' }[w.state];
+      const engine = w ? `\nWhatsApp Web engine: ${w.ready() ? `linked${w.me && w.me.name ? ` as ${w.me.name}` : ''} - messages go through it` : this.settings.get('waWebLinked') ? linkedState || w.state : 'not linked (say "link whatsapp")'}` : '';
+      return (await this.check()).text + engine;
+    }
     if (cmd.type === 'diagnostics') {
       const result = await this.check();
       return result.text + (result.diagnostics ? '\n\n' + result.diagnostics : '');
+    }
+    const route = ['send', 'call'].includes(cmd.type) ? this.route() : 'app';
+    if (route !== 'app') {
+      if (!this.settings.get('whatsappAutomation')) return 'Turn on WhatsApp automation in Settings, then save.';
+      if (!validContact(cmd.contact)) return 'Use a WhatsApp contact or group name (or a number), up to 120 characters, on one line.';
+      if (cmd.type === 'send' && !validMessage(cmd.message)) return `Include the message after a colon, with 1–${MAX_MESSAGE} characters. Nothing was sent.`;
+      return route === 'connecting' ? webReply({ code: 'web_not_ready' }) : this.runWeb(cmd);
     }
     if (!this.enabled()) return 'Turn on WhatsApp Desktop automation and PC controls in Settings, then save.';
     if (this.platform !== 'win32') return 'WhatsApp Desktop automation runs on Windows.';
@@ -235,4 +310,4 @@ class WhatsAppControl {
     return this.describe(await this.execute(request, { launch: !number }), request);
   }
 }
-module.exports = { WhatsAppControl, parseWhatsAppCommand, validContact, validMessage, nativeHelperPath, diagnosticsText, normalizePhone, showPhone, HELP };
+module.exports = { WhatsAppControl, parseWhatsAppCommand, validContact, validMessage, nativeHelperPath, diagnosticsText, normalizePhone, showPhone, webReply, HELP };

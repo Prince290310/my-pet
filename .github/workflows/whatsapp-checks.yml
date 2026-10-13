@@ -2,16 +2,16 @@ name: WhatsApp automation checks
 on:
   push:
     branches: [main]
-    paths: ['main/whatsapp.js', 'main/windows/**', 'main/settings.js', 'tests/whatsapp.test.js', 'tests/WhatsApp*.cs', 'scripts/test-whatsapp*.ps1', '.github/workflows/whatsapp-checks.yml']
+    paths: ['main/whatsapp.js', 'main/whatsweb.js', 'main/windows/**', 'main/settings.js', 'tests/whatsapp.test.js', 'tests/whatsweb.test.js', 'tests/WhatsApp*.cs', 'scripts/test-whatsapp*.ps1', 'scripts/test-whatsweb*.js', 'package-lock.json', '.github/workflows/whatsapp-checks.yml']
   pull_request:
-    paths: ['main/whatsapp.js', 'main/windows/**', 'main/settings.js', 'tests/whatsapp.test.js', 'tests/WhatsApp*.cs', 'scripts/test-whatsapp*.ps1', '.github/workflows/whatsapp-checks.yml']
+    paths: ['main/whatsapp.js', 'main/whatsweb.js', 'main/windows/**', 'main/settings.js', 'tests/whatsapp.test.js', 'tests/whatsweb.test.js', 'tests/WhatsApp*.cs', 'scripts/test-whatsapp*.ps1', 'scripts/test-whatsweb*.js', 'package-lock.json', '.github/workflows/whatsapp-checks.yml']
   workflow_dispatch: {}
 permissions:
   contents: read
 jobs:
   windows:
     runs-on: windows-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -19,7 +19,19 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: node --test tests/whatsapp.test.js
+      - run: node --test tests/whatsapp.test.js tests/whatsweb.test.js
+      - name: WhatsApp Web engine reaches the QR code (headless Edge)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $env:ELECTRON_RUN_AS_NODE = '1'
+          $out = & ./node_modules/.bin/electron.cmd scripts/test-whatsweb-qr.js 2>&1
+          $code = $LASTEXITCODE
+          foreach ($line in $out) {
+            $text = ("$line" -replace '%', '%25' -replace "`r", '' -replace "`n", '%0A')
+            if ($text -match '^(PASS|SKIP)') { "::notice title=WhatsApp Web engine::$text" } elseif ($text -match '^FAIL') { "::error title=WhatsApp Web engine::$text" } else { $text }
+          }
+          if ($code -ne 0) { "::error title=WhatsApp Web engine failed::exit $code"; exit $code }
       # Each PASS/SKIP line becomes a notice and any failure becomes an error annotation with its message,
       # so results are readable from the run summary (and the checks API) without opening the raw log.
       - name: Compile and check Windows accessibility helper

@@ -1207,6 +1207,74 @@ async function run(ctx, h) {
     await waitFor(() => wa.pending.cancelled, 1000);
     finishWa({ ok: true, code: 'sent' });
     check('STOP AUTOMATION cancels the pending command without claiming it was sent', (await waPending).text.includes('stopped'));
+
+    // ---- WhatsApp Web engine (whatsweb.js) with a stand-in for the whatsapp-web.js client
+    const waweb = ctx.waweb, webClients = [];
+    class FakeWaClient extends require('events') {
+      constructor() {
+        super();
+        this.info = { pushname: 'Prince', wid: { user: '919800000001' } };
+        this.sent = [];
+        this.loggedOut = 0;
+      }
+      async initialize() {}
+      async getContacts() {
+        return [{ id: { _serialized: '919800000010@c.us', user: '919800000010' }, number: '919800000010', name: 'Mom', pushname: 'Mummy', isWAContact: true, isMyContact: true }];
+      }
+      async getChats() {
+        return [{ id: { _serialized: '1203630001@g.us' }, name: 'Family', isGroup: true }];
+      }
+      async getNumberId(n) {
+        return { user: n, _serialized: `${n}@c.us` };
+      }
+      async sendMessage(id, text, opts) {
+        this.sent.push({ id, text, opts });
+        const msg = { id: { _serialized: `m${this.sent.length}` }, ack: 0 };
+        setTimeout(() => this.emit('message_ack', msg, 1), 20);
+        return msg;
+      }
+      async sendPresenceUnavailable() {}
+      async logout() {
+        this.loggedOut++;
+      }
+      async destroy() {}
+    }
+    waweb.hooks = { createClient: () => (webClients.push(new FakeWaClient()), webClients.at(-1)) };
+    wa.hooks = { run: async (request) => (waCalls.push(request), { ok: true, code: request.action === 'send' ? 'sent' : 'calling' }) };
+    const waText = () => js('document.getElementById("waWebText").textContent', swWhatsApp.webContents);
+    check('without Windows the engine says so instead of offering LINK', process.platform === 'win32' || ((await waText()).includes('runs on Windows') && await js('document.getElementById("waLink").disabled', swWhatsApp.webContents)), await waText());
+    waweb.emit('status', waweb.status()); // the stand-in client makes it available here too
+    await waitFor(async () => (await waText()) === 'Not linked', 3000);
+    check('Settings → WhatsApp Web engine: "Not linked" with a LINK WHATSAPP button', (await waText()) === 'Not linked' && await js('!document.getElementById("waLink").hidden && document.getElementById("waUnlink").hidden && document.getElementById("waQrBox").hidden', swWhatsApp.webContents), await waText());
+    await js('document.getElementById("waLink").click()', swWhatsApp.webContents);
+    await waitFor(() => webClients.length === 1, 3000);
+    webClients[0].emit('qr', '2@ShadowSelfTestQrCode,abcdefghijklmnopqrstuvwxyz0123456789');
+    const qrShown = await waitFor(() => js('!document.getElementById("waQrBox").hidden && document.getElementById("waQr").src.startsWith("data:image/png;base64,")', swWhatsApp.webContents), 3000);
+    check('LINK WHATSAPP starts WhatsApp Web and shows its QR code to scan', qrShown && (await waText()).includes('Scan the QR code') && await js('document.getElementById("waLink").disabled', swWhatsApp.webContents), await waText());
+    webClients[0].emit('authenticated');
+    webClients[0].emit('ready');
+    await waitFor(async () => (await waText()).startsWith('Linked as'), 3000);
+    check('after scanning: "Linked as Prince", QR hidden, UNLINK offered, link remembered', (await waText()) === 'Linked as Prince · +919800000001 - messages go through WhatsApp Web' && await js('document.getElementById("waQrBox").hidden && document.getElementById("waLink").hidden && !document.getElementById("waUnlink").hidden', swWhatsApp.webContents) && settings.get('waWebLinked') === true, await waText());
+    const waBeforeWeb = waCalls.length;
+    waReply = await ctx.handleMessage('message mom on WhatsApp: hi from the engine', []);
+    check('linked: messages go through WhatsApp Web by contact name, nothing on screen', waReply.text === 'Sent your message to Mom on WhatsApp ✓' && waCalls.length === waBeforeWeb && webClients[0].sent.length === 1 && webClients[0].sent[0].id === '919800000010@c.us' && webClients[0].sent[0].text === 'hi from the engine' && webClients[0].sent[0].opts.sendSeen === false, waReply.text);
+    waReply = await ctx.handleMessage('message family group on WhatsApp: dinner at 9', []);
+    check('...groups too', waReply.text.includes('Sent your message to Family') && webClients[0].sent.at(-1).id === '1203630001@g.us', waReply.text);
+    waReply = await ctx.handleMessage('message nobody on WhatsApp: hi', []);
+    check('...an unknown name sends nothing and says so', waReply.text.includes('couldn\'t find "nobody"') && webClients[0].sent.length === 2, waReply.text);
+    waReply = await ctx.handleMessage('call mummy on WhatsApp', []);
+    check('linked calls: the engine finds the number, the WhatsApp app rings it by number', waCalls.length === waBeforeWeb + 1 && waCalls.at(-1).action === 'call' && waCalls.at(-1).phone === '919800000010' && waCalls.at(-1).contact === 'Mom', JSON.stringify(waCalls.at(-1)));
+    waReply = await ctx.handleMessage('whatsapp status', []);
+    check('"whatsapp status" reports the engine', waReply.text.includes('WhatsApp Web engine: linked as Prince'), waReply.text);
+    await js('document.getElementById("waUnlink").click()', swWhatsApp.webContents);
+    await waitFor(async () => (await waText()) === 'Not linked', 3000);
+    check('UNLINK logs out of WhatsApp and forgets the link', webClients[0].loggedOut === 1 && settings.get('waWebLinked') === false && !waweb.ready() && (await waText()) === 'Not linked');
+    waReply = await ctx.handleMessage('link whatsapp', []);
+    await waitFor(() => webClients.length === 2, 3000);
+    check('"link whatsapp" in chat opens Settings and starts linking', waReply.text.includes('scan the QR code') && webClients.length === 2 && waweb.state === 'starting', waReply.text);
+    await waweb.stop();
+    waweb.hooks = {};
+
     settings.update({ whatsappAutomation: false });
     wa.platform = originalWaPlatform;
     wa.hooks = originalWaHooks;

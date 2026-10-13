@@ -83,13 +83,26 @@
       </section>
 
       <section class="whatsapp">
-        <h2>WhatsApp Desktop</h2>
-        <p class="note">Windows app, signed in, PC unlocked. Sends only the message you command; no automatic replies.</p>
-        <label class="check"><input id="whatsappAutomation" type="checkbox" /><i></i>Let me send messages and start calls in WhatsApp Desktop</label>
+        <h2>WhatsApp</h2>
+        <p class="note">Sends only the message you command; no automatic replies, nothing is read or watched.</p>
+        <label class="check"><input id="whatsappAutomation" type="checkbox" /><i></i>Let me send WhatsApp messages and start WhatsApp calls</label>
         <label class="field"><span>Default call</span><select id="whatsappCallType"><option value="voice">Voice call</option><option value="video">Video call</option></select></label>
-        <p class="note">Use the exact saved chat name: “message Mom on WhatsApp: I will be home at 8” or “call Mom on WhatsApp”. PC controls must also be enabled. Click SAVE to apply.</p>
-        <h3 class="wa-sub">Saved numbers (most reliable)</h3>
-        <p class="note">With a saved number Shadow opens the chat straight from WhatsApp's own link - no chat search. Use the name WhatsApp shows for them. Or say <b>"save Mom's WhatsApp number as +91 98765 43210"</b>.</p>
+        <p class="note">“message Mom on WhatsApp: I will be home at 8” · “call Mom on WhatsApp”. Calls also need PC controls on. Click SAVE to apply.</p>
+        <h3 class="wa-sub">WhatsApp Web engine (recommended)</h3>
+        <p class="note">Link Shadow once, like WhatsApp Web. Messages then go out in the background - found by name in your real contacts and groups, nothing on screen is clicked or typed. Calls look up the number here and ring through the WhatsApp app. Uses Microsoft Edge (built into Windows).</p>
+        <div id="waWeb" class="wa-web">
+          <div class="wa-state"><i id="waWebDot" class="wa-dot"></i><span id="waWebText">Checking…</span></div>
+          <div id="waQrBox" class="wa-qr" hidden>
+            <img id="waQr" alt="QR code to link WhatsApp" width="264" height="264" />
+            <p class="note">On your phone: WhatsApp → <b>Linked devices</b> → <b>Link a device</b>, then scan this code. It refreshes by itself.</p>
+          </div>
+          <div class="inline"><button type="button" id="waLink" class="ghost">LINK WHATSAPP</button><button type="button" id="waUnlink" class="ghost" hidden>UNLINK</button></div>
+        </div>
+        <p class="note">Unofficial: WhatsApp has no API for personal accounts, so this runs WhatsApp Web for you. Shadow sends one message at a time, only when you say so. UNLINK logs this PC out and deletes the saved session.</p>
+        <h3 class="wa-sub">WhatsApp app (without the engine)</h3>
+        <p class="note">Not linked? Shadow uses the WhatsApp Windows app on screen instead - signed in, PC unlocked, exact chat name.</p>
+        <h3 class="wa-sub">Saved numbers</h3>
+        <p class="note">A saved number skips the name lookup - Shadow goes straight to that number. Use the name WhatsApp shows for them. Or say <b>"save Mom's WhatsApp number as +91 98765 43210"</b>.</p>
         <ul id="waContacts" class="items"></ul>
         <div class="inline">
           <input id="waName" maxlength="60" placeholder="Name (e.g. Mom)" spellcheck="false" />

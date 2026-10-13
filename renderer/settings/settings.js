@@ -509,6 +509,45 @@ $('waAdd').addEventListener('click', async () => {
     $('waPhone').value = '';
   }
 });
+// ---- WhatsApp Web engine (link by QR)
+function showWaWeb(st) {
+  if (!st) return;
+  const dot = $('waWebDot'), text = $('waWebText');
+  const me = st.me && (st.me.name || st.me.number) ? `${st.me.name || ''}${st.me.name && st.me.number ? ' · ' : ''}${st.me.number ? `+${st.me.number}` : ''}` : '';
+  const view = {
+    ready: ['ready', `Linked${me ? ` as ${me}` : ''} - messages go through WhatsApp Web`],
+    qr: ['busy', 'Scan the QR code with your phone'],
+    starting: ['busy', st.linked ? 'Reconnecting to WhatsApp Web…' : 'Starting WhatsApp Web…'],
+    linking: ['busy', 'Linked - loading your chats…'],
+    error: ['bad', st.error || 'WhatsApp Web stopped.'],
+    off: ['', st.linked ? 'Linked - starts while WhatsApp automation is on' : 'Not linked'],
+  }[st.state] || ['', st.state];
+  if (!st.available && st.state !== 'ready') view.splice(0, 2, 'bad', 'The WhatsApp Web engine runs on Windows.');
+  dot.className = `wa-dot ${view[0]}`;
+  text.textContent = view[1];
+  $('waQrBox').hidden = !(st.state === 'qr' && st.qrImage);
+  if (st.qrImage) $('waQr').src = st.qrImage;
+  const busy = ['starting', 'qr', 'linking'].includes(st.state);
+  $('waLink').hidden = st.state === 'ready';
+  $('waLink').disabled = busy || !st.available;
+  $('waLink').textContent = st.linked && st.state !== 'qr' ? 'RECONNECT' : 'LINK WHATSAPP';
+  $('waUnlink').hidden = !(st.linked || st.state === 'ready' || busy);
+}
+window.settingsApi.onWaWebStatus(showWaWeb);
+window.settingsApi.waWebStatus().then(showWaWeb).catch(() => {});
+$('waLink').addEventListener('click', async () => {
+  $('whatsappAutomation').checked = true; // linking turns WhatsApp automation on (main does the same)
+  $('waLink').disabled = true;
+  showWaWeb(await window.settingsApi.linkWaWeb());
+});
+$('waUnlink').addEventListener('click', async () => {
+  $('waUnlink').disabled = true;
+  try {
+    showWaWeb(await window.settingsApi.unlinkWaWeb());
+  } finally {
+    $('waUnlink').disabled = false;
+  }
+});
 $('checkWhatsApp').addEventListener('click', async () => {
   const button = $('checkWhatsApp'), out = $('whatsappResult');
   button.disabled = true;

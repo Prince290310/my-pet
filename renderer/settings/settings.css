@@ -170,6 +170,61 @@ select:focus {
 .test-result.bad {
   color: #ff6f91;
 }
+.wa-web {
+  margin: 4px 0 6px;
+}
+.wa-state {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0 10px;
+  font-weight: 700;
+}
+.wa-dot {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  background: var(--muted);
+}
+.wa-dot.ready {
+  background: #7dffa8;
+  box-shadow: 0 0 8px #7dffa8;
+}
+.wa-dot.busy {
+  background: var(--gold);
+  animation: wa-blink 1s steps(2) infinite;
+}
+.wa-dot.bad {
+  background: #ff6f91;
+}
+@keyframes wa-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+.wa-qr {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0 0 12px;
+}
+.wa-qr img {
+  width: 176px;
+  height: 176px;
+  flex: none;
+  padding: 8px;
+  background: #fff;
+  image-rendering: pixelated;
+}
+.wa-qr .note {
+  margin: 0;
+}
+@media (max-width: 480px) {
+  .wa-qr {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
 #whatsappDiagnostics summary {
   color: var(--muted);
   cursor: pointer;

@@ -28,6 +28,7 @@ const { TaskStore, parseCommand } = require('./tasks');
 const search = require('./search');
 const { AppLauncher, parsePcCommand, pcRequests } = require('./apps');
 const { WhatsAppControl, parseWhatsAppCommand } = require('./whatsapp');
+const { WhatsWeb } = require('./whatsweb');
 const { FriendsManager } = require('./friends');
 const { MusicControl, parseMusicCommand, musicRequests } = require('./music');
 const { PcCare, parseCareCommand } = require('./care');
@@ -46,7 +47,7 @@ const { WindowsVoice } = require('./voice');
 const { PetWindow } = require('./petWindow');
 const { Brain } = require('./brain');
 const { createTray } = require('./tray');
-const { openChat, openSettings, getChatWindow, openGameLayer, openHudWindow } = require('./windows');
+const { openChat, openSettings, getChatWindow, getSettingsWindow, openGameLayer, openHudWindow } = require('./windows');
 const ai = require('./ai');
 const appearance = require('./appearance');
 
@@ -483,14 +484,53 @@ function init() {
 
   // ---- opening apps / folders / settings + lock, sleep, screenshot, volume, brightness (apps.js)
   const apps = (ctx.apps = new AppLauncher({ shell, getPath: (k) => app.getPath(k), openExternal: openUrl, hooks: ctx.appHooks || {} }));
-  const whatsapp = (ctx.whatsapp = new WhatsAppControl({ settings, launch: async () => {
+  // WhatsApp Web engine (whatsweb.js): linked once by QR in Settings, then sends in the background
+  const waweb = (ctx.waweb = new WhatsWeb({ settings, dataPath: path.join(app.getPath('userData'), 'whatsapp-web'), hooks: ctx.waWebHooks || {} }));
+  async function waWebView() {
+    const s = waweb.status();
+    let qrImage = '';
+    if (s.qr) {
+      try {
+        qrImage = await require('qrcode').toDataURL(s.qr, { margin: 1, width: 264, color: { dark: '#000000', light: '#ffffff' } });
+      } catch {
+        /* the text is still there for the next refresh */
+      }
+    }
+    return { state: s.state, me: s.me, error: s.error, linked: s.linked, available: waweb.available(), qrImage };
+  }
+  waweb.on('status', async () => {
+    const w = getSettingsWindow();
+    if (w) w.webContents.send('waweb:status', await waWebView());
+  });
+  ipcMain.handle('waweb:status', () => waWebView());
+  /** LINK WHATSAPP (Settings or "link whatsapp" in chat) - linking means you want WhatsApp automation on. */
+  async function linkWhatsApp() {
+    if (!settings.get('whatsappAutomation')) settings.update({ whatsappAutomation: true });
+    await waweb.start();
+  }
+  ipcMain.handle('waweb:link', async () => {
+    await linkWhatsApp();
+    return waWebView();
+  });
+  ipcMain.handle('waweb:unlink', async () => {
+    await waweb.unlink();
+    return waWebView();
+  });
+  const waWebWanted = () => !SELF_TEST && settings.get('waWebLinked') && settings.get('whatsappAutomation') && waweb.available();
+  if (waWebWanted()) setTimeout(() => waWebWanted() && waweb.start(), 20 * 1000); // reconnect once Shadow has settled
+
+  const whatsapp = (ctx.whatsapp = new WhatsAppControl({ settings, web: waweb, onLink: () => {
+    openSettings();
+    linkWhatsApp();
+  }, launch: async () => {
     const matches = (await apps.refresh()).filter(a => /^whatsapp(?: beta)?$/i.test(a.name));
     if (matches.length !== 1) return false;
     return (await apps.start(matches[0])).startsWith('Opening');
   } }));
-  /** Sends and calls: Shadow's always-on-top chat panel and HUD step out of WhatsApp's way meanwhile. */
+  /** App sends and calls: Shadow's always-on-top chat panel and HUD step out of WhatsApp's way meanwhile. */
   async function runWhatsApp(cmd) {
-    if (!['send', 'call'].includes(cmd.type) || !whatsapp.enabled()) return whatsapp.run(cmd);
+    const onScreen = cmd.type === 'call' || (cmd.type === 'send' && whatsapp.route() === 'app'); // WhatsApp Web sends need no screen
+    if (!onScreen || !whatsapp.enabled()) return whatsapp.run(cmd);
     const chat = getChatWindow();
     if (chat) chat.setAlwaysOnTop(false);
     if (ctx.hud && ctx.hud.visible) ctx.hud.hide('whatsapp');
@@ -1142,6 +1182,11 @@ function init() {
 
   settings.on('change', (all, changed) => {
     if ((changed.includes('whatsappAutomation') || changed.includes('pcControl')) && !whatsapp.enabled()) whatsapp.stop();
+    if (changed.includes('whatsappAutomation')) {
+      // the WhatsApp Web engine only runs while WhatsApp automation is on (the link itself stays)
+      if (!settings.get('whatsappAutomation')) ctx.waweb.state !== 'off' && ctx.waweb.stop();
+      else if (waWebWanted()) ctx.waweb.start();
+    }
     if (changed.includes('appearance') || changed.includes('mainHero') || changed.includes('petName')) {
       require('./windows').setAppearance(appearance.displayName(settings), appearance.mainAssetsDir(paths.ASSETS, settings));
       pet.win.setTitle(appearance.displayName(settings));
@@ -1544,7 +1589,7 @@ if (!SELF_TEST && !app.requestSingleInstanceLock()) {
     /* keep running in the tray */
   });
   app.on('before-quit', () => {
-    const { brain, config, reminders, calendar, updater, friends, care, telegram, whatsapp } = ctx;
+    const { brain, config, reminders, calendar, updater, friends, care, telegram, whatsapp, waweb } = ctx;
     try {
       if (brain && !['off', 'hidden'].includes(brain.state)) brain.savePosition();
     } catch {
@@ -1559,6 +1604,7 @@ if (!SELF_TEST && !app.requestSingleInstanceLock()) {
     if (care) care.stop();
     if (telegram) telegram.stop();
     if (whatsapp) whatsapp.stop();
+    if (waweb) waweb.stop(); // closes the background browser; the link stays
   });
 }
 

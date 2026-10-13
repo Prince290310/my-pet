@@ -57,16 +57,54 @@ Run `npm run sprites:avengers` to regenerate only the new theme. `npm run sprite
 pre-step regenerate both themes. The new assets live in `assets/themes/avengers/`; the original
 `assets/sprites.*`, `assets/friends/`, icons and config files are unchanged.
 
-**WhatsApp Desktop:** command-only messages and voice/video calls now have a Windows accessibility
-helper. See the setup below. General screen control and automatic incoming-chat replies are not enabled.
+**WhatsApp:** command-only messages and voice/video calls. Link the **WhatsApp Web engine** once by QR
+code and messages go out in the background by name; without it, Shadow drives the WhatsApp Windows app
+on screen. Automatic incoming-chat replies are not enabled.
 
-### WhatsApp messages and calls
+### WhatsApp Web engine (recommended)
+
+Shadow runs WhatsApp Web invisibly in the background - the same thing as WhatsApp Web in a browser, a
+"linked device" on your phone - using the [whatsapp-web.js](https://wwebjs.dev) library and the
+**Microsoft Edge** that comes with Windows (Chrome works too). Nothing on screen is clicked or typed.
+
+1. **Settings → WhatsApp → LINK WHATSAPP** (or say `link whatsapp`). A QR code appears.
+2. On your phone: WhatsApp → **Linked devices** → **Link a device**, and scan it. Settings then shows
+   **Linked as <your name>**. This is needed only once; Shadow reconnects by itself at every start.
+3. Talk normally:
+
+| Command | What happens |
+| --- | --- |
+| `message Mom on WhatsApp: I will be home at 8` | Found in your real WhatsApp contacts, sent in the background ✓ |
+| `message family group on WhatsApp: dinner at 9` | Groups work too (by the group's name) |
+| `message Rahul on WhatsApp: hi` | Two Rahuls? Shadow lists them and sends nothing - say the full name |
+| `message 98765 43210 on WhatsApp: hi` | Any number on WhatsApp, saved or not |
+| `call Mom on WhatsApp` · `video call Mom` | The engine looks up Mom's number, the WhatsApp app rings it |
+
+- **Names**: your saved name, their WhatsApp profile name, or a group's name - case doesn't matter, and
+  the start of a saved name works (`Priya` → Priya Singh). People you haven't saved match only by their
+  exact profile name. A number saved in Shadow (below) always wins for that name.
+- **Sent ✓** means WhatsApp's server accepted the message. With no internet it says *queued*: WhatsApp
+  sends it by itself once you're back online.
+- **Calls** still need the WhatsApp Windows app (WhatsApp Web can't call) and **PC controls**. Shadow opens
+  the chat by number, checks the header, and presses Call. Group calls aren't supported.
+- **Privacy**: commands only. Nothing is read, watched or answered, chats aren't marked as read, and the
+  background session tells WhatsApp you're offline so you don't show as "online" all day. The session is
+  kept in `%APPDATA%\Shadow\whatsapp-web`; **UNLINK** logs this PC out on your phone too and deletes it.
+  You can also remove it from your phone (Linked devices) - Shadow then shows "Not linked".
+- **It's unofficial.** WhatsApp has no API for personal accounts, so this runs WhatsApp Web for you.
+  Sending your own messages one at a time like this is what WhatsApp Web does anyway, but WhatsApp
+  doesn't officially support automated clients - don't use it for bulk messages.
+- The engine runs only while **Let me send WhatsApp messages…** is ticked (Edge uses ~150-250 MB in the
+  background). If WhatsApp updates its web page in a way the library doesn't expect yet, sending fails
+  with a clear message; Shadow's next update brings the fixed library.
+
+### WhatsApp app on screen (without the engine)
 
 1. Install and sign in to the **WhatsApp Windows app**. Use its English interface and keep the PC unlocked.
-2. In **Settings → WhatsApp Desktop**, tick the automation switch and click **SAVE**. **PC controls** must also be enabled.
+2. In **Settings → WhatsApp**, tick the automation switch and click **SAVE**. **PC controls** must also be enabled.
 3. Open WhatsApp and click **CHECK WHATSAPP** in Shadow Settings. This checks accessible controls without sending or calling.
 4. **Most reliable: save their number once** - `save Mom's WhatsApp number as +91 98765 43210`
-   (or Settings → WhatsApp Desktop → Saved numbers). Shadow then opens the chat with WhatsApp's own
+   (or Settings → WhatsApp → Saved numbers). Shadow then opens the chat with WhatsApp's own
    `whatsapp://send?phone=…` link - no chat search at all - and:
    - **sends a message** only when that chat's message box shows exactly your text (the link typed it
      there, which proves it is the right chat), then presses Send;
@@ -85,12 +123,13 @@ helper. See the setup below. General screen control and automatic incoming-chat 
 | `video call Mom on WhatsApp` | Start a video call |
 | `save Mom's WhatsApp number as +91 98765 43210` | Save a number (also `add Papa to whatsapp contacts: 98765 43210`) |
 | `whatsapp contacts` · `remove Mom from whatsapp contacts` | List / remove saved numbers |
-| `whatsapp status` | Check the open app without changing chats |
+| `link whatsapp` | Link the WhatsApp Web engine (QR code in Settings) |
+| `whatsapp status` | Check the open app (and the engine) without changing chats |
 | `whatsapp diagnostics` | Show app detection and accessible-control details without changing chats |
 | `stop whatsapp` | Stop the current automation command |
 
 **Default call** can be changed in Settings. A command specifying voice or video takes precedence.
-Commands also work through your paired Telegram bot while your Windows PC is unlocked.
+Commands also work through your paired Telegram bot. With the engine linked, messages go out even while the PC is locked; calls and the app route need it unlocked.
 If a contact shares an Avenger's name, use `call Thor on WhatsApp` to specify the person.
 
 This uses your existing WhatsApp session. No business account, separate phone number or API key is
@@ -131,7 +170,9 @@ the helper verifies the requested message or call when you issue the command.
 Microphone/camera permissions are managed by Windows and WhatsApp. Native automation requires
 validation against your installed Windows app; Linux tests use a fake helper and do not prove live calls work.
 
-Developer checks: `npm run test:whatsapp`, `npm test`, and on Windows
+Developer checks: `npm run test:whatsapp` (includes the WhatsApp Web engine with a fake client), `npm test`,
+`ELECTRON_RUN_AS_NODE=1 electron scripts/test-whatsweb-qr.js` (Windows: real engine + Edge up to the QR
+code, nothing linked or sent), and on Windows
 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-whatsapp-helper.ps1`.
 The Windows helper check compiles the accessibility code and rejects invalid requests without touching a chat.
 It also runs the production selector regressions. `scripts/test-whatsapp-ui.ps1` exercises native
@@ -343,6 +384,8 @@ main/            Electron main process
   briefing.js      the HUD's briefing (after the laptop opens) and 12-hour debrief, activity log
   news.js          headlines for the briefing (Google News RSS: RBI & banking, India, World)
   voice.js         J.A.R.V.I.S.'s backup voice (Windows speech) when the HUD page can't speak
+  whatsapp.js      WhatsApp commands: messages and calls (engine first, else the app on screen)
+  whatsweb.js      the WhatsApp Web engine: headless Edge, QR linking, contacts, sending
   telegram.js      control Shadow from your phone through your own Telegram bot
   settings.js      settings.json load/validate/save
   tray.js          tray icon + menu
@@ -708,8 +751,8 @@ Text your own Telegram bot from anywhere, and Shadow does it on your PC: `open s
 - Shadow listens with Telegram's "long polling": no server, no open ports, nothing to configure on
   your router. Only one running Shadow can use a bot at a time.
 - **Files:** send the bot a photo, PDF, document, video or voice note and it's saved on the PC (see section 16).
-- WhatsApp Desktop commands control the signed-in app on your PC; they are not a WhatsApp bot
-  listening from your phone. For remote commands, use this paired Telegram bot.
+- WhatsApp commands work from here too (the engine or the app on the PC sends them); Shadow is not a
+  WhatsApp bot listening for commands in WhatsApp itself. For remote commands, use this paired Telegram bot.
 
 ---
 

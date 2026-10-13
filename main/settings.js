@@ -32,6 +32,7 @@ const DEFAULTS = Object.freeze({
   whatsappAutomation: false, // explicit WhatsApp Desktop messages and calls (Windows only)
   whatsappCallType: 'voice', // voice | video, overridden by an explicit command
   whatsappContacts: [], // [{ name, phone }] - a saved number opens the chat through WhatsApp's own link (whatsapp.js)
+  waWebLinked: false, // the WhatsApp Web engine is linked to the phone (whatsweb.js) - reconnects at start
   pcCare: true, // Zen warns about battery, storage, RAM/CPU and internet (care.js)
   musicService: 'youtube', // where "play <song>" plays: youtube | ytmusic | spotify (music.js)
   spotifyClientId: '', // your own free app at developer.spotify.com (spotify.js)
@@ -123,6 +124,7 @@ function validate(raw) {
           .map((c) => ({ name: c.name.trim(), phone: c.phone }))
           .slice(0, 100)
       : [],
+    waWebLinked: s.waWebLinked === true,
     pcCare: s.pcCare === undefined ? DEFAULTS.pcCare : Boolean(s.pcCare),
     musicService: ['youtube', 'ytmusic', 'spotify'].includes(s.musicService) ? s.musicService : DEFAULTS.musicService,
     spotifyClientId: typeof s.spotifyClientId === 'string' && /^[0-9a-f]{32}$/i.test(s.spotifyClientId.trim()) ? s.spotifyClientId.trim() : '',
