@@ -1240,7 +1240,7 @@ async function run(ctx, h) {
       async destroy() {}
     }
     waweb.hooks = { createClient: () => (webClients.push(new FakeWaClient()), webClients.at(-1)) };
-    wa.hooks = { run: async (request) => (waCalls.push(request), { ok: true, code: request.action === 'send' ? 'sent' : 'calling' }) };
+    wa.hooks = { run: async (request) => (waCalls.push(request), { ok: true, code: { status: 'ready', send: 'sent', call: 'calling' }[request.action] }) };
     const waText = () => js('document.getElementById("waWebText").textContent', swWhatsApp.webContents);
     check('without Windows the engine says so instead of offering LINK', process.platform === 'win32' || ((await waText()).includes('runs on Windows') && await js('document.getElementById("waLink").disabled', swWhatsApp.webContents)), await waText());
     waweb.emit('status', waweb.status()); // the stand-in client makes it available here too
@@ -1265,7 +1265,7 @@ async function run(ctx, h) {
     waReply = await ctx.handleMessage('call mummy on WhatsApp', []);
     check('linked calls: the engine finds the number, the WhatsApp app rings it by number', waCalls.length === waBeforeWeb + 1 && waCalls.at(-1).action === 'call' && waCalls.at(-1).phone === '919800000010' && waCalls.at(-1).contact === 'Mom', JSON.stringify(waCalls.at(-1)));
     waReply = await ctx.handleMessage('whatsapp status', []);
-    check('"whatsapp status" reports the engine', waReply.text.includes('WhatsApp Web engine: linked as Prince'), waReply.text);
+    check('"whatsapp status" reports the engine', waReply.text.includes('WhatsApp Web engine: linked as Prince') && !waReply.text.includes('undefined'), waReply.text);
     await js('document.getElementById("waUnlink").click()', swWhatsApp.webContents);
     await waitFor(async () => (await waText()) === 'Not linked', 3000);
     check('UNLINK logs out of WhatsApp and forgets the link', webClients[0].loggedOut === 1 && settings.get('waWebLinked') === false && !waweb.ready() && (await waText()) === 'Not linked');
