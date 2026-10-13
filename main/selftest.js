@@ -1250,11 +1250,14 @@ async function run(ctx, h) {
     await waitFor(() => webClients.length === 1, 3000);
     webClients[0].emit('qr', '2@ShadowSelfTestQrCode,abcdefghijklmnopqrstuvwxyz0123456789');
     const qrShown = await waitFor(() => js('!document.getElementById("waQrBox").hidden && document.getElementById("waQr").src.startsWith("data:image/png;base64,")', swWhatsApp.webContents), 3000);
+    await js('document.getElementById("waWeb").scrollIntoView({ block: "center" })', swWhatsApp.webContents);
+    await shot('whatsapp-web-qr', swWhatsApp.webContents);
     check('LINK WHATSAPP starts WhatsApp Web and shows its QR code to scan', qrShown && (await waText()).includes('Scan the QR code') && await js('document.getElementById("waLink").disabled', swWhatsApp.webContents), await waText());
     webClients[0].emit('authenticated');
     webClients[0].emit('ready');
     await waitFor(async () => (await waText()).startsWith('Linked as'), 3000);
     check('after scanning: "Linked as Prince", QR hidden, UNLINK offered, link remembered', (await waText()) === 'Linked as Prince · +919800000001 - messages go through WhatsApp Web' && await js('document.getElementById("waQrBox").hidden && document.getElementById("waLink").hidden && !document.getElementById("waUnlink").hidden', swWhatsApp.webContents) && settings.get('waWebLinked') === true, await waText());
+    await shot('whatsapp-web-linked', swWhatsApp.webContents);
     const waBeforeWeb = waCalls.length;
     waReply = await ctx.handleMessage('message mom on WhatsApp: hi from the engine', []);
     check('linked: messages go through WhatsApp Web by contact name, nothing on screen', waReply.text === 'Sent your message to Mom on WhatsApp ✓' && waCalls.length === waBeforeWeb && webClients[0].sent.length === 1 && webClients[0].sent[0].id === '919800000010@c.us' && webClients[0].sent[0].text === 'hi from the engine' && webClients[0].sent[0].opts.sendSeen === false, waReply.text);
