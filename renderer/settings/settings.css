@@ -75,7 +75,8 @@ h2 {
   flex-wrap: wrap;
   gap: 4px 18px;
 }
-section.hud h3 {
+section.hud h3,
+section.whatsapp h3.wa-sub {
   margin: 22px 0 10px;
   padding-top: 14px;
   border-top: 1px solid var(--line);

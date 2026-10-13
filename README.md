@@ -65,7 +65,15 @@ helper. See the setup below. General screen control and automatic incoming-chat 
 1. Install and sign in to the **WhatsApp Windows app**. Use its English interface and keep the PC unlocked.
 2. In **Settings → WhatsApp Desktop**, tick the automation switch and click **SAVE**. **PC controls** must also be enabled.
 3. Open WhatsApp and click **CHECK WHATSAPP** in Shadow Settings. This checks accessible controls without sending or calling.
-4. Use the exact saved chat name in your command:
+4. **Most reliable: save their number once** - `save Mom's WhatsApp number as +91 98765 43210`
+   (or Settings → WhatsApp Desktop → Saved numbers). Shadow then opens the chat with WhatsApp's own
+   `whatsapp://send?phone=…` link - no chat search at all - and:
+   - **sends a message** only when that chat's message box shows exactly your text (the link typed it
+     there, which proves it is the right chat), then presses Send;
+   - **starts a call** only when the chat header shows the contact's name or the number.
+   A plain 10-digit Indian mobile gets +91; other numbers need their country code. You can also write
+   the number in the command: `message 98765 43210 on WhatsApp: on my way`.
+5. Without a saved number, use the exact saved chat name in your command (the chat-search route):
 
 | Command | Action |
 | --- | --- |
@@ -75,6 +83,8 @@ helper. See the setup below. General screen control and automatic incoming-chat 
 | `call Mom on WhatsApp` | Start a voice call by default |
 | `call Mom` | Call a person on WhatsApp; known character/team names summon your companions |
 | `video call Mom on WhatsApp` | Start a video call |
+| `save Mom's WhatsApp number as +91 98765 43210` | Save a number (also `add Papa to whatsapp contacts: 98765 43210`) |
+| `whatsapp contacts` · `remove Mom from whatsapp contacts` | List / remove saved numbers |
 | `whatsapp status` | Check the open app without changing chats |
 | `whatsapp diagnostics` | Show app detection and accessible-control details without changing chats |
 | `stop whatsapp` | Stop the current automation command |

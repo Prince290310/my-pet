@@ -261,6 +261,7 @@ $('restoreShadow').addEventListener('click', async () => {
   } catch (err) { setStatus(`Could not restore: ${err.message}`, true); }
 });
 function fill({ settings: s, appearance: theme, providers: list, startWithWindows, configDir, calendar, update, friends, telegram, spotify, exams, hud }) {
+  showWaContacts(s.whatsappContacts || []);
   $('appearance').value = s.appearance;
   $('mainHero').replaceChildren(...theme.heroes.map(hero => { const option = document.createElement('option'); option.value = hero.id; option.textContent = hero.name; return option; }));
   $('mainHero').value = s.mainHero;
@@ -471,6 +472,43 @@ $('reveal').addEventListener('click', () => {
   $('reveal').textContent = show ? 'HIDE' : 'SHOW';
 });
 
+// ---- WhatsApp saved numbers
+function showWaContacts(list) {
+  const ul = $('waContacts');
+  ul.replaceChildren(
+    ...list.map((c) => {
+      const li = document.createElement('li');
+      const span = document.createElement('span');
+      span.textContent = `${c.name} · ${/^91\d{10}$/.test(c.phone) ? `+91 ${c.phone.slice(2, 7)} ${c.phone.slice(7)}` : `+${c.phone}`}`;
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'ghost';
+      del.textContent = 'REMOVE';
+      del.addEventListener('click', async () => {
+        const r = await window.settingsApi.whatsappContacts({ type: 'contact-remove', name: c.name });
+        $('waMsg').textContent = r.reply;
+        showWaContacts(r.list);
+      });
+      li.append(span, del);
+      return li;
+    })
+  );
+  if (!list.length) {
+    const li = document.createElement('li');
+    li.className = 'empty';
+    li.textContent = 'No numbers saved yet';
+    ul.append(li);
+  }
+}
+$('waAdd').addEventListener('click', async () => {
+  const r = await window.settingsApi.whatsappContacts({ type: 'contact-add', name: $('waName').value.trim(), phone: $('waPhone').value.trim() });
+  $('waMsg').textContent = r.reply;
+  showWaContacts(r.list);
+  if (/^Saved/.test(r.reply)) {
+    $('waName').value = '';
+    $('waPhone').value = '';
+  }
+});
 $('checkWhatsApp').addEventListener('click', async () => {
   const button = $('checkWhatsApp'), out = $('whatsappResult');
   button.disabled = true;

@@ -88,6 +88,15 @@
         <label class="check"><input id="whatsappAutomation" type="checkbox" /><i></i>Let me send messages and start calls in WhatsApp Desktop</label>
         <label class="field"><span>Default call</span><select id="whatsappCallType"><option value="voice">Voice call</option><option value="video">Video call</option></select></label>
         <p class="note">Use the exact saved chat name: “message Mom on WhatsApp: I will be home at 8” or “call Mom on WhatsApp”. PC controls must also be enabled. Click SAVE to apply.</p>
+        <h3 class="wa-sub">Saved numbers (most reliable)</h3>
+        <p class="note">With a saved number Shadow opens the chat straight from WhatsApp's own link - no chat search. Use the name WhatsApp shows for them. Or say <b>"save Mom's WhatsApp number as +91 98765 43210"</b>.</p>
+        <ul id="waContacts" class="items"></ul>
+        <div class="inline">
+          <input id="waName" maxlength="60" placeholder="Name (e.g. Mom)" spellcheck="false" />
+          <input id="waPhone" maxlength="24" placeholder="+91 98765 43210" spellcheck="false" />
+          <button type="button" id="waAdd" class="ghost">ADD</button>
+        </div>
+        <p class="note" id="waMsg" role="status"></p>
         <div class="inline"><button type="button" id="checkWhatsApp" class="ghost">CHECK WHATSAPP</button><button type="button" id="stopWhatsApp" class="ghost">STOP AUTOMATION</button></div>
         <p id="whatsappResult" class="test-result" aria-live="polite"></p>
         <details id="whatsappDiagnostics" hidden><summary>Detection details</summary><pre id="whatsappDiagnosticsText"></pre><p class="note">Reports app detection and accessible controls. Contains no chat names or message text. Buttons may be absent when no chat is selected.</p></details>

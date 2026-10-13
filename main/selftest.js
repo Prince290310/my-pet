@@ -1185,6 +1185,16 @@ async function run(ctx, h) {
     await waitFor(() => js('document.getElementById("whatsappResult").textContent.includes("accessible")', swWhatsApp.webContents), 3000);
     check('CHECK WHATSAPP performs a read-only status request', waCalls.at(-1).action === 'status' && await js('document.getElementById("whatsappResult").textContent.includes("accessible")', swWhatsApp.webContents));
     check('Settings exposes detection details without private window titles', await js('!document.getElementById("whatsappDiagnostics").hidden && document.getElementById("whatsappDiagnosticsText").textContent.includes("WhatsApp processes: 1") && !document.getElementById("whatsappDiagnosticsText").textContent.includes("PRIVATE")', swWhatsApp.webContents));
+    await js(`document.getElementById('waName').value = 'Mom'; document.getElementById('waPhone').value = '98765 43210'; document.getElementById('waAdd').click()`, swWhatsApp.webContents);
+    await waitFor(() => (settings.get('whatsappContacts') || []).length === 1, 3000);
+    const waList = await js('document.getElementById("waContacts").innerText', swWhatsApp.webContents);
+    check('Settings → saved numbers: ADD stores +91 numbers and lists them', JSON.stringify(settings.get('whatsappContacts')) === '[{"name":"Mom","phone":"919876543210"}]' && /Mom · \+91 98765 43210/.test(waList), waList);
+    const waBeforeLink = waCalls.length;
+    settings.update({ whatsappAutomation: true, pcControl: true });
+    waReply = await ctx.handleMessage('message Mom on WhatsApp: on my way', []);
+    check('a saved number goes to the helper as the number route', waReply.text.includes('Sent your message to Mom') && waCalls.length === waBeforeLink + 1 && waCalls.at(-1).phone === '919876543210', JSON.stringify(waCalls.at(-1)));
+    await js('[...document.querySelectorAll("#waContacts button")].find((b) => b.textContent === "REMOVE").click()', swWhatsApp.webContents);
+    check('...and REMOVE deletes it', await waitFor(() => (settings.get('whatsappContacts') || []).length === 0, 3000));
     waReply = await ctx.handleMessage('whatsapp diagnostics', []);
     check('diagnostics chat commands route to read-only checks', waCalls.at(-1).action === 'status' && waReply.text.includes('Chat search accessible: yes') && !waReply.text.includes('PRIVATE'));
     let finishWa;

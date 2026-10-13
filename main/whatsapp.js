@@ -3,7 +3,28 @@
 const { execFile } = require('node:child_process');
 const path = require('node:path');
 
-const HELP = 'WhatsApp commands: "message Mom on WhatsApp: I will be home at 8", "reply to Mom on WhatsApp: Yes", "call Mom", "call Mom on WhatsApp", "video call Mom", "whatsapp status", "whatsapp diagnostics", "stop whatsapp". Use the exact saved chat name. Calling an Avenger name summons that character; add "on WhatsApp" to call a person with the same name.';
+const HELP = 'WhatsApp commands: "message Mom on WhatsApp: I will be home at 8", "reply to Mom on WhatsApp: Yes", "call Mom", "call Mom on WhatsApp", "video call Mom", "message 98765 43210 on WhatsApp: hi", "save Mom\'s WhatsApp number as +91 98765 43210", "whatsapp contacts", "whatsapp status", "whatsapp diagnostics", "stop whatsapp". With a saved number Shadow opens the chat straight from WhatsApp\'s own link (most reliable); otherwise use the exact saved chat name. Calling an Avenger name summons that character; add "on WhatsApp" to call a person with the same name.';
+const MAX_CONTACTS = 100;
+const NUMBER = String.raw`(\+?[\d][\d\s().-]{6,22}\d)`;
+
+/** "+91 98765 43210" / "098765 43210" / "9876543210" -> "919876543210" ('' if it isn't a phone number).
+ *  A bare 10-digit number starting 6-9 is taken as an Indian mobile (+91). */
+function normalizePhone(input) {
+  const s = String(input || '').trim();
+  if (!/^\+?[\d\s().-]+$/.test(s)) return '';
+  let d = s.replace(/\D/g, '');
+  if (!s.startsWith('+')) {
+    if (d.startsWith('00')) d = d.slice(2);
+    else if (d.length === 11 && /^0[6-9]/.test(d)) d = `91${d.slice(1)}`;
+    else if (d.length === 10 && /^[6-9]/.test(d)) d = `91${d}`;
+  }
+  return /^\d{8,15}$/.test(d) ? d : '';
+}
+/** "919876543210" -> "+91 98765 43210" (others: "+<digits>"). */
+function showPhone(d) {
+  return /^91\d{10}$/.test(d) ? `+91 ${d.slice(2, 7)} ${d.slice(7)}` : `+${d}`;
+}
+const looksLikeNumber = (s) => /^\+?[\d\s().-]{8,24}$/.test(String(s || '').trim()) && !!normalizePhone(s);
 const MAX_MESSAGE = 4000;
 function nativeHelperPath(base = __dirname) {
   // External PowerShell cannot read Electron's virtual app.asar filesystem.
@@ -16,6 +37,14 @@ function parseWhatsAppCommand(input, { allowBareCall = false } = {}) {
   if (/^whatsapp diagnostics[.!]?$/i.test(text)) return { type: 'diagnostics' };
   if (/^whatsapp help[.!]?$/i.test(text)) return { type: 'help' };
   let m;
+  // the contacts book: names -> numbers, so commands can open the chat by number
+  if (/^(?:(?:show|list|see)(?: me)? )?(?:my )?whatsapp (?:contacts|numbers)[.!?]?$/i.test(text)) return { type: 'contacts' };
+  if ((m = new RegExp(`^(?:save|set|add|store|update) (.+?)(?:'s|’s| ka| ki)? (?:whatsapp )?(?:number|no\\.?|phone(?: number)?)(?: (?:on|in|for) whatsapp)? (?:as|is|to|=|:)\\s*${NUMBER}[.!]?$`, 'i').exec(text)) ||
+      (m = new RegExp(`^(?:add|save) (.+?) (?:to|in) (?:my )?whatsapp contacts?\\s*(?:as|with|[:=,])?\\s*${NUMBER}[.!]?$`, 'i').exec(text)) ||
+      (m = new RegExp(`^(.+?)(?:'s|’s) whatsapp (?:number|no\\.?) is ${NUMBER}[.!]?$`, 'i').exec(text))) {
+    return { type: 'contact-add', name: unquote(m[1]).replace(/^my /i, ''), phone: m[2] };
+  }
+  if ((m = /^(?:remove|delete|forget) (.+?)(?:'s|’s)? (?:from (?:my )?whatsapp contacts|whatsapp (?:number|contact))[.!]?$/i.exec(text))) return { type: 'contact-remove', name: unquote(m[1]).replace(/^my /i, '') };
   if ((m = /^(?:(voice|video) )?call (.+?) (?:on|via|in) whatsapp[.!]?$/i.exec(text)) ||
       (m = /^whatsapp (?:(voice|video) )?call (.+)$/i.exec(text)) ||
       (allowBareCall && (m = /^(?:(voice|video) )?call (.+)$/i.exec(text)))) {
@@ -42,7 +71,8 @@ const ERRORS = {
   unavailable: 'WhatsApp is not ready. Keep the PC unlocked, open WhatsApp and sign in.',
   controls_unavailable: 'I cannot read the controls in this WhatsApp version. Use the English app language, update WhatsApp, then run CHECK WHATSAPP in Settings.',
   composer_unavailable: 'I cannot access the message input in this WhatsApp chat. No message was sent. Calling does not require the message input.',
-  not_found: 'I could not find that exact chat name in WhatsApp. Check the saved name and try again.',
+  not_found: 'I could not find that exact chat name in WhatsApp. Check the saved name and try again - or save their number once ("save Mom\'s WhatsApp number as +91 98765 43210") and I\'ll open the chat directly.',
+  link_unverified: 'WhatsApp opened, but its message box did not show your message, so nothing was sent. Check that the number is on WhatsApp and that the chat has no old unsent draft.',
   chat_not_opened: 'I found the WhatsApp search result, but could not open and verify the conversation. No message or call was sent.',
   click_blocked: 'Something is covering the WhatsApp chat result. Move that window aside and try again. No message or call was sent.',
   ambiguous_composer: 'This WhatsApp chat exposes more than one possible message input. I stopped without changing a draft or sending a message.',
@@ -64,7 +94,7 @@ const ERRORS = {
   helper_error: 'The WhatsApp control helper could not complete the command. Open WhatsApp and run CHECK WHATSAPP in Settings.',
 };
 
-const STAGES = { validation: 'validating command', status: 'checking app', discover: 'finding app', focus: 'focusing WhatsApp',
+const STAGES = { validation: 'validating command', status: 'checking app', discover: 'finding app', open_link: 'opening the chat from its number', focus: 'focusing WhatsApp',
   search: 'searching chats', search_type: 'entering chat search', search_verify: 'checking search text', search_results: 'reading search results',
   select_chat: 'opening chat', verify_chat: 'verifying recipient', message_input: 'reading message input',
   send_button: 'finding Send button', send_message: 'sending message', confirm_send: 'checking send result',
@@ -101,7 +131,8 @@ class WhatsAppControl {
     if (this.hooks.run) return this.hooks.run(request, task);
     return new Promise(resolve => {
       const child = (this.hooks.execFile || execFile)('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-MTA', '-ExecutionPolicy', 'Bypass', '-File', nativeHelperPath()],
-        { windowsHide: true, timeout: 35000, maxBuffer: 64 * 1024, encoding: 'utf8' }, (err, stdout) => {
+        // the link route may first have to start WhatsApp and load the chat
+        { windowsHide: true, timeout: request.phone ? 60000 : 35000, maxBuffer: 64 * 1024, encoding: 'utf8' }, (err, stdout) => {
           task.child = null;
           if (task.cancelled) return resolve({ ok: false, code: 'stopped' });
           if (err) return resolve({ ok: false, code: err.killed ? 'timeout' : 'helper_error' });
@@ -135,8 +166,12 @@ class WhatsAppControl {
   }
   describe(result, request = {}) {
     if (result && result.ok && result.code === 'ready') return 'WhatsApp is detected and its chat search is accessible. Sending and calling are checked when you run a command.';
-    if (result && result.ok && result.code === 'sent') return `Sent your message to ${request.contact} in WhatsApp.`;
-    if (result && result.ok && result.code === 'calling') return `Started a ${request.callType} call to ${request.contact} in WhatsApp.`;
+    const who = request.contact || (request.phone ? showPhone(request.phone) : '');
+    if (result && result.ok && result.code === 'sent') return `Sent your message to ${who} in WhatsApp.`;
+    if (result && result.ok && result.code === 'calling') return `Started a ${request.callType} call to ${who} in WhatsApp.`;
+    if (result && result.code === 'recipient_unverified' && request.phone) {
+      return `WhatsApp opened a chat, but its header did not show ${request.contact ? `"${request.contact}" or ` : ''}${showPhone(request.phone)}, so nothing was sent or called. Save the contact in Shadow with the same name WhatsApp shows for them.`;
+    }
     if (result && result.code === 'busy') return 'A WhatsApp command is already running. Wait for it or say "stop whatsapp".';
     const error = ERRORS[result && result.code] || ERRORS.helper_error;
     const stage = result && Object.hasOwn(STAGES, result.stage) ? STAGES[result.stage] : null;
@@ -145,8 +180,40 @@ class WhatsAppControl {
       ? `\nWindows detail: ${result.fault} (${result.errorNumber}).` : '';
     return error + (stage && ['send', 'call'].includes(request.action) ? `\nStopped while ${stage}. Result: ${Object.hasOwn(ERRORS, result.code) ? result.code : 'helper_error'}.${fault}` : '');
   }
+  contacts() {
+    const list = this.settings.get('whatsappContacts');
+    return Array.isArray(list) ? list.filter((c) => c && c.name && c.phone) : [];
+  }
+  /** Saved number for a name ('' if none). */
+  numberFor(name) {
+    const want = String(name || '').trim().toLowerCase();
+    const hit = this.contacts().find((c) => c.name.toLowerCase() === want);
+    return hit ? hit.phone : '';
+  }
+  /** Settings → WhatsApp contacts and the chat commands. -> reply text */
+  editContacts(cmd) {
+    const list = this.contacts();
+    if (cmd.type === 'contacts') {
+      return list.length ? `📇 WhatsApp numbers: ${list.map((c) => `${c.name} ${showPhone(c.phone)}`).join(' · ')}` : 'No WhatsApp numbers saved yet. Say "save Mom\'s WhatsApp number as +91 98765 43210".';
+    }
+    if (cmd.type === 'contact-remove') {
+      const left = list.filter((c) => c.name.toLowerCase() !== String(cmd.name).trim().toLowerCase());
+      if (left.length === list.length) return `"${cmd.name}" isn't in your WhatsApp contacts.`;
+      this.settings.update({ whatsappContacts: left });
+      return `Removed ${cmd.name} from your WhatsApp contacts ✓`;
+    }
+    const name = String(cmd.name || '').trim();
+    const phone = normalizePhone(cmd.phone);
+    if (!validContact(name) || name.length > 60) return 'Give the contact a short name, like "Mom".';
+    if (!phone) return 'That number doesn\'t look right. Use the full number with country code, like +91 98765 43210.';
+    const next = [...list.filter((c) => c.name.toLowerCase() !== name.toLowerCase()), { name, phone }];
+    if (next.length > MAX_CONTACTS) return `You can save up to ${MAX_CONTACTS} WhatsApp numbers.`;
+    this.settings.update({ whatsappContacts: next });
+    return `Saved ${name}: ${showPhone(phone)} ✓ Now "message ${name} on WhatsApp: hi" or "call ${name} on WhatsApp" opens their chat directly.`;
+  }
   async run(cmd) {
     if (cmd.type === 'help') return HELP;
+    if (['contacts', 'contact-add', 'contact-remove'].includes(cmd.type)) return this.editContacts(cmd);
     if (cmd.type === 'stop') return this.stop();
     if (cmd.type === 'status') return (await this.check()).text;
     if (cmd.type === 'diagnostics') {
@@ -160,8 +227,11 @@ class WhatsAppControl {
     if (!['send', 'call'].includes(cmd.type)) return HELP;
     const callType = cmd.callType || this.settings.get('whatsappCallType') || 'voice';
     if (cmd.type === 'call' && !['voice', 'video'].includes(callType)) return HELP;
-    const request = { action: cmd.type, contact: cmd.contact, ...(cmd.type === 'send' ? { message: cmd.message } : { callType }) };
-    return this.describe(await this.execute(request, { launch: true }), request);
+    // a saved (or typed) number opens the chat through WhatsApp's own link - no chat search needed
+    const number = looksLikeNumber(cmd.contact) ? normalizePhone(cmd.contact) : this.numberFor(cmd.contact);
+    const contact = looksLikeNumber(cmd.contact) ? '' : cmd.contact;
+    const request = { action: cmd.type, contact, ...(number ? { phone: number } : {}), ...(cmd.type === 'send' ? { message: cmd.message } : { callType }) };
+    return this.describe(await this.execute(request, { launch: !number }), request);
   }
 }
-module.exports = { WhatsAppControl, parseWhatsAppCommand, validContact, validMessage, nativeHelperPath, diagnosticsText, HELP };
+module.exports = { WhatsAppControl, parseWhatsAppCommand, validContact, validMessage, nativeHelperPath, diagnosticsText, normalizePhone, showPhone, HELP };

@@ -31,6 +31,7 @@ const DEFAULTS = Object.freeze({
   pcControl: true, // chat may open apps/folders/settings and lock/sleep/screenshot/volume (apps.js)
   whatsappAutomation: false, // explicit WhatsApp Desktop messages and calls (Windows only)
   whatsappCallType: 'voice', // voice | video, overridden by an explicit command
+  whatsappContacts: [], // [{ name, phone }] - a saved number opens the chat through WhatsApp's own link (whatsapp.js)
   pcCare: true, // Zen warns about battery, storage, RAM/CPU and internet (care.js)
   musicService: 'youtube', // where "play <song>" plays: youtube | ytmusic | spotify (music.js)
   spotifyClientId: '', // your own free app at developer.spotify.com (spotify.js)
@@ -116,6 +117,12 @@ function validate(raw) {
     pcControl: s.pcControl === undefined ? DEFAULTS.pcControl : Boolean(s.pcControl),
     whatsappAutomation: s.whatsappAutomation === true,
     whatsappCallType: ['voice', 'video'].includes(s.whatsappCallType) ? s.whatsappCallType : 'voice',
+    whatsappContacts: Array.isArray(s.whatsappContacts)
+      ? s.whatsappContacts
+          .filter((c) => c && typeof c.name === 'string' && c.name.trim() && c.name.length <= 60 && !/\p{Cc}/u.test(c.name) && typeof c.phone === 'string' && /^\d{8,15}$/.test(c.phone))
+          .map((c) => ({ name: c.name.trim(), phone: c.phone }))
+          .slice(0, 100)
+      : [],
     pcCare: s.pcCare === undefined ? DEFAULTS.pcCare : Boolean(s.pcCare),
     musicService: ['youtube', 'ytmusic', 'spotify'].includes(s.musicService) ? s.musicService : DEFAULTS.musicService,
     spotifyClientId: typeof s.spotifyClientId === 'string' && /^[0-9a-f]{32}$/i.test(s.spotifyClientId.trim()) ? s.spotifyClientId.trim() : '',

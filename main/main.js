@@ -489,6 +489,12 @@ function init() {
     return (await apps.start(matches[0])).startsWith('Opening');
   } }));
   ipcMain.handle('whatsapp:check', () => whatsapp.check());
+  // Settings → WhatsApp contacts: add / remove a saved number
+  ipcMain.handle('whatsapp:contacts', (_e, cmd = {}) => {
+    const type = ['contact-add', 'contact-remove'].includes(cmd && cmd.type) ? cmd.type : 'contacts';
+    const reply = whatsapp.editContacts({ type, name: String((cmd && cmd.name) || '').slice(0, 80), phone: String((cmd && cmd.phone) || '').slice(0, 30) });
+    return { reply, list: whatsapp.contacts() };
+  });
   ipcMain.handle('whatsapp:stop', () => whatsapp.stop());
   if (apps.windows) setTimeout(() => apps.refresh(), 8000); // read the Start menu once Shadow has settled
   const screenshotHelpers = {
