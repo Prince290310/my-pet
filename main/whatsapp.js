@@ -3,13 +3,13 @@
 const { execFile } = require('node:child_process');
 const path = require('node:path');
 
-const HELP = 'WhatsApp commands: "message Mom on WhatsApp: I will be home at 8", "reply to Mom on WhatsApp: Yes", "call Mom on WhatsApp", "video call Mom on WhatsApp", "whatsapp status", "whatsapp diagnostics", "stop whatsapp". Use the exact saved chat name.';
+const HELP = 'WhatsApp commands: "message Mom on WhatsApp: I will be home at 8", "reply to Mom on WhatsApp: Yes", "call Mom", "call Mom on WhatsApp", "video call Mom", "whatsapp status", "whatsapp diagnostics", "stop whatsapp". Use the exact saved chat name. Calling an Avenger name summons that character; add "on WhatsApp" to call a person with the same name.';
 const MAX_MESSAGE = 4000;
 function nativeHelperPath(base = __dirname) {
   // External PowerShell cannot read Electron's virtual app.asar filesystem.
   return path.join(base.replace(/([\\/])app\.asar(?=[\\/])/, '$1app.asar.unpacked'), 'windows', 'whatsapp.ps1');
 }
-function parseWhatsAppCommand(input) {
+function parseWhatsAppCommand(input, { allowBareCall = false } = {}) {
   const text = String(input || '').trim();
   if (/^(?:stop|cancel) whatsapp(?: automation)?[.!]?$/i.test(text)) return { type: 'stop' };
   if (/^(?:whatsapp (?:status|check)|check whatsapp)[.!]?$/i.test(text)) return { type: 'status' };
@@ -17,7 +17,8 @@ function parseWhatsAppCommand(input) {
   if (/^whatsapp help[.!]?$/i.test(text)) return { type: 'help' };
   let m;
   if ((m = /^(?:(voice|video) )?call (.+?) (?:on|via|in) whatsapp[.!]?$/i.exec(text)) ||
-      (m = /^whatsapp (?:(voice|video) )?call (.+)$/i.exec(text))) {
+      (m = /^whatsapp (?:(voice|video) )?call (.+)$/i.exec(text)) ||
+      (allowBareCall && (m = /^(?:(voice|video) )?call (.+)$/i.exec(text)))) {
     return { type: 'call', contact: unquote(m[2]), callType: m[1] ? m[1].toLowerCase() : null };
   }
   if ((m = /^(?:message|text|reply to|send (?:a )?(?:message|reply) to) (.+?) (?:on|via|in) whatsapp\s*:\s*([\s\S]*)$/i.exec(text)) ||
@@ -40,6 +41,7 @@ const ERRORS = {
   multiple_windows: 'Close the extra WhatsApp windows and try again.',
   unavailable: 'WhatsApp is not ready. Keep the PC unlocked, open WhatsApp and sign in.',
   controls_unavailable: 'I cannot read the controls in this WhatsApp version. Use the English app language, update WhatsApp, then run CHECK WHATSAPP in Settings.',
+  composer_unavailable: 'I cannot access the message input in this WhatsApp chat. No message was sent. Calling does not require the message input.',
   not_found: 'I could not find that exact chat name in WhatsApp. Check the saved name and try again.',
   search_unverified: 'I could not verify the chat search text in WhatsApp. No message or call was sent.',
   ambiguous: 'More than one chat has that name. Give the intended chat a unique name in WhatsApp before trying again.',
@@ -49,7 +51,8 @@ const ERRORS = {
   focus_changed: 'The active window changed. I stopped before sending or calling; try again with WhatsApp in front.',
   call_active: 'There is already a WhatsApp call in progress. Finish it first.',
   dialog_open: 'Close the open WhatsApp dialog and try again. No message or call was sent.',
-  call_unavailable: 'This chat does not expose that call button. Open the chat in WhatsApp and check whether calls are available.',
+  call_unavailable: 'I verified the selected WhatsApp chat, but could not find a usable call button in its header. No call was started.',
+  call_not_invokable: 'The WhatsApp call button is visible, but this app version does not expose an action for it. No call was started.',
   send_unavailable: 'The WhatsApp Send button is not accessible. The message may be in the draft; check WhatsApp.',
   send_uncertain: 'I clicked Send but could not confirm the result. Check WhatsApp before repeating the command.',
   call_uncertain: 'I requested the call but could not confirm it started. Check WhatsApp before repeating the command.',
@@ -58,6 +61,11 @@ const ERRORS = {
   helper_error: 'The WhatsApp control helper could not complete the command. Open WhatsApp and run CHECK WHATSAPP in Settings.',
 };
 
+const STAGES = { validation: 'validating command', status: 'checking app', discover: 'finding app', focus: 'focusing WhatsApp',
+  search: 'searching chats', select_chat: 'opening chat', verify_chat: 'verifying recipient', message_input: 'reading message input',
+  send_button: 'finding Send button', send_message: 'sending message', confirm_send: 'checking send result',
+  call_button: 'finding call button', start_call: 'starting call', confirm_call: 'checking call result' };
+
 function diagnosticsText(result) {
   const code = result && (result.code === 'ready' || Object.hasOwn(ERRORS, result.code) || result.code === 'busy') ? result.code : 'helper_error';
   const info = result && result.diagnostics;
@@ -65,7 +73,7 @@ function diagnosticsText(result) {
   const count = key => Number.isInteger(info[key]) && info[key] >= 0 && info[key] <= 10000 ? info[key] : 'unknown';
   const flag = key => info[key] === true ? 'yes' : info[key] === false ? 'no' : 'unknown';
   // Whitelist scalar diagnostics: never include raw helper output, window titles, chat names or messages.
-  return `Result: ${code}\nHelper version: ${count('helperVersion')}\nWhatsApp processes: ${count('appProcesses')}\nVisible app windows: ${count('appWindows')}\nInaccessible app windows: ${count('inaccessibleWindows')}\nMinimized: ${flag('minimized')}\nChat search accessible: ${flag('search')}\nMessage input accessible: ${flag('composer')}\nVoice call button accessible: ${flag('voiceCall')}\nVideo call button accessible: ${flag('videoCall')}`;
+  return `Result: ${code}\nHelper version: ${count('helperVersion')}\nWhatsApp processes: ${count('appProcesses')}\nVisible app windows: ${count('appWindows')}\nInaccessible app windows: ${count('inaccessibleWindows')}\nMinimized: ${flag('minimized')}\nChat search accessible: ${flag('search')}\nMessage input accessible: ${flag('composer')}\nVoice call button accessible: ${flag('voiceCall')}\nVideo call button accessible: ${flag('videoCall')}\nVoice call action accessible: ${flag('voiceInvoke')}\nVideo call action accessible: ${flag('videoInvoke')}`;
 }
 
 class WhatsAppControl {
@@ -122,11 +130,13 @@ class WhatsAppControl {
     return { ok: !!result.ok, text: this.describe(result), diagnostics: diagnosticsText(result) };
   }
   describe(result, request = {}) {
-    if (result && result.ok && result.code === 'ready') return 'WhatsApp is open and its chat search is accessible. Commands are ready when WhatsApp automation is enabled.';
+    if (result && result.ok && result.code === 'ready') return 'WhatsApp is detected and its chat search is accessible. Sending and calling are checked when you run a command.';
     if (result && result.ok && result.code === 'sent') return `Sent your message to ${request.contact} in WhatsApp.`;
     if (result && result.ok && result.code === 'calling') return `Started a ${request.callType} call to ${request.contact} in WhatsApp.`;
     if (result && result.code === 'busy') return 'A WhatsApp command is already running. Wait for it or say "stop whatsapp".';
-    return ERRORS[result && result.code] || ERRORS.helper_error;
+    const error = ERRORS[result && result.code] || ERRORS.helper_error;
+    const stage = result && Object.hasOwn(STAGES, result.stage) ? STAGES[result.stage] : null;
+    return error + (stage && ['send', 'call'].includes(request.action) ? `\nStopped while ${stage}. Result: ${Object.hasOwn(ERRORS, result.code) ? result.code : 'helper_error'}.` : '');
   }
   async run(cmd) {
     if (cmd.type === 'help') return HELP;

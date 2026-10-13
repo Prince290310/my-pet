@@ -865,6 +865,9 @@ function init() {
     }
     const gang = gangCommand(text);
     if (gang) return done1(gang);
+    // Avenger/team summons retain precedence; a remaining "call NAME" is a WhatsApp call.
+    const bareCall = parseWhatsAppCommand(message, { allowBareCall: true });
+    if (bareCall) return done1(await whatsapp.run(bareCall));
     const gameCmd = parseGameCommand(text);
     if (gameCmd) return done1(await runGame(gameCmd, origin));
     const startupCmd = parseStartupCommand(text);

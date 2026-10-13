@@ -73,6 +73,7 @@ helper. See the setup below. General screen control and automatic incoming-chat 
 | `reply to Mom on WhatsApp: Yes, see you soon` | Send your reply to that named chat |
 | `whatsapp send "Mom: work": I will be late` | Quote a name containing a colon |
 | `call Mom on WhatsApp` | Start a voice call by default |
+| `call Mom` | Call a person on WhatsApp; known character/team names summon your companions |
 | `video call Mom on WhatsApp` | Start a video call |
 | `whatsapp status` | Check the open app without changing chats |
 | `whatsapp diagnostics` | Show app detection and accessible-control details without changing chats |
@@ -80,6 +81,7 @@ helper. See the setup below. General screen control and automatic incoming-chat 
 
 **Default call** can be changed in Settings. A command specifying voice or video takes precedence.
 Commands also work through your paired Telegram bot while your Windows PC is unlocked.
+If a contact shares an Avenger's name, use `call Thor on WhatsApp` to specify the person.
 
 This uses your existing WhatsApp session. No business account, separate phone number or API key is
 needed. It does not watch incoming chats, generate replies, or let an AI issue WhatsApp actions.
@@ -100,6 +102,11 @@ from an app that is not running, and is not relaunched.
 If a check fails, expand **Detection details** or use `whatsapp diagnostics`. These report only app/window
 counts and known-control availability; they contain no window titles, contact names or message text.
 The check does not restore windows or switch chats. Composer/call buttons may be absent if no chat is open.
+Calls verify the selected chat header and its call button without requiring a message input. Messaging
+also supports a named, readable, focusable composer exposed as an accessibility document/custom control.
+Diagnostics distinguish a visible call button from an invokable call action. Failed commands report
+the step where they stopped, without including chat content. A `ready` check confirms app/search detection;
+the helper verifies the requested message or call when you issue the command.
 Microphone/camera permissions are managed by Windows and WhatsApp. Native automation requires
 validation against your installed Windows app; Linux tests use a fake helper and do not prove live calls work.
 

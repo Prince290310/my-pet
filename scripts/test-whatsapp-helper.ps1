@@ -37,3 +37,7 @@ foreach ($candidate in $candidates) {
   if ($actual -ne $candidate[4]) { throw 'Incorrect main-window classification' }
 }
 'PASS: changed titles, minimized windows, notifications and call windows are classified correctly'
+if (-not [Shadow.WhatsAppDesktop]::InChatHeader(300, 60, 250, 90)) { throw 'Valid chat header rejected' }
+if ([Shadow.WhatsAppDesktop]::InChatHeader(20, 60, 250, 90)) { throw 'Sidebar contact accepted as chat header' }
+if ([Shadow.WhatsAppDesktop]::InChatHeader(300, 300, 250, 90)) { throw 'Message body accepted as chat header' }
+'PASS: recipient header verification does not require a composer and rejects sidebar/body matches'

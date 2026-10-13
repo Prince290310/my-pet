@@ -33,6 +33,24 @@ test('calls require WhatsApp explicitly and default to the configured voice pref
   assert.equal(parse('[[whatsapp | call Mom]]'), null);
   assert.equal(parse('open whatsapp'), null);
 });
+test('bare calls are recognized only when the chat router explicitly enables them', async () => {
+  const { control, calls } = setup();
+  for (const [command, contact, callType] of [['CALL NAME', 'NAME', 'voice'], ['call Mom', 'Mom', 'voice'], ['video call Mom', 'Mom', 'video']]) {
+    assert.equal(parse(command), null);
+    const cmd = parse(command, { allowBareCall: true });
+    assert.equal(cmd.contact, contact);
+    await control.run(cmd);
+    assert.deepEqual(calls.pop(), { action: 'call', contact, callType });
+  }
+  for (const command of ['remind me to call Mom', '[[whatsapp | call Mom]]', 'can you explain what a call means']) {
+    assert.equal(parse(command, { allowBareCall: true }), null);
+  }
+});
+test('bare call commands honor opt-in controls without reaching the AI or native helper', async () => {
+  const { control, calls } = setup({ whatsappAutomation: false });
+  assert.match(await control.run(parse('CALL NAME', { allowBareCall: true })), /Turn on WhatsApp/);
+  assert.equal(calls.length, 0);
+});
 test('missing message text and invalid commands give help without doing anything', async () => {
   const { control, calls } = setup();
   assert.equal(parse('reply to Mom on WhatsApp').type, 'help');
@@ -175,6 +193,20 @@ test('diagnostic rendering drops titles, private data and unexpected non-scalar 
   assert.match(output, /Chat search accessible: unknown/);
   assert.match(output, /Message input accessible: yes/);
   assert.ok(!output.includes('PRIVATE') && !output.includes('Private') && !output.includes('private contact'));
+});
+test('failed calls report a whitelisted execution stage without returning arbitrary helper text', async () => {
+  const { control } = setup({}, { run: async () => ({ ok: false, code: 'call_not_invokable', stage: 'call_button' }) });
+  const reply = await control.run(parse('call Mom on WhatsApp'));
+  assert.match(reply, /No call was started/);
+  assert.match(reply, /Stopped while finding call button/);
+  assert.match(reply, /Result: call_not_invokable/);
+  assert.ok(!control.describe({ code: 'helper_error', stage: 'PRIVATE CHAT' }, { action: 'call' }).includes('PRIVATE'));
+});
+test('button presence and an invokable call action are separate diagnostic checks', () => {
+  const text = diagnosticsText({ code: 'ready', diagnostics: { voiceCall: true, voiceInvoke: false, videoCall: true, videoInvoke: true } });
+  assert.match(text, /Voice call button accessible: yes/);
+  assert.match(text, /Voice call action accessible: no/);
+  assert.match(text, /Video call action accessible: yes/);
 });
 test('a minimized app is distinguished from a closed app without triggering launch or retry', async () => {
   let opened = 0, count = 0;

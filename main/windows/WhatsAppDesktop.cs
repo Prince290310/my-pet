@@ -10,6 +10,7 @@ namespace Shadow {
     public sealed class WhatsAppResult {
         public bool ok { get; set; }
         public string code { get; set; }
+        public string stage { get; set; }
         public WhatsAppDiagnostics diagnostics { get; set; }
     }
     public sealed class WhatsAppDiagnostics {
@@ -22,6 +23,8 @@ namespace Shadow {
         public bool composer { get; set; }
         public bool voiceCall { get; set; }
         public bool videoCall { get; set; }
+        public bool voiceInvoke { get; set; }
+        public bool videoInvoke { get; set; }
     }
     // All selectors refer to WhatsApp's own accessibility tree. No screen-coordinate clicks.
     public static class WhatsAppDesktop {
@@ -77,6 +80,22 @@ namespace Shadow {
             foreach (AutomationElement e in controls)
                 if (Usable(e) && HasName(e, names)) return e;
             return null;
+        }
+        static AutomationElement Composer(AutomationElement root) {
+            var types = new OrCondition(new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit),
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Document),
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Custom));
+            foreach (AutomationElement e in root.FindAll(TreeScope.Descendants, types)) {
+                if (!Usable(e) || !HasName(e, ComposeNames)) continue;
+                object pattern;
+                bool readable = e.TryGetCurrentPattern(ValuePattern.Pattern, out pattern) || e.TryGetCurrentPattern(TextPattern.Pattern, out pattern);
+                if (readable && e.Current.IsKeyboardFocusable) return e;
+            }
+            return null;
+        }
+        static bool Invokable(AutomationElement element) {
+            object pattern;
+            return element != null && element.TryGetCurrentPattern(InvokePattern.Pattern, out pattern);
         }
         public static bool KnownProcessName(string name) {
             return Same(name, "WhatsApp") || Same(name, "WhatsAppBeta") || Same(name, "WhatsApp.Root") || Same(name, "WhatsApp Desktop");
@@ -184,8 +203,9 @@ namespace Shadow {
         }
         static WhatsAppResult Status() {
             // Report only counters and known-control presence. Never return window titles, names or chat text.
-            var diagnostics = new WhatsAppDiagnostics { helperVersion = 2, appProcesses = RunningProcesses() };
+            var diagnostics = new WhatsAppDiagnostics { helperVersion = 3, appProcesses = RunningProcesses() };
             var result = Result(false, "helper_error");
+            result.stage = "status";
             result.diagnostics = diagnostics;
             try {
                 var windows = Windows(diagnostics);
@@ -197,9 +217,13 @@ namespace Shadow {
                     diagnostics.minimized = IsIconic(window.Handle);
                     diagnostics.search = window.HasSearch;
                     if (!diagnostics.minimized) {
-                        diagnostics.composer = Find(window.Root, ControlType.Edit, ComposeNames) != null;
-                        diagnostics.voiceCall = Find(window.Root, ControlType.Button, VoiceNames) != null;
-                        diagnostics.videoCall = Find(window.Root, ControlType.Button, VideoNames) != null;
+                        diagnostics.composer = Composer(window.Root) != null;
+                        var voice = Find(window.Root, ControlType.Button, VoiceNames);
+                        var video = Find(window.Root, ControlType.Button, VideoNames);
+                        diagnostics.voiceCall = voice != null;
+                        diagnostics.videoCall = video != null;
+                        diagnostics.voiceInvoke = Invokable(voice);
+                        diagnostics.videoInvoke = Invokable(video);
                     }
                     result.code = diagnostics.minimized ? "minimized" : diagnostics.search ? "ready" : "controls_unavailable";
                     result.ok = result.code == "ready";
@@ -318,21 +342,39 @@ namespace Shadow {
             }
             return false;
         }
-        static bool HeaderMatches(AutomationElement root, string contact, double sidebarRight, double headerBottom, AutomationElement compose) {
-            var input = compose.Current.BoundingRectangle;
+        public static bool InChatHeader(double left, double bottom, double sidebarRight, double headerBottom) {
+            return left >= sidebarRight && bottom <= headerBottom;
+        }
+        static bool HeaderMatches(AutomationElement root, string contact, double sidebarRight, double headerBottom, AutomationElement compose = null) {
             foreach (AutomationElement e in Elements(root)) {
                 if (!Usable(e) || !Same(e.Current.Name, contact) || !HeaderControl(e, root)) continue;
                 var rect = e.Current.BoundingRectangle;
                 // Verify the chat header in the message pane, never a matching message or sidebar row.
-                if (rect.Left >= sidebarRight && rect.Bottom <= headerBottom && rect.Bottom < input.Top && rect.Left >= input.Left - 90) return true;
+                if (!InChatHeader(rect.Left, rect.Bottom, sidebarRight, headerBottom)) continue;
+                if (compose != null) {
+                    var input = compose.Current.BoundingRectangle;
+                    if (rect.Bottom >= input.Top || rect.Left < input.Left - 90) continue;
+                }
+                return true;
             }
             return false;
         }
-        static void AssertRecipient(AppWindow window, string contact, double right, double headerBottom, AutomationElement compose) {
+        static void AssertRecipient(AppWindow window, string contact, double right, double headerBottom, AutomationElement compose = null) {
             AssertWindow(window);
             var root = window.Root;
             if (ModalOpen(root)) throw new Failure("dialog_open");
             if (!HeaderMatches(root, contact, right, headerBottom, compose)) throw new Failure("recipient_unverified");
+        }
+        static AutomationElement CallButton(AutomationElement root, string[] names, double right, double headerBottom) {
+            var controls = root.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
+            var matches = new List<AutomationElement>();
+            foreach (AutomationElement e in controls) {
+                if (!Usable(e) || !HasName(e, names)) continue;
+                var rect = e.Current.BoundingRectangle;
+                if (InChatHeader(rect.Left, rect.Bottom, right, headerBottom)) matches.Add(e);
+            }
+            // A sidebar or message button cannot substitute for the current chat's header button.
+            return matches.Count == 1 ? matches[0] : null;
         }
         static bool ValidContact(string contact) {
             if (String.IsNullOrWhiteSpace(contact) || contact.Length > 120) return false;
@@ -346,86 +388,101 @@ namespace Shadow {
         }
         public static WhatsAppResult Run(string action, string contact, string message, string callType, bool waitForApp) {
             bool dispatched = false;
+            string stage = "validation";
+            Func<bool, string, WhatsAppResult> finish = (ok, code) => new WhatsAppResult { ok = ok, code = code, stage = stage };
             try {
-                if (action != "status" && action != "send" && action != "call") return Result(false, "helper_error");
-                if (action != "status" && !ValidContact(contact)) return Result(false, "helper_error");
-                if (action == "send" && !ValidMessage(message)) return Result(false, "helper_error");
-                if (action == "call" && callType != "voice" && callType != "video") return Result(false, "helper_error");
+                if (action != "status" && action != "send" && action != "call") return finish(false, "helper_error");
+                if (action != "status" && !ValidContact(contact)) return finish(false, "helper_error");
+                if (action == "send" && !ValidMessage(message)) return finish(false, "helper_error");
+                if (action == "call" && callType != "voice" && callType != "video") return finish(false, "helper_error");
                 if (action == "status") return Status();
+                stage = "discover";
                 // Detect an existing call even if it is the only WhatsApp window.
-                if (CallActive()) return Result(false, "call_active");
+                if (CallActive()) return finish(false, "call_active");
                 var window = Wait(() => Window(), waitForApp ? 6000 : 100);
-                if (window == null) return Result(false, RunningProcesses() > 0 ? "window_unavailable" : "not_running");
+                if (window == null) return finish(false, RunningProcesses() > 0 ? "window_unavailable" : "not_running");
                 var root = window.Root;
+                stage = "focus";
                 ShowWindow(window.Handle, 9);
                 SetForegroundWindow(window.Handle);
                 Thread.Sleep(200);
                 AssertWindow(window);
                 var search = Wait(() => Find(root, ControlType.Edit, SearchNames), waitForApp ? 4000 : 1200);
-                if (search == null) return Result(false, "controls_unavailable");
-                if (ModalOpen(root)) return Result(false, "dialog_open");
-                if (CallActive()) return Result(false, "call_active");
+                if (search == null) return finish(false, "controls_unavailable");
+                if (ModalOpen(root)) return finish(false, "dialog_open");
+                if (CallActive()) return finish(false, "call_active");
+                stage = "search";
                 double sidebarRight = search.Current.BoundingRectangle.Right;
                 double headerBottom = search.Current.BoundingRectangle.Bottom + 24;
                 Write(window, search, contact);
                 if (Wait(() => {
                     AssertWindow(window);
                     return Read(search) == contact ? "verified" : null;
-                }, 1200) == null) return Result(false, "search_unverified");
+                }, 1200) == null) return finish(false, "search_unverified");
                 // Wait for filtering to settle before accepting an exact, unique result.
                 Thread.Sleep(800);
                 List<AutomationElement> matches = null;
                 Wait(() => { matches = Matches(root, search, contact); return matches.Count > 0 ? matches : null; }, 3500);
-                if (matches == null || matches.Count == 0) return Result(false, "not_found");
+                if (matches == null || matches.Count == 0) return finish(false, "not_found");
                 Thread.Sleep(250);
                 matches = Matches(root, search, contact);
-                if (matches.Count != 1) return Result(false, matches.Count > 1 ? "ambiguous" : "not_found");
+                if (matches.Count != 1) return finish(false, matches.Count > 1 ? "ambiguous" : "not_found");
+                stage = "select_chat";
                 Activate(window, matches[0]);
-                var compose = Wait(() => Find(root, ControlType.Edit, ComposeNames), 3500);
-                if (compose == null) return Result(false, "controls_unavailable");
+                stage = "verify_chat";
                 if (Wait(() => {
                     AssertWindow(window);
                     if (ModalOpen(root)) throw new Failure("dialog_open");
-                    return HeaderMatches(root, contact, sidebarRight, headerBottom, compose) ? "verified" : null;
-                }, 3500) == null) return Result(false, "recipient_unverified");
-                AssertRecipient(window, contact, sidebarRight, headerBottom, compose);
+                    return HeaderMatches(root, contact, sidebarRight, headerBottom) ? "verified" : null;
+                }, 3500) == null) return finish(false, "recipient_unverified");
+                AssertRecipient(window, contact, sidebarRight, headerBottom);
                 if (action == "send") {
+                    stage = "message_input";
+                    var compose = Wait(() => Composer(root), 3500);
+                    if (compose == null) return finish(false, "composer_unavailable");
+                    AssertRecipient(window, contact, sidebarRight, headerBottom, compose);
                     string expected = message.Replace("\r\n", "\n");
                     string draft = Read(compose);
-                    if (draft.Length > 0 && draft != expected) return Result(false, "draft_exists");
+                    if (draft.Length > 0 && draft != expected) return finish(false, "draft_exists");
                     Write(window, compose, expected);
                     if (Wait(() => {
                         AssertRecipient(window, contact, sidebarRight, headerBottom, compose);
                         return Read(compose) == expected ? "verified" : null;
-                    }, 1500) == null) return Result(false, "message_unverified");
+                    }, 1500) == null) return finish(false, "message_unverified");
                     AssertRecipient(window, contact, sidebarRight, headerBottom, compose);
+                    stage = "send_button";
                     var send = Find(root, ControlType.Button, SendNames);
-                    if (send == null) return Result(false, "send_unavailable");
+                    if (send == null) return finish(false, "send_unavailable");
                     // Sending and calling require an actual InvokePattern, never a guessed Enter key.
                     object invoke;
-                    if (!send.TryGetCurrentPattern(InvokePattern.Pattern, out invoke)) return Result(false, "send_unavailable");
-                    if (Read(compose) != expected) return Result(false, "message_unverified");
+                    if (!send.TryGetCurrentPattern(InvokePattern.Pattern, out invoke)) return finish(false, "send_unavailable");
+                    if (Read(compose) != expected) return finish(false, "message_unverified");
                     AssertRecipient(window, contact, sidebarRight, headerBottom, compose);
+                    stage = "send_message";
                     dispatched = true;
                     ((InvokePattern)invoke).Invoke();
+                    stage = "confirm_send";
                     bool cleared = Wait(() => {
                         AssertRecipient(window, contact, sidebarRight, headerBottom, compose);
                         return Read(compose).Length == 0 ? "cleared" : null;
                     }, 3000) != null;
-                    return Result(cleared, cleared ? "sent" : "send_uncertain");
+                    return finish(cleared, cleared ? "sent" : "send_uncertain");
                 }
-                var call = Find(root, ControlType.Button, callType == "voice" ? VoiceNames : VideoNames);
-                if (call == null) return Result(false, "call_unavailable");
-                AssertRecipient(window, contact, sidebarRight, headerBottom, compose);
-                if (CallActive()) return Result(false, "call_active");
+                stage = "call_button";
+                var call = Wait(() => CallButton(root, callType == "voice" ? VoiceNames : VideoNames, sidebarRight, headerBottom), 1500);
+                if (call == null) return finish(false, "call_unavailable");
+                AssertRecipient(window, contact, sidebarRight, headerBottom);
+                if (CallActive()) return finish(false, "call_active");
                 object callInvoke;
-                if (!call.TryGetCurrentPattern(InvokePattern.Pattern, out callInvoke)) return Result(false, "call_unavailable");
+                if (!call.TryGetCurrentPattern(InvokePattern.Pattern, out callInvoke)) return finish(false, "call_not_invokable");
+                stage = "start_call";
                 dispatched = true;
                 ((InvokePattern)callInvoke).Invoke();
+                stage = "confirm_call";
                 bool calling = Wait(() => CallActive() ? "calling" : null, 4500) != null;
-                return Result(calling, calling ? "calling" : "call_uncertain");
-            } catch (Failure e) { return Result(false, dispatched ? (action == "send" ? "send_uncertain" : "call_uncertain") : e.Code); }
-            catch { return Result(false, dispatched ? (action == "send" ? "send_uncertain" : "call_uncertain") : "helper_error"); }
+                return finish(calling, calling ? "calling" : "call_uncertain");
+            } catch (Failure e) { return finish(false, dispatched ? (action == "send" ? "send_uncertain" : "call_uncertain") : e.Code); }
+            catch { return finish(false, dispatched ? (action == "send" ? "send_uncertain" : "call_uncertain") : "helper_error"); }
         }
     }
 }
