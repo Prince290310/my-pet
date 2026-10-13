@@ -20,6 +20,7 @@ const path = require('path');
 const { PetWindow } = require('./petWindow');
 const appearance = require('./appearance');
 const heroMotion = require('./hero-motion');
+const { teamSlots } = require('./team-layout');
 
 const CELL = 32;
 const STEP_MS = 33;
@@ -140,6 +141,7 @@ class Friend {
   }
 
   after(ms, fn) {
+    if (this.disposed) return;
     const t = setTimeout(() => {
       this.timers.delete(t);
       fn();
@@ -177,6 +179,7 @@ class Friend {
   }
 
   floorY() {
+    if (this.mgr.list.length > DEFS.length) return this.mgr.slotY(this);
     const wa = this.mgr.display().workArea;
     return wa.y + wa.height - (this.win ? this.win.S : CELL * this.mgr.scale());
   }
@@ -195,7 +198,7 @@ class Friend {
   moveTo(tx, ty, then, { arriving = false } = {}) {
     this.stopMove();
     this.facing = tx >= this.pos.x ? 'right' : 'left';
-    this.play(arriving && this.def.heroId ? 'arrive' : 'move', true);
+    this.play(this.def.heroId === 'ironman' ? 'fly' : arriving && this.def.heroId ? 'arrive' : 'move', true);
     const sx = this.pos.x;
     const sy = this.pos.y;
     const dist = Math.hypot(tx - sx, ty - sy);
@@ -217,6 +220,7 @@ class Friend {
 
   /** Come on screen next to Shadow. */
   appear(then) {
+    if (this.disposed) return;
     if (this.state === 'here' || this.state === 'arriving') {
       if (then) (this.state === 'here' ? then() : (this.arrived = then));
       return;
@@ -229,7 +233,7 @@ class Friend {
     const target = perch ? this.mgr.perchX(this) : this.mgr.slotX(this);
     const fromLeft = target < wa.x + wa.width / 2;
     const startX = fromLeft ? wa.x - w.S - 10 : wa.x + wa.width + 10;
-    const floor = perch ? this.mgr.perchY(this) : wa.y + wa.height - w.S;
+    const floor = perch ? this.mgr.perchY(this) : this.floorY();
     this.place(startX, this.def.flies ? floor - 220 : floor);
     this.state = 'arriving';
     this.arrived = then;
@@ -255,6 +259,7 @@ class Friend {
 
   /** Walk off the nearest screen edge and hide. */
   leave(then) {
+    if (this.disposed) return;
     if (this.state === 'away' || this.state === 'leaving') return then && then();
     this.clearTimers();
     this.state = 'leaving';
@@ -281,6 +286,7 @@ class Friend {
 
   /** Do a job: come over, play the work animation, say the line. Returns a done(text) function. */
   work(line) {
+    if (!this.def.job || this.disposed) return () => {};
     this.jobs++;
     let finished = false;
     const start = () => {
@@ -341,14 +347,14 @@ class Friend {
         return this.scheduleIdle();
       }
       const want = this.mgr.slotX(this);
-      if (Math.abs(this.pos.x - want) > 140 || Math.abs(this.pos.y - this.floorY()) > 2) {
+      if (Math.abs(this.pos.x - want) > (this.mgr.list.length > DEFS.length ? 2 : 140) || Math.abs(this.pos.y - this.floorY()) > 2) {
         return this.moveTo(want, this.floorY(), () => {
           this.play('idle', true);
           this.scheduleIdle();
         });
       }
       const r = Math.random();
-      if (r < 0.2) {
+      if (r < 0.2 && this.mgr.list.length <= DEFS.length) {
         const wa = this.mgr.display().workArea;
         const nx = Math.max(wa.x, Math.min(wa.x + wa.width - this.win.S, this.pos.x + rand(-60, 60)));
         return this.moveTo(nx, this.floorY(), () => {
@@ -386,6 +392,7 @@ class Friend {
   }
 
   destroy() {
+    this.disposed = true;
     this.clearTimers();
     clearTimeout(this.jobTimer);
     clearTimeout(this.bubbleTimer);
@@ -409,7 +416,7 @@ class FriendsManager extends EventEmitter {
     this.rootAssets = assets;
     this.assets = appearance.assetsDir(assets, settings);
     this.isolated = isolated;
-    this.list = DEFS.map((d) => new Friend(appearance.friendDef(d, settings), this));
+    this.list = appearance.friendDefinitions(DEFS, settings).map(d => new Friend(d, this));
     this.sheets = {};
     this.gangUntil = 0;
     this.playTimer = null;
@@ -424,14 +431,22 @@ class FriendsManager extends EventEmitter {
   setAppearance() {
     this.assets = appearance.assetsDir(this.rootAssets, this.settings);
     this.sheets = {};
-    this.list.forEach((f, i) => {
-      f.def = appearance.friendDef(DEFS[i], this.settings);
+    (this.gangTimers || []).forEach(clearTimeout);
+    this.gangTimers = [];
+    const previous = new Map(this.list.map(f => [f.id, f]));
+    this.list = appearance.friendDefinitions(DEFS, this.settings).map(def => {
+      const f = previous.get(def.id) || new Friend(def, this);
+      previous.delete(def.id);
+      f.def = def;
       f.meta = JSON.parse(fs.readFileSync(appearance.friendAsset(this.rootAssets, this.settings, f.id, 'json'), 'utf8'));
       if (f.win && f.win.alive()) {
         f.win.win.setTitle(f.def.name);
         f.onReady();
       }
+      return f;
     });
+    previous.forEach(f => f.destroy());
+    this.apply();
   }
 
   enabled(id) {
@@ -466,6 +481,7 @@ class FriendsManager extends EventEmitter {
 
   /** Where a friend stands: next to Shadow, each on its own side/slot. */
   slotX(friend) {
+    if (this.list.length > DEFS.length) return this.teamPosition(friend).x;
     const wa = this.display().workArea;
     const S = friend.win ? friend.win.S : CELL * this.scale();
     const gap = S + 6 * this.scale();
@@ -475,6 +491,17 @@ class FriendsManager extends EventEmitter {
     // no room on that side (Shadow at the screen edge)? use the other side
     if (x < wa.x || x > wa.x + wa.width - S) x = side < 0 ? cx + this.pet.S / 2 + gap * (-side - 1) + 6 : cx - this.pet.S / 2 - gap * side;
     return Math.max(wa.x, Math.min(wa.x + wa.width - S, x));
+  }
+
+  teamPosition(friend) {
+    const active = this.list.filter(f => this.enabled(f.id));
+    const S = CELL * this.scale();
+    const slots = teamSlots(this.display().workArea, { ...this.pet.pos, size: this.pet.S }, active.length, S, 6 * this.scale());
+    return slots[active.indexOf(friend)] || { x: this.display().workArea.x, y: this.display().workArea.y };
+  }
+
+  slotY(friend) {
+    return this.teamPosition(friend).y;
   }
 
   /** Sage's perch: on top of Shadow's head. */
@@ -507,22 +534,27 @@ class FriendsManager extends EventEmitter {
 
   stop() {
     clearTimeout(this.playTimer);
+    clearTimeout(this.gangTimer);
+    (this.gangTimers || []).forEach(clearTimeout);
+    (this.applyTimers || []).forEach(clearTimeout);
     this.list.forEach((f) => f.destroy());
   }
 
   /** Bring friends out / send them home to match the mode and switches. */
   apply() {
+    (this.applyTimers || []).forEach(clearTimeout);
+    this.applyTimers = [];
     const hidden = this.brain.state === 'hidden';
     this.list.forEach((f, i) => {
       const wanted = !hidden && this.enabled(f.id) && (this.mode() === 'always' || f.jobs > 0 || Date.now() < this.gangUntil);
-      if (wanted && f.state === 'away') setTimeout(() => f.appear(), i * 700);
+      if (wanted && f.state === 'away') this.applyTimers.push(setTimeout(() => this.shouldStay(f) && f.appear(), i * (this.list.length > DEFS.length ? 180 : 700)));
       else if (!wanted && f.state !== 'away' && !f.jobs) f.leave();
     });
   }
 
   /** Should this friend still be on screen? */
   shouldStay(f) {
-    if (!this.enabled(f.id) || this.brain.state === 'hidden') return false;
+    if (f.disposed || !this.enabled(f.id) || this.brain.state === 'hidden') return false;
     return f.jobs > 0 || this.mode() === 'always' || Date.now() < this.gangUntil || Date.now() < f.stayUntil;
   }
 
@@ -535,13 +567,13 @@ class FriendsManager extends EventEmitter {
   /** Start a job for a friend. Returns done(line) - or a no-op if that friend is switched off. */
   job(id, line) {
     const f = this.get(id);
-    if (!f || !this.enabled(id) || this.brain.state === 'hidden') return () => {};
+    if (!f || !f.def.job || !this.enabled(id) || this.brain.state === 'hidden') return () => {};
     return f.work(line);
   }
 
   quickJob(id, line, ms) {
     const f = this.get(id);
-    if (!f || !this.enabled(id) || this.brain.state === 'hidden') return false;
+    if (!f || !f.def.job || !this.enabled(id) || this.brain.state === 'hidden') return false;
     f.quickJob(line, ms);
     return true;
   }
@@ -556,6 +588,7 @@ class FriendsManager extends EventEmitter {
       setTimeout(
         () =>
           Date.now() < this.gangUntil &&
+          this.enabled(f.id) && !f.disposed &&
           f.appear(() => {
             arrived++;
             f.after(i * 1500, () => {
@@ -565,7 +598,7 @@ class FriendsManager extends EventEmitter {
             });
             if (arrived === out.length) this.shadowJoins();
           }),
-        i * 500
+        i * (out.length > DEFS.length ? 180 : 500)
       )
     ));
     clearTimeout(this.gangTimer);

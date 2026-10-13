@@ -1,0 +1,113 @@
+{
+  "frameWidth": 48,
+  "frameHeight": 48,
+  "columns": 8,
+  "animations": {
+    "idle": {
+      "row": 0,
+      "frames": 8,
+      "fps": 5,
+      "loop": true,
+      "flip": true,
+      "note": "idle: wanda, cape sway"
+    },
+    "walk_right": {
+      "row": 1,
+      "frames": 8,
+      "fps": 10,
+      "loop": true,
+      "flip": false,
+      "note": "walk_right: wanda, cape sway"
+    },
+    "walk_left": {
+      "row": 2,
+      "frames": 8,
+      "fps": 10,
+      "loop": true,
+      "flip": false,
+      "note": "walk_left: wanda, cape sway"
+    },
+    "sit": {
+      "row": 3,
+      "frames": 6,
+      "fps": 3,
+      "loop": true,
+      "flip": false,
+      "note": "sit: wanda, cape sway"
+    },
+    "sleep": {
+      "row": 4,
+      "frames": 6,
+      "fps": 3,
+      "loop": true,
+      "flip": false,
+      "note": "sleep: wanda, cape sway"
+    },
+    "talk": {
+      "row": 5,
+      "frames": 4,
+      "fps": 8,
+      "loop": true,
+      "flip": false,
+      "note": "talk: wanda, cape sway"
+    },
+    "happy": {
+      "row": 6,
+      "frames": 6,
+      "fps": 7,
+      "loop": true,
+      "flip": false,
+      "note": "happy: wanda, cape sway"
+    },
+    "stretch": {
+      "row": 7,
+      "frames": 6,
+      "fps": 5,
+      "loop": false,
+      "flip": true,
+      "note": "stretch: wanda, cape sway"
+    },
+    "pounce": {
+      "row": 8,
+      "frames": 8,
+      "fps": 8,
+      "loop": false,
+      "flip": true,
+      "note": "pounce: wanda, cape sway"
+    },
+    "alert": {
+      "row": 9,
+      "frames": 4,
+      "fps": 6,
+      "loop": true,
+      "flip": false,
+      "note": "alert: wanda, cape sway"
+    },
+    "groom": {
+      "row": 10,
+      "frames": 6,
+      "fps": 6,
+      "loop": true,
+      "flip": false,
+      "note": "groom: wanda, cape sway"
+    },
+    "arrive": {
+      "row": 11,
+      "frames": 4,
+      "fps": 8,
+      "loop": false,
+      "flip": true,
+      "note": "arrive: wanda, cape sway"
+    },
+    "land": {
+      "row": 12,
+      "frames": 4,
+      "fps": 10,
+      "loop": false,
+      "flip": true,
+      "note": "land: wanda, cape sway"
+    }
+  },
+  "character": "wanda",
+  "motion": "cape sway"
+}

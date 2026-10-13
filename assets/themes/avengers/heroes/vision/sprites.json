@@ -1,0 +1,113 @@
+{
+  "frameWidth": 48,
+  "frameHeight": 48,
+  "columns": 8,
+  "animations": {
+    "idle": {
+      "row": 0,
+      "frames": 8,
+      "fps": 5,
+      "loop": true,
+      "flip": true,
+      "note": "idle: vision, gentle hover"
+    },
+    "walk_right": {
+      "row": 1,
+      "frames": 8,
+      "fps": 10,
+      "loop": true,
+      "flip": false,
+      "note": "walk_right: vision, gentle hover"
+    },
+    "walk_left": {
+      "row": 2,
+      "frames": 8,
+      "fps": 10,
+      "loop": true,
+      "flip": false,
+      "note": "walk_left: vision, gentle hover"
+    },
+    "sit": {
+      "row": 3,
+      "frames": 6,
+      "fps": 3,
+      "loop": true,
+      "flip": false,
+      "note": "sit: vision, gentle hover"
+    },
+    "sleep": {
+      "row": 4,
+      "frames": 6,
+      "fps": 3,
+      "loop": true,
+      "flip": false,
+      "note": "sleep: vision, gentle hover"
+    },
+    "talk": {
+      "row": 5,
+      "frames": 4,
+      "fps": 8,
+      "loop": true,
+      "flip": false,
+      "note": "talk: vision, gentle hover"
+    },
+    "happy": {
+      "row": 6,
+      "frames": 6,
+      "fps": 7,
+      "loop": true,
+      "flip": false,
+      "note": "happy: vision, gentle hover"
+    },
+    "stretch": {
+      "row": 7,
+      "frames": 6,
+      "fps": 5,
+      "loop": false,
+      "flip": true,
+      "note": "stretch: vision, gentle hover"
+    },
+    "pounce": {
+      "row": 8,
+      "frames": 8,
+      "fps": 8,
+      "loop": false,
+      "flip": true,
+      "note": "pounce: vision, gentle hover"
+    },
+    "alert": {
+      "row": 9,
+      "frames": 4,
+      "fps": 6,
+      "loop": true,
+      "flip": false,
+      "note": "alert: vision, gentle hover"
+    },
+    "groom": {
+      "row": 10,
+      "frames": 6,
+      "fps": 6,
+      "loop": true,
+      "flip": false,
+      "note": "groom: vision, gentle hover"
+    },
+    "arrive": {
+      "row": 11,
+      "frames": 4,
+      "fps": 8,
+      "loop": false,
+      "flip": true,
+      "note": "arrive: vision, gentle hover"
+    },
+    "land": {
+      "row": 12,
+      "frames": 4,
+      "fps": 10,
+      "loop": false,
+      "flip": true,
+      "note": "land: vision, gentle hover"
+    }
+  },
+  "character": "vision",
+  "motion": "gentle hover"
+}

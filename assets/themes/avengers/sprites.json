@@ -9,7 +9,7 @@
       "fps": 5,
       "loop": true,
       "flip": true,
-      "note": "idle: ironman, thruster flight"
+      "note": "idle: ironman, horizontal thruster flight"
     },
     "walk_right": {
       "row": 1,
@@ -17,7 +17,7 @@
       "fps": 10,
       "loop": true,
       "flip": false,
-      "note": "walk_right: ironman, thruster flight"
+      "note": "walk_right: ironman, horizontal thruster flight"
     },
     "walk_left": {
       "row": 2,
@@ -25,7 +25,7 @@
       "fps": 10,
       "loop": true,
       "flip": false,
-      "note": "walk_left: ironman, thruster flight"
+      "note": "walk_left: ironman, horizontal thruster flight"
     },
     "sit": {
       "row": 3,
@@ -33,7 +33,7 @@
       "fps": 3,
       "loop": true,
       "flip": false,
-      "note": "sit: ironman, thruster flight"
+      "note": "sit: ironman, horizontal thruster flight"
     },
     "sleep": {
       "row": 4,
@@ -41,7 +41,7 @@
       "fps": 3,
       "loop": true,
       "flip": false,
-      "note": "sleep: ironman, thruster flight"
+      "note": "sleep: ironman, horizontal thruster flight"
     },
     "talk": {
       "row": 5,
@@ -49,7 +49,7 @@
       "fps": 8,
       "loop": true,
       "flip": false,
-      "note": "talk: ironman, thruster flight"
+      "note": "talk: ironman, horizontal thruster flight"
     },
     "happy": {
       "row": 6,
@@ -57,7 +57,7 @@
       "fps": 7,
       "loop": true,
       "flip": false,
-      "note": "happy: ironman, thruster flight"
+      "note": "happy: ironman, horizontal thruster flight"
     },
     "stretch": {
       "row": 7,
@@ -65,7 +65,7 @@
       "fps": 5,
       "loop": false,
       "flip": true,
-      "note": "stretch: ironman, thruster flight"
+      "note": "stretch: ironman, horizontal thruster flight"
     },
     "pounce": {
       "row": 8,
@@ -73,7 +73,7 @@
       "fps": 8,
       "loop": false,
       "flip": true,
-      "note": "pounce: ironman, thruster flight"
+      "note": "pounce: ironman, horizontal thruster flight"
     },
     "alert": {
       "row": 9,
@@ -81,7 +81,7 @@
       "fps": 6,
       "loop": true,
       "flip": false,
-      "note": "alert: ironman, thruster flight"
+      "note": "alert: ironman, horizontal thruster flight"
     },
     "groom": {
       "row": 10,
@@ -89,7 +89,7 @@
       "fps": 6,
       "loop": true,
       "flip": false,
-      "note": "groom: ironman, thruster flight"
+      "note": "groom: ironman, horizontal thruster flight"
     },
     "arrive": {
       "row": 11,
@@ -97,7 +97,7 @@
       "fps": 8,
       "loop": false,
       "flip": true,
-      "note": "arrive: ironman, thruster flight"
+      "note": "arrive: ironman, horizontal thruster flight"
     },
     "land": {
       "row": 12,
@@ -105,9 +105,17 @@
       "fps": 10,
       "loop": false,
       "flip": true,
-      "note": "land: ironman, thruster flight"
+      "note": "land: ironman, horizontal thruster flight"
+    },
+    "fly": {
+      "row": 13,
+      "frames": 8,
+      "fps": 12,
+      "loop": true,
+      "flip": true,
+      "note": "fly: ironman, horizontal thruster flight"
     }
   },
   "character": "ironman",
-  "motion": "thruster flight"
+  "motion": "horizontal thruster flight"
 }

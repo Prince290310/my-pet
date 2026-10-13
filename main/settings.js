@@ -44,7 +44,7 @@ const DEFAULTS = Object.freeze({
   telegramChatId: 0, // the paired Telegram chat (only this one is listened to)
   telegramNotify: true, // reminders + PC alerts also go to the phone when you're away
   friendsMode: 'occasional', // always | working | occasional (friends.js)
-  friends: { atlas: true, dash: true, bolt: true, sage: true, zen: true, tempo: true }, // which friends are switched on
+  friends: { atlas: true, dash: true, bolt: true, sage: true, zen: true, tempo: true, vision: true, wanda: true, widow: true, panther: true, hawkeye: true, antman: true, falcon: true, warmachine: true }, // which friends are switched on
   searchKey: '', // free Tavily key (app.tavily.com)
   position: null, // last pet position {x, y}
 });
@@ -148,7 +148,7 @@ class Settings extends EventEmitter {
 
   /** Merge a patch, validate, save, and emit 'change' with the list of changed keys. */
   update(patch) {
-    const next = validate({ ...this.data, ...patch });
+    const next = validate({ ...this.data, ...patch, ...(patch.friends ? { friends: { ...this.data.friends, ...patch.friends } } : {}) });
     const changed = Object.keys(next).filter((k) => JSON.stringify(next[k]) !== JSON.stringify(this.data[k]));
     this.data = next;
     if (changed.length) {

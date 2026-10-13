@@ -31,6 +31,7 @@ function main() {
       const row = Object.keys(meta.animations).length;
       meta.animations.arrive = { row, frames: 4, fps: 8, loop: false, flip: true };
       meta.animations.land = { row: row + 1, frames: 4, fps: 10, loop: false, flip: true };
+      if (id === 'ironman') meta.animations.fly = { row: row + 2, frames: 8, fps: 12, loop: true, flip: true };
       if (file === 'friend') meta.animations.move.fps = id === 'quicksilver' ? 12 : id === 'hulk' ? 7 : 10;
       write(path.join(dir, `${file}.png`), sheet(id, meta));
       fs.writeFileSync(path.join(dir, `${file}.json`), JSON.stringify(meta, null, 2) + '\n');
@@ -43,15 +44,23 @@ function main() {
     for (const extension of ['png', 'json']) fs.copyFileSync(path.join(OUT, 'heroes', id, `friend.${extension}`), path.join(OUT, 'friends', `${key}.${extension}`));
   }
   fs.writeFileSync(path.join(OUT, 'icon.ico'), encodeICO([16, 32, 48, 64, 128, 256].map(size => ({ size, rgba: badge(size).px }))));
-  const preview = new Bitmap(7 * 64 + 16, 96);
-  for (let y = 0; y < preview.h; y++) for (let x = 0; x < preview.w; x++) preview.set(x, y, y < 78 ? '#101b2e' : '#1a2b40');
-  ['ironman', ...Object.values(TEAM)].forEach((id, i) => preview.blit(hero(id, id === 'strange' ? 'work' : 'idle').scaled(2), 8 + i * 64, 13));
+  const characters = Object.keys(PROFILES);
+  const columns = 8;
+  const preview = new Bitmap(columns * 64 + 16, Math.ceil(characters.length / columns) * 80 + 16);
+  for (let y = 0; y < preview.h; y++) for (let x = 0; x < preview.w; x++) preview.set(x, y, y % 80 < 76 ? '#101b2e' : '#1a2b40');
+  characters.forEach((id, i) => preview.blit(hero(id, id === 'strange' ? 'work' : 'idle').scaled(2), 8 + (i % columns) * 64, 8 + Math.floor(i / columns) * 80));
   write(path.join(ROOT, 'preview', 'avengers-team.png'), preview.scaled(3));
   write(path.join(OUT, 'team.png'), preview.scaled(3));
-  const moves = new Bitmap(8 * 32, 7 * 32);
+  const moves = new Bitmap(8 * 32, characters.length * 32);
   Object.keys(PROFILES).forEach((id, row) => { for (let frame = 0; frame < 8; frame++) moves.blit(hero(id, frame < 4 ? 'move' : 'land', frame), frame * 32, row * 32); });
   write(path.join(ROOT, 'preview', 'avengers-movement.png'), moves.scaled(4));
-  console.log('Seven selectable heroes generated, with arrival, movement and landing animations. Quicksilver replaces Star-Lord.');
+  const flight = new Bitmap(8 * 32, 2 * 32);
+  for (let frame = 0; frame < 8; frame++) {
+    flight.blit(hero('ironman', 'fly', frame), frame * 32, 0);
+    flight.blit(hero('ironman', 'fly', frame), frame * 32, 32, true);
+  }
+  write(path.join(ROOT, 'preview', 'ironman-flight.png'), flight.scaled(4));
+  console.log('Fifteen Avengers generated: seven selectable leads and eight visual teammates with no assigned jobs.');
 }
 if (require.main === module) main();
 module.exports = { main, TEAM, sheet };

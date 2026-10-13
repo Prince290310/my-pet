@@ -127,7 +127,7 @@ function showFriends(list, s) {
       box.checked = f.enabled;
       const i = document.createElement('i');
       const text = document.createElement('span');
-      text.textContent = `${f.icon || ICON[f.id] || '🐾'} ${f.name}${f.animal === 'Avenger' ? '' : ` the ${f.animal}`} - ${f.job}: ${f.blurb}`;
+      text.textContent = `${f.icon || ICON[f.id] || '🐾'} ${f.name}${f.animal === 'Avenger' ? '' : ` the ${f.animal}`} - ${f.job ? `${f.job}: ${f.blurb}` : 'No job assigned'}`;
       label.append(box, i, text);
       return label;
     })
@@ -243,14 +243,14 @@ function showExams(list) {
 function showAppearance(value) {
   const avengers = value === 'avengers';
   $('teamPreview').src = avengers ? '../../assets/themes/avengers/team.png' : '../../assets/icon.png';
-  $('teamPreview').alt = avengers ? 'Iron Man, Spider-Man, Captain America, Thor, Doctor Strange, Hulk and Quicksilver pixel sprites' : 'Original Shadow panther';
+  $('teamPreview').alt = avengers ? 'The fifteen Avengers pixel characters, including eight new teammates without assigned jobs' : 'Original Shadow panther';
   $('teamPreview').classList.toggle('original', !avengers);
-  $('teamDescription').textContent = avengers ? 'Choose any of the seven heroes to lead. Iron Man takes the chosen hero’s supporting slot, so your team stays complete and every job is covered.' : 'Your original panther with Atlas, Dash, Bolt, Sage, Zen and Tempo.';
+  $('teamDescription').textContent = avengers ? 'A team of fifteen Avengers. Choose one of the original seven heroes to lead. Vision, Scarlet Witch, Black Widow, Black Panther, Hawkeye, Ant-Man, Falcon and War Machine are visual teammates with no jobs or skills assigned.' : 'Your original panther with Atlas, Dash, Bolt, Sage, Zen and Tempo.';
   $('mainHeroField').classList.toggle('hidden', !avengers);
   $('heroMotion').classList.toggle('hidden', !avengers);
   showHeroMotion();
 }
-const HERO_MOVES = { ironman: 'Thruster flight and repulsor landings', spiderman: 'Web swings and acrobatic arrivals', cap: 'Shield runs and defensive landings', thor: 'Hammer-powered leaps and lightning landings', strange: 'Portal arrivals and mystic glides', hulk: 'Heavy bounds, ground slams and landing dust', quicksilver: 'Fast dashes with blue and silver speed trails' };
+const HERO_MOVES = { ironman: 'Horizontal flight, rear thrusters and smooth landings', spiderman: 'Web swings and acrobatic arrivals', cap: 'Shield runs and defensive landings', thor: 'Hammer-powered leaps and lightning landings', strange: 'Portal arrivals and mystic glides', hulk: 'Heavy bounds, ground slams and landing dust', quicksilver: 'Fast dashes with blue and silver speed trails' };
 function showHeroMotion() { $('heroMotion').textContent = HERO_MOVES[$('mainHero').value] || ''; }
 $('mainHero').addEventListener('change', showHeroMotion);
 $('appearance').addEventListener('change', () => showAppearance($('appearance').value));
@@ -269,7 +269,7 @@ function fill({ settings: s, appearance: theme, providers: list, startWithWindow
   document.title = `${theme.name} Settings`;
   document.querySelector('.logo').src = `${theme.assetPath}/icon.png`;
   document.querySelector('.sub').textContent = s.appearance === 'avengers' ? 'Your Avengers command center. Changes apply when you hit Save.' : 'Tune your panther. Changes apply instantly when you hit Save.';
-  $('friendsDescription').textContent = s.appearance === 'avengers' ? 'Your Avengers team — each hero has a job and shows up to do it.' : "Shadow's gang - each one has a job and shows up to do it.";
+  $('friendsDescription').textContent = s.appearance === 'avengers' ? 'Your Avengers team. The original six supporting roles stay available; the eight new characters have no jobs assigned. Call them by name, assemble the team, or choose Always to keep them around.' : "Shadow's gang - each one has a job and shows up to do it.";
   $('callGang').textContent = s.appearance === 'avengers' ? 'AVENGERS, ASSEMBLE! ⚡' : 'CALL THE GANG 🐾';
   $('nameHelp').textContent = s.appearance === 'avengers' ? 'The default name Shadow displays your selected hero’s name. Enter a custom name if you prefer.' : '';
   $('pcControlLabel').textContent = `Let ${theme.name} open apps & folders and lock / sleep / screenshot my PC`;

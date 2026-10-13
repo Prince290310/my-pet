@@ -9,13 +9,15 @@ const P = {
   cyan: pal('#48a5d5', '#bceaff', '#27617e'),
   skin: pal('#e4ad85', '#ffe0ba', '#aa715a'), green: pal('#65b64a', '#a4e76c', '#357241'),
   purple: pal('#7353a7', '#be96ed', '#43316b'), black: pal('#28313e', '#596676', '#151c29'),
+  auburn: pal('#a9442e', '#ed8a51', '#632733'), brownSkin: pal('#885f49', '#c5916d', '#51382d'),
 };
 
 function hero(id, animation = 'idle', frame = 0, size = 32) {
+  if (id === 'ironman' && /^(fly|move|walk_left|walk_right|arrive)$/.test(animation)) return ironManFlight(frame, size);
   const b = new Bitmap(32, 32);
   const phase = Math.sin(frame * Math.PI / 2);
   const moving = /move|walk|arrive/.test(animation);
-  const flying = animation === 'pounce' || (moving && ['ironman', 'spiderman', 'strange', 'thor', 'hulk'].includes(id));
+  const flying = animation === 'pounce' || (moving && ['ironman', 'spiderman', 'strange', 'thor', 'hulk', 'vision', 'falcon', 'warmachine'].includes(id));
   const landing = animation === 'land' || (animation === 'pounce' && frame >= 6);
   const action = moving || animation === 'pounce';
   const resting = animation === 'sleep' || animation === 'sit';
@@ -27,12 +29,29 @@ function hero(id, animation = 'idle', frame = 0, size = 32) {
   const line = (x, y, xx, yy, color) => b.line(x, y + dy, xx, yy + dy, color);
   const dot = (x, y, color) => b.set(x, y + dy, color);
   const limb = (x, y, xx, yy, width, palette) => shape(new Mask(32, 32).capsule(x, y + dy, xx, yy + dy, width), palette);
-  const torso = id === 'quicksilver' ? P.cyan : id === 'hulk' ? P.green : id === 'cap' || id === 'strange' ? P.blue : id === 'thor' ? P.black : P.red;
+  const torso = id === 'vision' ? P.green : ['widow', 'panther', 'warmachine'].includes(id) ? P.black : id === 'hawkeye' ? P.purple : id === 'falcon' ? P.silver : id === 'quicksilver' ? P.cyan : id === 'hulk' ? P.green : id === 'cap' || id === 'strange' ? P.blue : id === 'thor' ? P.black : P.red;
   const leg = id === 'hulk' ? P.purple : id === 'spiderman' ? P.blue : id === 'quicksilver' ? P.black : torso;
   const spread = id === 'hulk' ? 2 : 0;
   const footY = resting ? 29 - dy : 29;
   const stride = moving ? phase * (id === 'quicksilver' ? 4 : id === 'hulk' ? 3 : 2) : 0;
-  if (id === 'thor' || id === 'strange') poly([[9, 14], [23, 14], [27 + phase, 28], [6, 28]], P.red);
+  if (id === 'thor' || id === 'strange' || id === 'wanda' || id === 'vision') poly([[9, 14], [23, 14], [27 + phase, 28], [6, 28]], id === 'vision' ? P.gold : P.red);
+  if (id === 'wanda' || id === 'widow') {
+    poly([[8, 5], [23, 5], [25, 11], [24, 20], [20, 18], [12, 18], [7, 20], [6, 12]], P.auburn);
+  }
+  if (id === 'falcon') {
+    const tip = flying || raised ? 8 + phase * 2 : 18;
+    poly([[10, 17], [1, tip], [0, tip + 7], [9, 23]], P.silver);
+    poly([[22, 17], [30, tip], [31, tip + 7], [23, 23]], P.silver);
+    for (const x of [3, 6, 25, 28]) line(x, tip + 3, x, tip + 7, '#c53236');
+  }
+  if (id === 'hawkeye') {
+    line(8, 14, 19, 6, '#b4c0d1');
+    for (const x of [16, 19, 22]) { line(x, 7, x - 4, 15, '#d6c49d'); dot(x, 6, '#ce9eea'); }
+  }
+  if (id === 'warmachine') {
+    poly([[21, 12], [30, 12], [30, 15], [21, 15]], P.black);
+    line(24, 12, 29, 12, '#a2b5c8');
+  }
   if (id === 'strange' && /arrive|move|walk|land/.test(animation)) {
     for (let a = 0; a < Math.PI * 2; a += 0.16) b.set(16 + Math.cos(a) * 13, 16 + Math.sin(a) * 14, frame % 2 ? '#ffb653' : '#ff8142');
   }
@@ -44,8 +63,9 @@ function hero(id, animation = 'idle', frame = 0, size = 32) {
   }
   limb(12, 23, 12 - stride, footY, 2.2, leg);
   limb(20, 23, 20 + stride, footY, 2.2, leg);
-  ellipse(11 - stride, footY, 3, 1.3, id === 'hulk' ? P.green : id === 'strange' ? P.black : P.red);
-  ellipse(21 + stride, footY, 3, 1.3, id === 'hulk' ? P.green : id === 'strange' ? P.black : P.red);
+  const boot = id === 'hulk' ? P.green : ['strange', 'widow', 'panther', 'hawkeye', 'antman', 'warmachine'].includes(id) ? P.black : id === 'vision' ? P.gold : P.red;
+  ellipse(11 - stride, footY, 3, 1.3, boot);
+  ellipse(21 + stride, footY, 3, 1.3, boot);
   poly([[10 - spread, 16], [22 + spread, 16], [23, 21], [20, 25], [12, 25], [9, 21]], torso);
   const arm = id === 'hulk' ? P.green : id === 'thor' ? P.skin : torso;
   const leftY = landing && id === 'hulk' ? 28 : animation === 'stretch' ? 8 : raised ? 16 + phase * 2 : 24 + (moving ? stride : 0);
@@ -54,7 +74,7 @@ function hero(id, animation = 'idle', frame = 0, size = 32) {
   limb(23 + spread, 17, 26 + spread, rightY, id === 'hulk' ? 2.8 : 2, arm);
   ellipse(6 - spread, leftY, 2, 2, id === 'ironman' ? P.gold : arm);
   ellipse(26 + spread, rightY, 2, 2, id === 'ironman' ? P.gold : arm);
-  const headPal = id === 'ironman' || id === 'spiderman' ? P.red : id === 'cap' ? P.blue : id === 'hulk' ? P.green : P.skin;
+  const headPal = id === 'vision' ? P.red : id === 'panther' || id === 'warmachine' ? P.black : id === 'antman' ? P.silver : id === 'falcon' ? P.brownSkin : id === 'ironman' || id === 'spiderman' ? P.red : id === 'cap' ? P.blue : id === 'hulk' ? P.green : P.skin;
   poly([[10, 4], [21, 4], [24, 7], [24, 12], [21, 15], [10, 15], [7, 12], [7, 7]], headPal);
   const closed = animation === 'sleep';
   if (id === 'ironman') {
@@ -93,12 +113,61 @@ function hero(id, animation = 'idle', frame = 0, size = 32) {
     const shieldX = moving ? 24 + phase : 25, shieldY = moving ? 19 : 22;
     ellipse(shieldX, shieldY, 5.5, 5.5, P.red); ellipse(shieldX, shieldY, 4, 4, P.silver); ellipse(shieldX, shieldY, 3, 3, P.red); ellipse(shieldX, shieldY, 2, 2, P.blue);
     b.pattern(Math.round(shieldX) - 1, shieldY - 2 + dy, ['.W.', 'WWW', '.W.'], { W: '#ffffff' });
+  } else if (['vision', 'panther', 'antman', 'warmachine'].includes(id)) {
+    const eye = closed ? '#596676' : id === 'antman' || id === 'warmachine' ? '#ff605d' : '#e5faff';
+    line(10, 9, 13, 10, eye); line(18, 10, 21, 9, eye);
+    if (id === 'vision') {
+      poly([[16, 5], [18, 7], [16, 9], [14, 7]], P.gold);
+      line(11, 13, 20, 13, '#682332');
+      poly([[16, 17], [20, 21], [16, 24], [12, 21]], P.gold);
+      line(11, 24, 21, 24, '#e2b74d');
+    } else if (id === 'panther') {
+      poly([[8, 7], [9, 2], [13, 5]], P.black); poly([[19, 5], [23, 2], [24, 7]], P.black);
+      line(11, 5, 14, 7, '#99acbf'); line(20, 5, 17, 7, '#99acbf');
+      for (const x of [10, 13, 16, 19, 22]) line(x, 16, x, 19 - Math.abs(16 - x) / 3, '#dbe7f6');
+      line(12, 23, 16, 24, '#957acc'); line(16, 24, 20, 23, '#957acc');
+    } else if (id === 'antman') {
+      poly([[14, 4], [18, 4], [18, 14], [14, 14]], P.red);
+      line(9, 5, 6, 1, '#d5e7f4'); line(22, 5, 25, 1, '#d5e7f4');
+      ellipse(9, 12, 1.6, 1.6, P.black); ellipse(22, 12, 1.6, 1.6, P.black);
+      line(12, 13, 20, 13, '#172536');
+      line(12, 18, 16, 21, '#d5e7f4'); line(20, 18, 16, 21, '#d5e7f4');
+      line(10, 24, 22, 24, '#d5e7f4');
+    } else {
+      poly([[10, 6], [21, 6], [22, 12], [19, 14], [12, 14], [9, 12]], P.silver);
+      line(10, 9, 14, 9, eye); line(18, 9, 21, 9, eye);
+      line(13, 13, 19, 13, '#28313e');
+      poly([[13, 18], [19, 18], [19, 22], [13, 22]], P.silver);
+      dot(16, 20, '#efffff');
+      line(10, 24, 22, 24, '#a9bbc9');
+      if (flying) for (const x of [11 - stride, 21 + stride]) line(x, footY + 1, x, 31 - dy, '#ecf2ff');
+    }
   } else {
-    const hair = id === 'quicksilver' ? P.silver : id === 'thor' ? P.gold : P.black;
+    const hair = ['wanda', 'widow'].includes(id) ? P.auburn : id === 'hawkeye' ? P.gold : id === 'quicksilver' ? P.silver : id === 'thor' ? P.gold : P.black;
     poly([[9, 4], [22, 4], [23, 7], [19, 6], [16, 7], [12, 6], [8, 8]], hair);
     line(10, 9, 13, 9, closed ? '#947855' : '#172536'); line(18, 9, 21, 9, closed ? '#947855' : '#172536');
     line(14, 12, 18, 12 + (animation === 'talk' ? frame % 2 : 0), '#824835');
-    if (id === 'thor') {
+    if (id === 'wanda') {
+      poly([[8, 4], [12, 7], [16, 5], [20, 7], [24, 4], [23, 9], [19, 8], [16, 7], [12, 8], [9, 9]], P.red);
+      poly([[11, 17], [16, 19], [21, 17], [20, 23], [16, 24], [12, 23]], P.black);
+      line(11, 18, 16, 21, '#ff8175'); line(21, 18, 16, 21, '#ff8175');
+    } else if (id === 'widow') {
+      limb(8, 8, 8, 16, 1.4, P.auburn); limb(23, 8, 23, 16, 1.4, P.auburn);
+      line(16, 17, 16, 23, '#9cacbe');
+      line(10, 24, 22, 24, '#e4ac48');
+      b.pattern(14, 22 + dy, ['RRR', '.R.', 'RRR'], { R: '#fa6655' });
+      line(5, leftY - 2, 7, leftY - 2, '#66b7ec'); line(25, rightY - 2, 27, rightY - 2, '#66b7ec');
+    } else if (id === 'hawkeye') {
+      line(9, 9, 22, 9, '#674487'); line(10, 10, 13, 10, '#181d2e'); line(18, 10, 21, 10, '#181d2e');
+      line(11, 17, 20, 24, '#18212d'); line(10, 24, 22, 24, '#b7a4d6');
+      poly([[3, leftY - 8], [1, leftY - 3], [1, leftY + 3], [3, leftY + 7], [5, leftY + 7], [3, leftY + 2], [3, leftY - 3], [5, leftY - 8]], P.gold);
+      line(5, leftY - 7, 5, leftY + 6, '#dce3ec');
+    } else if (id === 'falcon') {
+      line(9, 9, 22, 9, '#cf353e'); line(10, 10, 13, 10, '#ff807a'); line(18, 10, 21, 10, '#ff807a');
+      line(12, 12, 20, 12, '#352e31');
+      poly([[11, 17], [16, 21], [21, 17], [21, 20], [16, 24], [11, 20]], P.red);
+      line(10, 24, 22, 24, '#2e3948');
+    } else if (id === 'thor') {
       limb(9, 8, 9, 15, 1.1, P.gold); limb(22, 8, 22, 15, 1.1, P.gold);
       for (const x of [12, 20]) for (const y of [18, 22]) ellipse(x, y, 1.4, 1.4, P.silver);
       line(26, rightY - 1, 26, rightY - 8, '#98623b');
@@ -134,6 +203,36 @@ function hero(id, animation = 'idle', frame = 0, size = 32) {
     const x = 2 + frame % 3, y = 5 + frame % 2;
     b.line(x - 1, y, x + 1, y, '#ffe59a'); b.line(x, y - 1, x, y + 1, '#ffe59a');
   }
+  return size === 32 ? b : b.scaled(size / 32);
+}
+
+// Sideways flight: boots and exhaust trail behind the helmet, with no walking stride.
+function ironManFlight(frame, size) {
+  const b = new Bitmap(32, 32);
+  const dy = frame % 4 === 1 ? -1 : frame % 4 === 3 ? 1 : 0;
+  const shape = (mask, palette) => paint(b, mask, palette);
+  const poly = (points, palette) => shape(new Mask(32, 32).poly(points.map(([x, y]) => [x, y + dy])), palette);
+  const limb = (x, y, xx, yy, width, palette) => shape(new Mask(32, 32).capsule(x, y + dy, xx, yy + dy, width), palette);
+  const line = (x, y, xx, yy, color) => b.line(x, y + dy, xx, yy + dy, color);
+  for (const y of [17, 23]) {
+    line(frame % 2, y, 7, y, '#56c9f0');
+    line(2 + frame % 3, y - 1, 6, y - 1, '#d4ffff');
+    line(3, y + 1, 6, y + 1, '#2389c2');
+  }
+  limb(15, 17, 7, 17, 2.3, P.red);
+  limb(15, 21, 8, 23, 2.2, P.red);
+  limb(6, 16, 6, 19, 1.5, P.gold);
+  limb(7, 22, 7, 25, 1.5, P.gold);
+  poly([[12, 14], [21, 12], [24, 16], [21, 22], [13, 23], [11, 19]], P.red);
+  line(14, 14, 14, 21, '#e4ac48');
+  shape(new Mask(32, 32).ellipse(20, 18 + dy, 2, 2), P.cyan);
+  b.set(20, 18 + dy, '#ffffff');
+  limb(16, 22, 23, 24, 1.7, P.red);
+  limb(23, 24, 28, 23, 1.5, P.gold);
+  poly([[22, 7], [28, 7], [31, 10], [31, 15], [28, 18], [22, 18], [20, 15], [20, 10]], P.red);
+  poly([[25, 9], [29, 9], [30, 11], [30, 15], [27, 17], [23, 15], [23, 11]], P.gold);
+  line(26, 11, 30, 11, '#d4ffff');
+  line(27, 15, 30, 14, '#714832');
   return size === 32 ? b : b.scaled(size / 32);
 }
 

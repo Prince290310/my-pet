@@ -9,7 +9,7 @@
       "fps": 4,
       "loop": true,
       "flip": true,
-      "note": "idle: ironman, thruster flight"
+      "note": "idle: ironman, horizontal thruster flight"
     },
     "move": {
       "row": 1,
@@ -17,7 +17,7 @@
       "fps": 10,
       "loop": true,
       "flip": true,
-      "note": "move: ironman, thruster flight"
+      "note": "move: ironman, horizontal thruster flight"
     },
     "work": {
       "row": 2,
@@ -25,7 +25,7 @@
       "fps": 6,
       "loop": true,
       "flip": true,
-      "note": "work: ironman, thruster flight"
+      "note": "work: ironman, horizontal thruster flight"
     },
     "talk": {
       "row": 3,
@@ -33,7 +33,7 @@
       "fps": 8,
       "loop": true,
       "flip": true,
-      "note": "talk: ironman, thruster flight"
+      "note": "talk: ironman, horizontal thruster flight"
     },
     "sleep": {
       "row": 4,
@@ -41,7 +41,7 @@
       "fps": 3,
       "loop": true,
       "flip": true,
-      "note": "sleep: ironman, thruster flight"
+      "note": "sleep: ironman, horizontal thruster flight"
     },
     "play": {
       "row": 5,
@@ -49,7 +49,7 @@
       "fps": 7,
       "loop": true,
       "flip": true,
-      "note": "play: ironman, thruster flight"
+      "note": "play: ironman, horizontal thruster flight"
     },
     "arrive": {
       "row": 6,
@@ -57,7 +57,7 @@
       "fps": 8,
       "loop": false,
       "flip": true,
-      "note": "arrive: ironman, thruster flight"
+      "note": "arrive: ironman, horizontal thruster flight"
     },
     "land": {
       "row": 7,
@@ -65,9 +65,17 @@
       "fps": 10,
       "loop": false,
       "flip": true,
-      "note": "land: ironman, thruster flight"
+      "note": "land: ironman, horizontal thruster flight"
+    },
+    "fly": {
+      "row": 8,
+      "frames": 8,
+      "fps": 12,
+      "loop": true,
+      "flip": true,
+      "note": "fly: ironman, horizontal thruster flight"
     }
   },
   "character": "ironman",
-  "motion": "thruster flight"
+  "motion": "horizontal thruster flight"
 }

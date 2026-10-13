@@ -1,0 +1,73 @@
+{
+  "frameWidth": 32,
+  "frameHeight": 32,
+  "columns": 8,
+  "animations": {
+    "idle": {
+      "row": 0,
+      "frames": 4,
+      "fps": 4,
+      "loop": true,
+      "flip": true,
+      "note": "idle: vision, gentle hover"
+    },
+    "move": {
+      "row": 1,
+      "frames": 4,
+      "fps": 10,
+      "loop": true,
+      "flip": true,
+      "note": "move: vision, gentle hover"
+    },
+    "work": {
+      "row": 2,
+      "frames": 4,
+      "fps": 6,
+      "loop": true,
+      "flip": true,
+      "note": "work: vision, gentle hover"
+    },
+    "talk": {
+      "row": 3,
+      "frames": 4,
+      "fps": 8,
+      "loop": true,
+      "flip": true,
+      "note": "talk: vision, gentle hover"
+    },
+    "sleep": {
+      "row": 4,
+      "frames": 4,
+      "fps": 3,
+      "loop": true,
+      "flip": true,
+      "note": "sleep: vision, gentle hover"
+    },
+    "play": {
+      "row": 5,
+      "frames": 4,
+      "fps": 7,
+      "loop": true,
+      "flip": true,
+      "note": "play: vision, gentle hover"
+    },
+    "arrive": {
+      "row": 6,
+      "frames": 4,
+      "fps": 8,
+      "loop": false,
+      "flip": true,
+      "note": "arrive: vision, gentle hover"
+    },
+    "land": {
+      "row": 7,
+      "frames": 4,
+      "fps": 10,
+      "loop": false,
+      "flip": true,
+      "note": "land: vision, gentle hover"
+    }
+  },
+  "character": "vision",
+  "motion": "gentle hover"
+}

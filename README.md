@@ -7,9 +7,17 @@ The original Shadow panther and every animal friend are still included.
 If you choose a supporting hero, Iron Man takes that hero's supporting job so there are no duplicates
 and every feature stays available. Quicksilver now replaces Star-Lord and keeps the music role.
 
+The full team now has **fifteen characters**. **Vision, Scarlet Witch, Black Widow, Black Panther,
+Hawkeye, Ant-Man, Falcon and War Machine** are visual teammates with their own pixel sprites,
+arrival, walking, idle, talking and rest animations. **No jobs or skills are assigned to these eight.**
+Use Settings → Friends to switch each character on or off. Say “call Vision”, “call Wanda”,
+“call Black Panther”, or “call the Avengers” to bring them out. Select **Always** to keep the
+enabled characters around; the larger team spreads into rows when it needs more space.
+The original seven hero choices and six supporting jobs continue to work.
+
 | Hero | Signature movement |
 | --- | --- |
-| Iron Man | Thruster flight and repulsor landings |
+| Iron Man | Horizontal flight with a sideways pose, rear thrusters and smooth landings |
 | Spider-Man | Web swings and acrobatic arrivals |
 | Captain America | Shield runs and defensive landings |
 | Thor | Hammer leaps and lightning landings |
@@ -19,6 +27,10 @@ and every feature stays available. Quicksilver now replaces Star-Lord and keeps 
 
 Each hero has main-companion and teammate sprite sheets, including arrival and landing animations.
 The selected hero also changes the chat identity, personality, window icon and tray avatar.
+
+Iron Man now flies horizontally during his normal patrols and when appearing as a teammate.
+With Iron Man selected as the lead, say **“fly horizontally”** or **“fly across the screen”**,
+or choose **Fly Across Screen** from his right-click or tray menu, to launch a longer flight.
 
 ![Avengers pixel team](assets/preview/avengers-team.png)
 

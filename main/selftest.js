@@ -2162,11 +2162,23 @@ async function run(ctx, h) {
     await waitFor(async () => (await rstate()).character === 'ironman' && (await rstate()).frame >= 0, 3000);
     check('Save activates a rendered humanoid Iron Man', ctx.meta.character === 'ironman' && (await rstate()).character === 'ironman' && await js('document.getElementById("pet").toDataURL()') !== originalPixels);
     check('theme selection is persisted', JSON.parse(fs.readFileSync(settings.file, 'utf8')).appearance === 'avengers');
-    check('the team contains the requested heroes and retains all six jobs', friends.list.map(f => f.def.name).join() === 'Spider-Man,Captain America,Thor,Doctor Strange,Hulk,Quicksilver' && friends.list.map(f => f.def.job).join() === 'Researcher,Messenger,Launcher,Tutor,PC caretaker,Music DJ');
+    const workers = friends.list.filter(f => f.def.job);
+    const newCharacters = friends.list.filter(f => f.def.cosmetic);
+    check('the existing heroes retain all six jobs', workers.map(f => f.def.name).join() === 'Spider-Man,Captain America,Thor,Doctor Strange,Hulk,Quicksilver' && workers.map(f => f.def.job).join() === 'Researcher,Messenger,Launcher,Tutor,PC caretaker,Music DJ');
+    check('all eight requested characters complete a fifteen-member team', friends.list.length === 14 && newCharacters.map(f => f.def.name).join() === 'Vision,Scarlet Witch,Black Widow,Black Panther,Hawkeye,Ant-Man,Falcon,War Machine');
+    for (const f of newCharacters) {
+      const before = f.state;
+      friends.job(f.id, 'this must not start a job')();
+      f.work('direct work must also do nothing')();
+      check(`${f.def.name} has no job or skill assigned`, f.def.job === null && f.jobs === 0 && f.state === before && friends.quickJob(f.id, 'no task') === false && appearance.friendLabel(f.def).endsWith('No job assigned'));
+    }
     check('appearance changes preserve all other saved preferences', JSON.stringify({ ...settings.all(), appearance: null }) === preserved);
     check('custom personality and reminder files stay untouched', Object.entries(originalConfigFiles).every(([n, value]) => fs.readFileSync(config.file(n), 'utf8') === value));
     check('tray uses Iron Man and Avengers assembly', ctx.trayCtl.menu().items[0].label.includes('Iron Man') && ctx.trayCtl.menu().getMenuItemById('gang').label.includes('Avengers'));
     check('AI identity follows the Avengers theme without changing the config', ctx.aiContext().petName === 'Iron Man' && ctx.aiContext().personality.includes('an Iron Man desktop companion') && config.personality === originalPersonality);
+    check('AI lists the additional characters without claiming task skills', ctx.aiContext().personality.includes('These eight characters have no jobs or skills assigned') && Object.values(appearance.CHARACTERS).every(h => ctx.aiContext().personality.includes(h.name)));
+    await js('(async()=>fill(await window.settingsApi.load()))()', swTheme.webContents);
+    check('Settings shows eight unassigned characters and all fourteen teammate switches', await js('document.querySelectorAll("input[data-friend]").length === 14 && [...document.querySelectorAll("#friendList label")].filter(l => l.textContent.includes("No job assigned")).length === 8', swTheme.webContents));
     const themedChat = h.openChatPanel();
     await waitFor(() => js('document.getElementById("name").textContent === "IRON MAN"', themedChat.webContents), 3000);
     check('chat displays Iron Man and his helmet avatar', await js('document.getElementById("name").textContent === "IRON MAN" && document.querySelector(".avatar").src.includes("themes/avengers")', themedChat.webContents));
@@ -2178,7 +2190,7 @@ async function run(ctx, h) {
     }
     brain.rest(60000);
     await sleep(200);
-    for (const alias of ['spider man', 'thor', 'captain america', 'doctor strange', 'hulk', 'quick silver']) {
+    for (const alias of ['spider man', 'thor', 'captain america', 'doctor strange', 'hulk', 'quick silver', ...Object.values(appearance.CHARACTERS).map(h => h.aliases[0])]) {
       const reply = await ctx.handleMessage(`call ${alias}`, []);
       check(`chat can summon ${alias}`, reply.text.includes('Come here'));
     }
@@ -2186,7 +2198,33 @@ async function run(ctx, h) {
     for (const f of friends.list) {
       const state = await fstate(f);
       check(`${f.def.name} uses its own humanoid sprite`, f.meta.character && state.character === f.meta.character && state.appearance === 'avengers');
+      if (f.def.cosmetic) {
+        for (const animation of ['idle', 'move', 'talk', 'play', 'sleep', 'arrive', 'land']) {
+          f.play(animation, true);
+          await sleep(60);
+          check(`${f.def.name} ${animation} animation renders`, (await fstate(f)).anim === animation && await js('Array.from(document.getElementById("pet").getContext("2d").getImageData(0,0,32,32).data).some((v,i)=>i%4===3&&v>0)', f.win.win.webContents));
+        }
+        f.play('idle', true);
+      }
     }
+    const { teamSlots } = require('./team-layout');
+    const overlaps = (a, b, sa, sb) => a.x < b.x + sb && a.x + sa > b.x && a.y < b.y + sb && a.y + sa > b.y;
+    for (const scale of [1, 2, 3]) {
+      const S = 32 * scale, leadSize = 48 * scale;
+      let fits = true;
+      for (const area of [{ x: 0, y: 0, width: 1280, height: 800 }, { x: -1024, y: 30, width: 1024, height: 738 }, { x: 200, y: 40, width: 800, height: 560 }]) {
+        for (const x of [area.x, area.x + area.width / 2, area.x + area.width - leadSize]) {
+          const lead = { x, y: area.y + area.height - leadSize, size: leadSize };
+          const slots = teamSlots(area, lead, 14, S, 6 * scale);
+          fits &&= slots.length === 14 && slots.every((p, i) => p.x >= area.x && p.y >= area.y && p.x + S <= area.x + area.width && p.y + S <= area.y + area.height && !overlaps(p, lead, S, leadSize) && slots.slice(i + 1).every(q => !overlaps(p, q, S, S)));
+        }
+      }
+      check(`the full team fits without overlapping at ${scale}x, including screen edges and offset monitors`, fits);
+    }
+    check('the live team uses separate positions around its lead', friends.list.every((f, i) => friends.list.slice(i + 1).every(g => !overlaps(f.pos, g.pos, f.win.S, g.win.S))));
+    const { desktopCapturer } = require('electron');
+    const teamScreens = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: pet.display().size });
+    if (teamScreens[0]) fs.writeFileSync(path.join(outDir, 'expanded-avengers-team.png'), teamScreens[0].thumbnail.toPNG());
     // Capture actual in-app frames; the team sheet is also available in assets/preview.
     await shot('avengers-iron-man');
     await js('document.querySelector(".appearance").scrollIntoView()', swTheme.webContents);
@@ -2197,6 +2235,7 @@ async function run(ctx, h) {
     await waitFor(() => settings.get('appearance') === 'shadow' && pet.win.getTitle() === 'Shadow', 3000);
     await waitFor(async () => (await rstate()).appearance === 'shadow' && !(await rstate()).character && (await rstate()).frame >= 0, 3000);
     check('one click restores the original main sprite and all six friends', !(await rstate()).character && friends.list.map(f => f.def.name).join() === 'Atlas,Dash,Bolt,Sage,Zen,Tempo' && friends.assets === require('./paths').ASSETS);
+    check('restoring Shadow removes all eight additional character windows', newCharacters.every(f => f.disposed && f.win && !f.win.alive()));
     check('restoring preserves preferences, reminders, and personality', JSON.stringify({ ...settings.all(), appearance: null }) === preserved && config.personality === originalPersonality && Object.entries(originalConfigFiles).every(([n, value]) => fs.readFileSync(config.file(n), 'utf8') === value));
     await waitFor(() => js('document.getElementById("name").textContent === "SHADOW"', themedChat.webContents), 3000);
     check('an open chat keeps its history and draft during restoration', await js('document.getElementById("log").textContent', themedChat.webContents) === oldLog && await js('document.getElementById("msg").value', themedChat.webContents) === 'draft stays here');
@@ -2207,6 +2246,17 @@ async function run(ctx, h) {
     settings.update({ appearance: 'avengers' });
     await waitFor(async () => (await rstate()).character === 'ironman' && (await rstate()).frame >= 0, 3000);
     check('rapid theme switches keep the final sprite and animation alive', (await rstate()).character === 'ironman' && (await rstate()).ticking);
+    // A switch for a character absent from the original theme must survive saving that theme.
+    settings.update({ friends: { vision: false } });
+    const offReply = await ctx.handleMessage('call vision', []);
+    check('new character switches persist and block summoning', !settings.get('friends').vision && JSON.parse(fs.readFileSync(settings.file, 'utf8')).friends.vision === false && offReply.text.includes('switched off'));
+    settings.update({ appearance: 'shadow' });
+    await js('(async()=>fill(await window.settingsApi.load()))()', swTheme.webContents);
+    await js('document.getElementById("form").requestSubmit()', swTheme.webContents);
+    await sleep(150);
+    settings.update({ appearance: 'avengers' });
+    check('saving the original theme preserves extra character switches', !settings.get('friends').vision && friends.list.length === 14);
+    settings.update({ friends: { vision: true } });
 
     section('Selectable heroes and signature movements');
     const motion = require('./hero-motion');
@@ -2222,7 +2272,7 @@ async function run(ctx, h) {
       check(`${hero.name} can lead and render immediately`, rendered && pet.win.getTitle() === hero.name && ctx.meta.character === id);
       check(`${hero.name} selection persists`, JSON.parse(fs.readFileSync(settings.file, 'utf8')).mainHero === id);
       const identities = [ctx.meta.character, ...friends.list.map(f => f.meta.character)];
-      check(`${hero.name} keeps a complete team without duplicates`, new Set(identities).size === 7 && Object.keys(appearance.ROSTER).every(h => identities.includes(h)));
+      check(`${hero.name} keeps all fifteen characters without duplicates`, new Set(identities).size === 15 && [...Object.keys(appearance.ROSTER), ...Object.keys(appearance.CHARACTERS)].every(h => identities.includes(h)));
       await waitFor(() => js(`document.getElementById('name').textContent === ${JSON.stringify(hero.name.toUpperCase())}`, themedChat.webContents), 3000);
       check(`${hero.name} chat, tray and AI identity follow the selection`, ctx.aiContext().petName === hero.name && ctx.trayCtl.menu().items[0].label.includes(hero.name) && await js('document.getElementById("name").textContent', themedChat.webContents) === hero.name.toUpperCase());
       const [left, right] = pet.xRange(pet.display());
@@ -2234,7 +2284,7 @@ async function run(ctx, h) {
       check(`${hero.name} uses its distinct bounded movement and lands`, arrived && peak > 0 && Math.abs(pet.pos.y - brain.floorY()) < 1 && pet.pos.x >= left && pet.pos.x <= right, `${motion.profile(id).kind}, lift=${peak.toFixed(1)}`);
       const selectedReply = await ctx.handleMessage(`call ${hero.aliases[0]}`, []);
       check(`calling main hero ${hero.name} finds the lead`, selectedReply.text.includes(`${hero.name} is here`));
-      for (const animation of ['arrive', 'land', 'walk_right', 'pounce']) {
+      for (const animation of ['arrive', 'land', 'walk_right', 'pounce', ...(id === 'ironman' ? ['fly'] : [])]) {
         brain.play(animation);
         await sleep(100);
         check(`${hero.name} ${animation} animation is visible`, (await rstate()).anim === animation && await js('Array.from(document.getElementById("pet").getContext("2d").getImageData(0,0,48,48).data).some((v,i)=>i%4===3&&v>0)'));
@@ -2244,6 +2294,44 @@ async function run(ctx, h) {
     check('Quicksilver has the fastest movement profile', motion.profile('quicksilver').speed > Math.max(...Object.entries(motion.PROFILES).filter(([id]) => id !== 'quicksilver').map(([, p]) => p.speed)));
     await js('document.querySelector(".appearance").scrollIntoView(); document.querySelector(".logo").decode()', swTheme.webContents);
     await shot('hero-picker', swTheme.webContents);
+    settings.update({ mainHero: 'ironman' });
+    section('Iron Man horizontal flight');
+    await waitFor(async () => (await rstate()).character === 'ironman', 3000);
+    const [flightLeft, flightRight] = pet.xRange(pet.display());
+    for (const direction of [-1, 1]) {
+      quiet();
+      const start = (flightLeft + flightRight) / 2;
+      pet.moveTo(start, brain.floorY());
+      const target = start + direction * Math.min(240, (flightRight - flightLeft) / 3);
+      let landed = false;
+      brain.walkTo(target, { speed: 200, hurry: true, then: () => { landed = true; brain.rest(60000); } });
+      const airborne = await waitFor(() => brain.floorY() - pet.pos.y > 80 && Math.abs(pet.pos.x - start) > 40, 2000);
+      const flightState = await rstate();
+      check(`Iron Man cruises horizontally to the ${direction < 0 ? 'left' : 'right'}`, airborne && flightState.anim === 'fly' && flightState.facing === (direction < 0 ? 'left' : 'right') && pet.pos.y >= pet.display().workArea.y && flightState.fps <= 12);
+      await shot(`ironman-horizontal-${direction < 0 ? 'left' : 'right'}`);
+      await waitFor(() => landed, 4000);
+      check('horizontal flight lands at its destination', landed && Math.abs(pet.pos.x - target) < 1 && brain.onFloor());
+    }
+    quiet();
+    const flyReply = await ctx.handleMessage('fly horizontally', []);
+    await waitFor(async () => (await rstate()).anim === 'fly', 1000);
+    check('chat launches horizontal flight', flyReply.text.includes('taking off') && brain.anim === 'fly');
+    check('right-click and tray menus offer horizontal flight', h.petMenuTemplate().some(item => item.label === 'Fly Across Screen') && ctx.trayCtl.menu().getMenuItemById('fly').label === 'Fly Across Screen');
+    quiet();
+    pet.moveTo((flightLeft + flightRight) / 2, brain.floorY());
+    brain.pounce();
+    check('Iron Man autonomous jumps use horizontal flight', brain.anim === 'fly' && brain.state === 'walk');
+    quiet();
+    brain.rest(60000);
+    settings.update({ mainHero: 'spiderman' });
+    const supportingIronMan = friends.list.find(f => f.def.heroId === 'ironman');
+    let supportingLanded = false;
+    supportingIronMan.appear(() => { supportingLanded = true; });
+    await waitFor(() => supportingIronMan.ready, 3000);
+    await waitFor(async () => (await fstate(supportingIronMan)).anim === 'fly', 2000);
+    check('Iron Man also flies horizontally when he is a teammate', (await fstate(supportingIronMan)).anim === 'fly' && supportingIronMan.meta.animations.fly.flip);
+    await waitFor(() => supportingLanded, 6000);
+    check('supporting Iron Man lands and returns to idle', supportingLanded && supportingIronMan.state === 'here' && (await fstate(supportingIronMan)).anim === 'idle');
     settings.update({ mainHero: 'ironman' });
     settings.update({ appearance: 'shadow' });
     check('original theme ignores hero selection and restores original sprites', appearance.displayName(settings) === 'Shadow' && friends.list.every(f => !f.def.heroId) && !ctx.meta.character);

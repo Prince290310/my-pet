@@ -267,7 +267,7 @@ class Brain extends EventEmitter {
     this.after(this.animMs('stretch') + 200, then);
   }
 
-  /** Walk along the floor to targetX with a randomly varied, eased speed. */
+  /** Travel to targetX: Iron Man cruises horizontally; other characters use their normal motion. */
   walkTo(targetX, { speed, then, hurry = false } = {}) {
     const [minX, maxX] = this.pet.xRange(this.display());
     targetX = clamp(targetX, minX, maxX);
@@ -282,7 +282,7 @@ class Brain extends EventEmitter {
     // stride ~1.6 sprite px per frame -> feet don't slide; capped at 12 fps
     const fps = clamp(Math.round(base / s / 1.6), 5, 12);
     this.setState('walk');
-    this.play(dir > 0 ? 'walk_right' : 'walk_left', { fps });
+    this.play(hero === 'ironman' ? 'fly' : dir > 0 ? 'walk_right' : 'walk_left', { fps });
     const seed = Math.random() * 10;
     const y = this.floorY();
     let t = 0;
@@ -307,7 +307,17 @@ class Brain extends EventEmitter {
     });
   }
 
+  flyAcross() {
+    if (!appearance.isAvengers(this.settings) || appearance.mainHero(this.settings) !== 'ironman') return;
+    this.interrupt();
+    const [minX, maxX] = this.pet.xRange(this.display());
+    const right = maxX - this.pos.x >= this.pos.x - minX;
+    const target = right ? maxX - 12 * this.scale : minX + 12 * this.scale;
+    this.walkTo(target, { speed: 150 * this.scale, hurry: true, then: () => this.rest() });
+  }
+
   pounce() {
+    if (appearance.isAvengers(this.settings) && appearance.mainHero(this.settings) === 'ironman') return this.flyAcross();
     this.interrupt();
     this.setState('pounce');
     const [minX, maxX] = this.pet.xRange(this.display());
@@ -474,6 +484,7 @@ class Brain extends EventEmitter {
     this.interrupt();
     this.hideBubble();
     if (cmd === 'sit') return this.sit(rand(60000, 120000));
+    if (cmd === 'fly') return this.onFloor() ? this.flyAcross() : this.fall(() => this.flyAcross());
     if (cmd === 'pounce') return this.onFloor() ? this.pounce() : this.fall(() => this.pounce());
   }
 

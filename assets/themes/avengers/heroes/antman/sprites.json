@@ -1,0 +1,113 @@
+{
+  "frameWidth": 48,
+  "frameHeight": 48,
+  "columns": 8,
+  "animations": {
+    "idle": {
+      "row": 0,
+      "frames": 8,
+      "fps": 5,
+      "loop": true,
+      "flip": true,
+      "note": "idle: antman, bouncy step"
+    },
+    "walk_right": {
+      "row": 1,
+      "frames": 8,
+      "fps": 10,
+      "loop": true,
+      "flip": false,
+      "note": "walk_right: antman, bouncy step"
+    },
+    "walk_left": {
+      "row": 2,
+      "frames": 8,
+      "fps": 10,
+      "loop": true,
+      "flip": false,
+      "note": "walk_left: antman, bouncy step"
+    },
+    "sit": {
+      "row": 3,
+      "frames": 6,
+      "fps": 3,
+      "loop": true,
+      "flip": false,
+      "note": "sit: antman, bouncy step"
+    },
+    "sleep": {
+      "row": 4,
+      "frames": 6,
+      "fps": 3,
+      "loop": true,
+      "flip": false,
+      "note": "sleep: antman, bouncy step"
+    },
+    "talk": {
+      "row": 5,
+      "frames": 4,
+      "fps": 8,
+      "loop": true,
+      "flip": false,
+      "note": "talk: antman, bouncy step"
+    },
+    "happy": {
+      "row": 6,
+      "frames": 6,
+      "fps": 7,
+      "loop": true,
+      "flip": false,
+      "note": "happy: antman, bouncy step"
+    },
+    "stretch": {
+      "row": 7,
+      "frames": 6,
+      "fps": 5,
+      "loop": false,
+      "flip": true,
+      "note": "stretch: antman, bouncy step"
+    },
+    "pounce": {
+      "row": 8,
+      "frames": 8,
+      "fps": 8,
+      "loop": false,
+      "flip": true,
+      "note": "pounce: antman, bouncy step"
+    },
+    "alert": {
+      "row": 9,
+      "frames": 4,
+      "fps": 6,
+      "loop": true,
+      "flip": false,
+      "note": "alert: antman, bouncy step"
+    },
+    "groom": {
+      "row": 10,
+      "frames": 6,
+      "fps": 6,
+      "loop": true,
+      "flip": false,
+      "note": "groom: antman, bouncy step"
+    },
+    "arrive": {
+      "row": 11,
+      "frames": 4,
+      "fps": 8,
+      "loop": false,
+      "flip": true,
+      "note": "arrive: antman, bouncy step"
+    },
+    "land": {
+      "row": 12,
+      "frames": 4,
+      "fps": 10,
+      "loop": false,
+      "flip": true,
+      "note": "land: antman, bouncy step"
+    }
+  },
+  "character": "antman",
+  "motion": "bouncy step"
+}

@@ -1,0 +1,73 @@
+{
+  "frameWidth": 32,
+  "frameHeight": 32,
+  "columns": 8,
+  "animations": {
+    "idle": {
+      "row": 0,
+      "frames": 4,
+      "fps": 4,
+      "loop": true,
+      "flip": true,
+      "note": "idle: hawkeye, steady walk"
+    },
+    "move": {
+      "row": 1,
+      "frames": 4,
+      "fps": 10,
+      "loop": true,
+      "flip": true,
+      "note": "move: hawkeye, steady walk"
+    },
+    "work": {
+      "row": 2,
+      "frames": 4,
+      "fps": 6,
+      "loop": true,
+      "flip": true,
+      "note": "work: hawkeye, steady walk"
+    },
+    "talk": {
+      "row": 3,
+      "frames": 4,
+      "fps": 8,
+      "loop": true,
+      "flip": true,
+      "note": "talk: hawkeye, steady walk"
+    },
+    "sleep": {
+      "row": 4,
+      "frames": 4,
+      "fps": 3,
+      "loop": true,
+      "flip": true,
+      "note": "sleep: hawkeye, steady walk"
+    },
+    "play": {
+      "row": 5,
+      "frames": 4,
+      "fps": 7,
+      "loop": true,
+      "flip": true,
+      "note": "play: hawkeye, steady walk"
+    },
+    "arrive": {
+      "row": 6,
+      "frames": 4,
+      "fps": 8,
+      "loop": false,
+      "flip": true,
+      "note": "arrive: hawkeye, steady walk"
+    },
+    "land": {
+      "row": 7,
+      "frames": 4,
+      "fps": 10,
+      "loop": false,
+      "flip": true,
+      "note": "land: hawkeye, steady walk"
+    }
+  },
+  "character": "hawkeye",
+  "motion": "steady walk"
+}

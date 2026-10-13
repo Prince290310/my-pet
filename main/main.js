@@ -115,6 +115,7 @@ function petMenuTemplate() {
     ...items,
     { label: 'Sit', click: () => brain.command('sit') },
     { label: 'Sleep', click: () => brain.command('sleep') },
+    ...(appearance.isAvengers(ctx.settings) && appearance.mainHero(ctx.settings) === 'ironman' ? [{ label: 'Fly Across Screen', click: () => brain.command('fly') }] : []),
     { label: 'Pounce', click: () => brain.command('pounce') },
     { type: 'separator' },
     { label: 'Chat…', click: () => openChatPanel() },
@@ -830,9 +831,10 @@ function init() {
     if (!text) return { text: '' };
     history.push({ role: 'user', text });
     let reply;
-    const done1 = (out) => {
+    const done1 = (out, { animate = true } = {}) => {
       history.push({ role: 'pet', text: out });
-      brain.chatReply(out);
+      if (animate) brain.chatReply(out);
+      else brain.say(out, { ms: 3500 });
       return { text: out, sources: [] };
     };
     // during a quiz race everything Prince types is an answer (games.js)
@@ -843,6 +845,12 @@ function init() {
         raceEnded();
         return done1(out);
       }
+    }
+    if (/^(?:iron man[, ]+)?fly(?: horizontally| across (?:the )?screen)?[?.!]*$/i.test(text) && appearance.isAvengers(settings) && appearance.mainHero(settings) === 'ironman') {
+      if (brain.activeReminder) return done1('Dismiss the reminder first, then I can fly, Prince.');
+      if (brain.state === 'hidden') brain.command('wake');
+      brain.command('fly');
+      return done1('Iron Man taking off! ⚡', { animate: false });
     }
     const gang = gangCommand(text);
     if (gang) return done1(gang);

@@ -42,6 +42,7 @@ function createTray({ brain, settings, loginItem, actions, getUpdater = () => nu
     if (sleeping) items.push({ id: 'wake', label: 'Wake Pet', click: () => brain.command('wake') });
     if (actions.rescue) items.push({ id: 'rescue', label: `Unstick ${settings.get('petName')} (can't click?)`, click: () => actions.rescue() });
     if (callGang) items.push({ id: 'gang', label: appearance.isAvengers(settings) ? 'Avengers, Assemble! ⚡' : 'Call the Gang 🐾', click: () => callGang() });
+    if (appearance.isAvengers(settings) && appearance.mainHero(settings) === 'ironman') items.push({ id: 'fly', label: 'Fly Across Screen', click: () => brain.command('fly') });
     items.push(
       { id: 'chat', label: 'Chat… (Ctrl+Click pet)', click: () => actions.openChat() },
       {
