@@ -20,7 +20,26 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node --test tests/whatsapp.test.js
+      # Each PASS/SKIP line becomes a notice and any failure becomes an error annotation with its message,
+      # so results are readable from the run summary (and the checks API) without opening the raw log.
       - name: Compile and check Windows accessibility helper
-        run: powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/test-whatsapp-helper.ps1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          try {
+            & ./scripts/test-whatsapp-helper.ps1 | ForEach-Object { if ("$_" -match '^(PASS|SKIP)') { "::notice title=WhatsApp helper::$_" } else { "$_" } }
+          } catch {
+            $detail = (($_ | Out-String) -replace '%', '%25' -replace "`r", '' -replace "`n", '%0A')
+            "::error title=WhatsApp helper failed::$detail"
+            exit 1
+          }
       - name: Native chat selection, typing and call fixtures
-        run: powershell.exe -NoLogo -NoProfile -NonInteractive -MTA -ExecutionPolicy Bypass -File scripts/test-whatsapp-ui.ps1
+        shell: powershell
+        run: |
+          $out = powershell.exe -NoLogo -NoProfile -NonInteractive -MTA -ExecutionPolicy Bypass -File scripts/test-whatsapp-ui.ps1 2>&1
+          $code = $LASTEXITCODE
+          foreach ($line in $out) {
+            $text = ("$line" -replace '%', '%25' -replace "`r", '' -replace "`n", '%0A')
+            if ($text -match '^(PASS|SKIP)') { "::notice title=WhatsApp UI fixture::$text" } else { $text }
+          }
+          if ($code -ne 0) { "::error title=WhatsApp UI fixture failed::$(($out | Out-String) -replace '%', '%25' -replace "`r", '' -replace "`n", '%0A')"; exit $code }

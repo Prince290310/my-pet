@@ -165,8 +165,10 @@ test('native transport uses a fixed script and literal UTF-8 JSON on stdin', asy
   assert.deepEqual(JSON.parse(invocation.data), { action: 'send', contact: request.contact, message: request.message });
 });
 test('installed apps resolve the helper outside the virtual ASAR archive', () => {
-  assert.equal(nativeHelperPath('/opt/Shadow/resources/app.asar/main'), '/opt/Shadow/resources/app.asar.unpacked/main/windows/whatsapp.ps1');
-  assert.equal(nativeHelperPath('/workspace/my-pet/main'), '/workspace/my-pet/main/windows/whatsapp.ps1');
+  // path.join uses "\\" on Windows and "/" elsewhere - compare the same either way
+  const slash = (p) => p.replace(/\\/g, '/');
+  assert.equal(slash(nativeHelperPath('/opt/Shadow/resources/app.asar/main')), '/opt/Shadow/resources/app.asar.unpacked/main/windows/whatsapp.ps1');
+  assert.equal(slash(nativeHelperPath('/workspace/my-pet/main')), '/workspace/my-pet/main/windows/whatsapp.ps1');
   const packaged = nativeHelperPath('C:\\Program Files\\Shadow\\resources\\app.asar\\main');
   assert.ok(packaged.includes('app.asar.unpacked'));
   assert.ok(!packaged.includes('app.asar\\main'));
