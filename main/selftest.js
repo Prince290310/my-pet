@@ -1242,21 +1242,24 @@ async function run(ctx, h) {
     waweb.hooks = { createClient: () => (webClients.push(new FakeWaClient()), webClients.at(-1)) };
     wa.hooks = { run: async (request) => (waCalls.push(request), { ok: true, code: { status: 'ready', send: 'sent', call: 'calling' }[request.action] }) };
     const waText = () => js('document.getElementById("waWebText").textContent', swWhatsApp.webContents);
+    const waShown = (id) => js(`getComputedStyle(document.getElementById(${JSON.stringify(id)})).display !== 'none'`, swWhatsApp.webContents); // what is really on screen, not just the attribute
     check('without Windows the engine says so instead of offering LINK', process.platform === 'win32' || ((await waText()).includes('runs on Windows') && await js('document.getElementById("waLink").disabled', swWhatsApp.webContents)), await waText());
     waweb.emit('status', waweb.status()); // the stand-in client makes it available here too
     await waitFor(async () => (await waText()) === 'Not linked', 3000);
-    check('Settings → WhatsApp Web engine: "Not linked" with a LINK WHATSAPP button', (await waText()) === 'Not linked' && await js('!document.getElementById("waLink").hidden && document.getElementById("waUnlink").hidden && document.getElementById("waQrBox").hidden', swWhatsApp.webContents), await waText());
+    check('Settings → WhatsApp Web engine: "Not linked" with a LINK WHATSAPP button', (await waText()) === 'Not linked' && (await waShown('waLink')) && !(await waShown('waUnlink')) && !(await waShown('waQrBox')), await waText());
     await js('document.getElementById("waLink").click()', swWhatsApp.webContents);
     await waitFor(() => webClients.length === 1, 3000);
     webClients[0].emit('qr', '2@ShadowSelfTestQrCode,abcdefghijklmnopqrstuvwxyz0123456789');
-    const qrShown = await waitFor(() => js('!document.getElementById("waQrBox").hidden && document.getElementById("waQr").src.startsWith("data:image/png;base64,")', swWhatsApp.webContents), 3000);
+    const qrShown = await waitFor(async () => (await waShown('waQrBox')) && js('document.getElementById("waQr").src.startsWith("data:image/png;base64,")', swWhatsApp.webContents), 3000);
     await js('document.getElementById("waWeb").scrollIntoView({ block: "center" })', swWhatsApp.webContents);
+    await new Promise((r) => setTimeout(r, 400)); // let it repaint after scrolling
     await shot('whatsapp-web-qr', swWhatsApp.webContents);
     check('LINK WHATSAPP starts WhatsApp Web and shows its QR code to scan', qrShown && (await waText()).includes('Scan the QR code') && await js('document.getElementById("waLink").disabled', swWhatsApp.webContents), await waText());
     webClients[0].emit('authenticated');
     webClients[0].emit('ready');
     await waitFor(async () => (await waText()).startsWith('Linked as'), 3000);
-    check('after scanning: "Linked as Prince", QR hidden, UNLINK offered, link remembered', (await waText()) === 'Linked as Prince · +919800000001 - messages go through WhatsApp Web' && await js('document.getElementById("waQrBox").hidden && document.getElementById("waLink").hidden && !document.getElementById("waUnlink").hidden', swWhatsApp.webContents) && settings.get('waWebLinked') === true, await waText());
+    check('after scanning: "Linked as Prince", QR gone from the screen, UNLINK offered, link remembered', (await waText()) === 'Linked as Prince · +919800000001 - messages go through WhatsApp Web' && !(await waShown('waQrBox')) && !(await waShown('waLink')) && (await waShown('waUnlink')) && settings.get('waWebLinked') === true, await waText());
+    await new Promise((r) => setTimeout(r, 400));
     await shot('whatsapp-web-linked', swWhatsApp.webContents);
     const waBeforeWeb = waCalls.length;
     waReply = await ctx.handleMessage('message mom on WhatsApp: hi from the engine', []);
@@ -1271,7 +1274,7 @@ async function run(ctx, h) {
     check('"whatsapp status" reports the engine', waReply.text.includes('WhatsApp Web engine: linked as Prince') && !waReply.text.includes('undefined'), waReply.text);
     await js('document.getElementById("waUnlink").click()', swWhatsApp.webContents);
     await waitFor(async () => (await waText()) === 'Not linked', 3000);
-    check('UNLINK logs out of WhatsApp and forgets the link', webClients[0].loggedOut === 1 && settings.get('waWebLinked') === false && !waweb.ready() && (await waText()) === 'Not linked');
+    check('UNLINK logs out of WhatsApp and forgets the link', webClients[0].loggedOut === 1 && settings.get('waWebLinked') === false && !waweb.ready() && (await waText()) === 'Not linked' && (await waShown('waLink')) && !(await waShown('waUnlink')));
     waReply = await ctx.handleMessage('link whatsapp', []);
     await waitFor(() => webClients.length === 2, 3000);
     check('"link whatsapp" in chat opens Settings and starts linking', waReply.text.includes('scan the QR code') && webClients.length === 2 && waweb.state === 'starting', waReply.text);

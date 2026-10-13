@@ -208,6 +208,9 @@ select:focus {
   gap: 16px;
   margin: 0 0 12px;
 }
+.wa-qr[hidden] {
+  display: none;
+}
 .wa-qr img {
   width: 176px;
   height: 176px;
