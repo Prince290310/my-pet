@@ -406,7 +406,6 @@ window.__hudTest = {
     interactive,
     body: body.className,
     title: head.title,
-    text: (id) => ($(id) ? $(id).innerText : ''),
     time: $('hm').textContent,
     status: $('status-text').textContent,
     statusClass: $('status').className,

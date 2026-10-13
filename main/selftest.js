@@ -2151,10 +2151,19 @@ async function run(ctx, h) {
         const d = new Date(Date.now() + n * 86400000);
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       };
-      ctx.exams.cancel('all');
+      // borrow a clean exam list and to-do list; the checks after this one expect the old ones back
+      const keptExams = ctx.exams.data.exams;
+      const keptTodos = ctx.tasks.data.todos;
+      ctx.exams.data.exams = [];
+      // earlier checks already sent today's STUDY TIME reminder, so a new plan would start tomorrow;
+      // plan from today for these checks, then put the "already reminded" mark back (same tick, so no reminder fires)
+      const reminded = ctx.exams.data.remindedDays;
+      ctx.exams.data.remindedDays = [];
       ctx.exams.addFromForm({ subject: 'Maths', date: day(4), topics: '1-6' });
       ctx.exams.addFromForm({ subject: 'Physics', date: day(7), topics: 'optics, waves' });
-      ctx.tasks.data.todos = []; // a clean board for these checks
+      ctx.exams.data.remindedDays = [...reminded, day(0)];
+      ctx.exams.save();
+      ctx.tasks.data.todos = [];
       const hudTodo = ctx.tasks.addTodo('Finish physics assignment').todo;
       ctx.tasks.addTodo('Submit lab record');
       const hudPlayer = { title: 'Kesariya', artist: 'Arijit Singh', app: 'Spotify.exe', status: 'Playing' };
@@ -2182,7 +2191,8 @@ async function run(ctx, h) {
       check('"hud" opens the HUD over the screen', up && hr.text.startsWith('🐾 HUD up, Prince.'), hr.text);
       const wa = ctx.sensors.displayAt(ctx.sensors.cursor()).workArea;
       const hb = hwin().getBounds();
-      check('...covering the work area, always on top, never taking focus', hb.x === wa.x && hb.y === wa.y && hb.width === wa.width && hb.height === wa.height && hwin().isAlwaysOnTop() && !hwin().isFocusable() && !hwin().isFocused());
+      const near = (a, b) => Math.abs(a - b) <= 2; // Linux may shave a pixel off a screen-sized window
+      check('...covering the work area, always on top, never taking focus', near(hb.x, wa.x) && near(hb.y, wa.y) && near(hb.width, wa.width) && near(hb.height, wa.height) && hwin().isAlwaysOnTop() && !hwin().isFocusable() && !hwin().isFocused(), `${JSON.stringify(hb)} vs ${JSON.stringify(wa)}`);
       const loaded = await waitFor(async () => {
         const t = await hjs(`[...['sys','mission','music','weather']].map(id => document.getElementById(id).innerText).join('\\n')`);
         return /37%/.test(t) && /Finish physics assignment/.test(t) && /Kesariya/.test(t) && /31/.test(t) && /84%/.test(t) ? t : false;
@@ -2298,8 +2308,9 @@ async function run(ctx, h) {
       await waitFor(() => !require('./windows').getSettingsWindow(), 3000);
 
       settings.update({ hudSeconds: 12, hudSound: true, weatherCity: '' });
-      ctx.exams.cancel('all');
-      ctx.tasks.data.todos = [];
+      ctx.exams.data.exams = keptExams;
+      ctx.exams.save();
+      ctx.tasks.data.todos = keptTodos;
       ctx.tasks.save();
       ctx.hudData.hooks = {};
       await new Promise((r) => wxServer.close(r));
