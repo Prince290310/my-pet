@@ -36,6 +36,8 @@ jobs:
       - name: Native chat selection, typing and call fixtures
         shell: powershell
         run: |
+          # GitHub runs this shell with ErrorActionPreference=Stop; keep going so the fixture's own error is reported
+          $ErrorActionPreference = 'Continue'
           $out = powershell.exe -NoLogo -NoProfile -NonInteractive -MTA -ExecutionPolicy Bypass -File scripts/test-whatsapp-ui.ps1 2>&1
           $code = $LASTEXITCODE
           foreach ($line in $out) {
