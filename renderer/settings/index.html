@@ -82,6 +82,16 @@
         <label class="check"><input id="pcCare" type="checkbox" /><i></i><span id="pcCareLabel">Zen warns me about low battery, full storage, RAM/CPU and internet</span></label>
       </section>
 
+      <section class="whatsapp">
+        <h2>WhatsApp Desktop</h2>
+        <p class="note">Windows app, signed in, PC unlocked. Sends only the message you command; no automatic replies.</p>
+        <label class="check"><input id="whatsappAutomation" type="checkbox" /><i></i>Let me send messages and start calls in WhatsApp Desktop</label>
+        <label class="field"><span>Default call</span><select id="whatsappCallType"><option value="voice">Voice call</option><option value="video">Video call</option></select></label>
+        <p class="note">Use the exact saved chat name: “message Mom on WhatsApp: I will be home at 8” or “call Mom on WhatsApp”. PC controls must also be enabled. Click SAVE to apply.</p>
+        <div class="inline"><button type="button" id="checkWhatsApp" class="ghost">CHECK WHATSAPP</button><button type="button" id="stopWhatsApp" class="ghost">STOP AUTOMATION</button></div>
+        <p id="whatsappResult" class="test-result" aria-live="polite"></p>
+      </section>
+
       <section class="music">
         <h2>Music</h2>
         <div class="field">

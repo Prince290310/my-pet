@@ -13,6 +13,7 @@
     "sprites:avengers": "node scripts/generate-avengers.js",
     "fonts": "node scripts/copy-fonts.js",
     "test": "electron . --self-test",
+    "test:whatsapp": "node --test tests/whatsapp.test.js",
     "prebuild": "node scripts/generate-sprites.js && node scripts/generate-friends.js && node scripts/generate-avengers.js",
     "build": "electron-builder --win nsis"
   },
@@ -31,6 +32,7 @@
       "package.json",
       "!assets/preview/**"
     ],
+    "asarUnpack": ["main/windows/**"],
     "extraResources": [
       {
         "from": "config",

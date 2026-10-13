@@ -27,6 +27,7 @@ const { Updater } = require('./updater');
 const { TaskStore, parseCommand } = require('./tasks');
 const search = require('./search');
 const { AppLauncher, parsePcCommand, pcRequests } = require('./apps');
+const { WhatsAppControl, parseWhatsAppCommand } = require('./whatsapp');
 const { FriendsManager } = require('./friends');
 const { MusicControl, parseMusicCommand, musicRequests } = require('./music');
 const { PcCare, parseCareCommand } = require('./care');
@@ -469,6 +470,13 @@ function init() {
 
   // ---- opening apps / folders / settings + lock, sleep, screenshot, volume, brightness (apps.js)
   const apps = (ctx.apps = new AppLauncher({ shell, getPath: (k) => app.getPath(k), openExternal: openUrl, hooks: ctx.appHooks || {} }));
+  const whatsapp = (ctx.whatsapp = new WhatsAppControl({ settings, launch: async () => {
+    const matches = (await apps.refresh()).filter(a => /^whatsapp(?: beta)?$/i.test(a.name));
+    if (matches.length !== 1) return false;
+    return (await apps.start(matches[0])).startsWith('Opening');
+  } }));
+  ipcMain.handle('whatsapp:check', () => whatsapp.check());
+  ipcMain.handle('whatsapp:stop', () => whatsapp.stop());
   if (apps.windows) setTimeout(() => apps.refresh(), 8000); // read the Start menu once Shadow has settled
   const screenshotHelpers = {
     // Shadow and the chat panel step out of the picture for a moment
@@ -827,6 +835,8 @@ function init() {
    * Returns { text, sources }.
    */
   async function handleMessage(message, history, origin = 'pc') {
+    // Parse before the general chat length limit so outgoing messages are never silently truncated.
+    const whatsappCmd = parseWhatsAppCommand(message);
     const text = String(message || '').trim().slice(0, 2000);
     if (!text) return { text: '' };
     history.push({ role: 'user', text });
@@ -837,6 +847,7 @@ function init() {
       else brain.say(out, { ms: 3500 });
       return { text: out, sources: [] };
     };
+    if (whatsappCmd) return done1(await whatsapp.run(whatsappCmd));
     // during a quiz race everything Prince types is an answer (games.js)
     if (race.active()) {
       const g = parseGameCommand(text);
@@ -1034,7 +1045,7 @@ function init() {
   // settings window
   ipcMain.handle('settings:load', () => settingsPayload());
   ipcMain.handle('settings:save', async (_e, patch = {}) => {
-    const allowed = ['appearance', 'mainHero', 'petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat', 'morningBriefing', 'todoNudges', 'webSearch', 'searchKey', 'pcControl', 'pcCare', 'musicService', 'startupOnWake', 'phoneFiles', 'phoneFilesScope', 'examStudyTime', 'friendsMode', 'friends', 'telegramEnabled', 'telegramToken', 'telegramNotify'];
+    const allowed = ['appearance', 'mainHero', 'petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat', 'morningBriefing', 'todoNudges', 'webSearch', 'searchKey', 'pcControl', 'pcCare', 'whatsappAutomation', 'whatsappCallType', 'musicService', 'startupOnWake', 'phoneFiles', 'phoneFilesScope', 'examStudyTime', 'friendsMode', 'friends', 'telegramEnabled', 'telegramToken', 'telegramNotify'];
     const clean = Object.fromEntries(Object.entries(patch).filter(([k]) => allowed.includes(k)));
     const before = settings.get('calendarUrl');
     settings.update(clean);
@@ -1052,6 +1063,7 @@ function init() {
   ipcMain.handle('update:install', () => ctx.updater.install());
 
   settings.on('change', (all, changed) => {
+    if ((changed.includes('whatsappAutomation') || changed.includes('pcControl')) && !whatsapp.enabled()) whatsapp.stop();
     if (changed.includes('appearance') || changed.includes('mainHero') || changed.includes('petName')) {
       require('./windows').setAppearance(appearance.displayName(settings), appearance.mainAssetsDir(paths.ASSETS, settings));
       pet.win.setTitle(appearance.displayName(settings));
@@ -1198,7 +1210,7 @@ if (!SELF_TEST && !app.requestSingleInstanceLock()) {
     /* keep running in the tray */
   });
   app.on('before-quit', () => {
-    const { brain, config, reminders, calendar, updater, friends, care, telegram } = ctx;
+    const { brain, config, reminders, calendar, updater, friends, care, telegram, whatsapp } = ctx;
     try {
       if (brain && !['off', 'hidden'].includes(brain.state)) brain.savePosition();
     } catch {
@@ -1212,6 +1224,7 @@ if (!SELF_TEST && !app.requestSingleInstanceLock()) {
     if (friends) friends.stop();
     if (care) care.stop();
     if (telegram) telegram.stop();
+    if (whatsapp) whatsapp.stop();
   });
 }
 

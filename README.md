@@ -57,11 +57,47 @@ Run `npm run sprites:avengers` to regenerate only the new theme. `npm run sprite
 pre-step regenerate both themes. The new assets live in `assets/themes/avengers/`; the original
 `assets/sprites.*`, `assets/friends/`, icons and config files are unchanged.
 
-**Screen control:** the app already supports screenshot commands, opening installed apps (including
-WhatsApp), and finding/playing YouTube videos. Screenshot permission does not add full desktop
-automation. Reading WhatsApp chats, typing/sending replies, and making WhatsApp calls are not
-implemented by this update; they would require a local Windows screen-reading and accessibility-control
-module with explicit task commands and a way to stop an action.
+**WhatsApp Desktop:** command-only messages and voice/video calls now have a Windows accessibility
+helper. See the setup below. General screen control and automatic incoming-chat replies are not enabled.
+
+### WhatsApp messages and calls
+
+1. Install and sign in to the **WhatsApp Windows app**. Use its English interface and keep the PC unlocked.
+2. In **Settings → WhatsApp Desktop**, tick the automation switch and click **SAVE**. **PC controls** must also be enabled.
+3. Open WhatsApp and click **CHECK WHATSAPP** in Shadow Settings. This checks accessible controls without sending or calling.
+4. Use the exact saved chat name in your command:
+
+| Command | Action |
+| --- | --- |
+| `message Mom on WhatsApp: I will be home at 8` | Send those exact words |
+| `reply to Mom on WhatsApp: Yes, see you soon` | Send your reply to that named chat |
+| `whatsapp send "Mom: work": I will be late` | Quote a name containing a colon |
+| `call Mom on WhatsApp` | Start a voice call by default |
+| `video call Mom on WhatsApp` | Start a video call |
+| `whatsapp status` | Check the open app without changing chats |
+| `stop whatsapp` | Stop the current automation command |
+
+**Default call** can be changed in Settings. A command specifying voice or video takes precedence.
+Commands also work through your paired Telegram bot while your Windows PC is unlocked.
+
+This uses your existing WhatsApp session. No business account, separate phone number or API key is
+needed. It does not watch incoming chats, generate replies, or let an AI issue WhatsApp actions.
+No job or skill is assigned to the eight new Avengers.
+
+The helper searches for an exact, unique chat, verifies its header before entering text and again
+before sending or calling, and preserves existing drafts. Text is passed as literal Unicode data.
+If the app is closed, only an exact installed WhatsApp app is launched. It never retries an uncertain
+send or call. A send result means WhatsApp accepted the Send action, not that the recipient received it.
+Stopping cannot undo a message or call already started; check WhatsApp before repeating an uncertain action.
+
+WhatsApp versions can expose different accessibility controls. Unrecognized controls or chat headers
+stop the operation, and CHECK WHATSAPP currently checks chat search, not every send/call control.
+Microphone/camera permissions are managed by Windows and WhatsApp. Native automation requires
+validation against your installed Windows app; Linux tests use a fake helper and do not prove live calls work.
+
+Developer checks: `npm run test:whatsapp`, `npm test`, and on Windows
+`powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-whatsapp-helper.ps1`.
+The Windows helper check compiles the accessibility code and rejects invalid requests without touching a chat.
 
 The following guide describes the existing companion features, all of which remain available
 with either appearance.
@@ -626,8 +662,8 @@ Text your own Telegram bot from anywhere, and Shadow does it on your PC: `open s
 - Shadow listens with Telegram's "long polling": no server, no open ports, nothing to configure on
   your router. Only one running Shadow can use a bot at a time.
 - **Files:** send the bot a photo, PDF, document, video or voice note and it's saved on the PC (see section 16).
-- Why not WhatsApp? WhatsApp has no free personal bot API. The official one needs a Meta business
-  account and a separate number, and unofficial tools can get your number banned.
+- WhatsApp Desktop commands control the signed-in app on your PC; they are not a WhatsApp bot
+  listening from your phone. For remote commands, use this paired Telegram bot.
 
 ---
 

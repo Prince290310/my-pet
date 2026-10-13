@@ -284,6 +284,8 @@ function fill({ settings: s, appearance: theme, providers: list, startWithWindow
   $('morningBriefing').checked = s.morningBriefing;
   $('todoNudges').checked = s.todoNudges;
   $('pcControl').checked = s.pcControl;
+  $('whatsappAutomation').checked = s.whatsappAutomation;
+  $('whatsappCallType').value = s.whatsappCallType;
   $('pcCare').checked = s.pcCare;
   $('webSearch').checked = s.webSearch;
   $('searchKey').value = s.searchKey;
@@ -389,6 +391,8 @@ form.addEventListener('submit', async (e) => {
       morningBriefing: $('morningBriefing').checked,
       todoNudges: $('todoNudges').checked,
       pcControl: $('pcControl').checked,
+      whatsappAutomation: $('whatsappAutomation').checked,
+      whatsappCallType: $('whatsappCallType').value,
       pcCare: $('pcCare').checked,
       telegramToken: $('telegramToken').value.trim(),
       telegramEnabled: $('telegramEnabled').checked,
@@ -424,6 +428,22 @@ $('reveal').addEventListener('click', () => {
   const show = k.type === 'password';
   k.type = show ? 'text' : 'password';
   $('reveal').textContent = show ? 'HIDE' : 'SHOW';
+});
+
+$('checkWhatsApp').addEventListener('click', async () => {
+  const button = $('checkWhatsApp'), out = $('whatsappResult');
+  button.disabled = true;
+  out.className = 'test-result';
+  out.textContent = 'Checking the open WhatsApp Windows app…';
+  try {
+    const result = await window.settingsApi.checkWhatsApp();
+    out.textContent = result.text;
+    out.classList.add(result.ok ? 'ok' : 'bad');
+  } catch { out.textContent = 'Could not check WhatsApp. Open the app and try again.'; }
+  finally { button.disabled = false; }
+});
+$('stopWhatsApp').addEventListener('click', async () => {
+  $('whatsappResult').textContent = await window.settingsApi.stopWhatsApp();
 });
 
 $('openBotFather').addEventListener('click', () => window.settingsApi.openLink('https://t.me/BotFather'));

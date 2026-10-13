@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('settingsApi', {
   telegramInfo: () => ipcRenderer.invoke('telegram:info'),
   unpairTelegram: () => ipcRenderer.invoke('telegram:unpair'),
   testSearch: (key) => ipcRenderer.invoke('search:test', String(key)),
+  checkWhatsApp: () => ipcRenderer.invoke('whatsapp:check'),
+  stopWhatsApp: () => ipcRenderer.invoke('whatsapp:stop'),
   checkUpdate: () => ipcRenderer.invoke('update:check'),
   updateStatus: () => ipcRenderer.invoke('update:status'),
   installUpdate: () => ipcRenderer.invoke('update:install'),

@@ -28,6 +28,8 @@ const DEFAULTS = Object.freeze({
   todoNudges: true, // idle quips sometimes nudge about an open to-do
   webSearch: true, // chat may look things up (Tavily with searchKey, otherwise Wikipedia)
   pcControl: true, // chat may open apps/folders/settings and lock/sleep/screenshot/volume (apps.js)
+  whatsappAutomation: false, // explicit WhatsApp Desktop messages and calls (Windows only)
+  whatsappCallType: 'voice', // voice | video, overridden by an explicit command
   pcCare: true, // Zen warns about battery, storage, RAM/CPU and internet (care.js)
   musicService: 'youtube', // where "play <song>" plays: youtube | ytmusic | spotify (music.js)
   spotifyClientId: '', // your own free app at developer.spotify.com (spotify.js)
@@ -95,6 +97,8 @@ function validate(raw) {
     todoNudges: s.todoNudges === undefined ? DEFAULTS.todoNudges : Boolean(s.todoNudges),
     webSearch: s.webSearch === undefined ? DEFAULTS.webSearch : Boolean(s.webSearch),
     pcControl: s.pcControl === undefined ? DEFAULTS.pcControl : Boolean(s.pcControl),
+    whatsappAutomation: s.whatsappAutomation === true,
+    whatsappCallType: ['voice', 'video'].includes(s.whatsappCallType) ? s.whatsappCallType : 'voice',
     pcCare: s.pcCare === undefined ? DEFAULTS.pcCare : Boolean(s.pcCare),
     musicService: ['youtube', 'ytmusic', 'spotify'].includes(s.musicService) ? s.musicService : DEFAULTS.musicService,
     spotifyClientId: typeof s.spotifyClientId === 'string' && /^[0-9a-f]{32}$/i.test(s.spotifyClientId.trim()) ? s.spotifyClientId.trim() : '',
