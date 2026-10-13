@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'" />
+    <title>HUD</title>
+    <link rel="stylesheet" href="hud.css" />
+  </head>
+  <body class="off">
+    <div id="visor" aria-hidden="true">
+      <div class="scan"></div>
+      <div class="beam"></div>
+      <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+    </div>
+
+    <header id="top">
+      <div class="title-row">
+        <span class="rule"></span>
+        <h1 id="title">STARK HUD</h1>
+        <span class="rule"></span>
+        <button id="close" class="hit" title="Close" aria-label="Close HUD">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" /></svg>
+        </button>
+      </div>
+      <div id="sub">MARK 85 · ONLINE</div>
+      <div id="timer"><i></i></div>
+    </header>
+
+    <section id="core" aria-label="Clock">
+      <svg id="reticle" viewBox="0 0 400 400" aria-hidden="true">
+        <defs>
+          <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" class="glow-in" />
+            <stop offset="100%" class="glow-out" />
+          </radialGradient>
+        </defs>
+        <circle class="backdrop" cx="200" cy="200" r="168" />
+        <circle class="ring-outer spin-slow" cx="200" cy="200" r="190" />
+        <circle class="ring-arcs spin-rev" cx="200" cy="200" r="178" />
+        <g id="ticks"></g>
+        <circle class="sec-track" cx="200" cy="200" r="164" />
+        <circle id="sec" class="sec" cx="200" cy="200" r="164" />
+        <circle class="ring-inner" cx="200" cy="200" r="128" />
+        <circle class="reactor" cx="200" cy="200" r="120" fill="url(#glow)" />
+        <polygon class="tri spin-tri" points="200,92 293.5,254 106.5,254" />
+      </svg>
+      <div id="clock">
+        <div id="greet">Hello, Prince</div>
+        <div id="time"><span id="hm">--:--</span><span id="ampm"></span></div>
+        <div id="date"></div>
+      </div>
+    </section>
+
+    <div class="col left">
+    <section class="panel hit" id="sys" aria-label="Systems">
+      <h2><b>01</b>SYSTEMS</h2>
+      <div class="gauges">
+        <div class="gauge" id="g-cpu">
+          <svg viewBox="0 0 100 100" aria-hidden="true"><circle class="track" cx="50" cy="50" r="42" /><circle class="fill" cx="50" cy="50" r="42" /></svg>
+          <div class="val"><span>–</span><small>CPU</small></div>
+        </div>
+        <div class="gauge" id="g-ram">
+          <svg viewBox="0 0 100 100" aria-hidden="true"><circle class="track" cx="50" cy="50" r="42" /><circle class="fill" cx="50" cy="50" r="42" /></svg>
+          <div class="val"><span>–</span><small>RAM</small></div>
+        </div>
+        <div class="gauge" id="g-disk">
+          <svg viewBox="0 0 100 100" aria-hidden="true"><circle class="track" cx="50" cy="50" r="42" /><circle class="fill" cx="50" cy="50" r="42" /></svg>
+          <div class="val"><span>–</span><small>DISK</small></div>
+        </div>
+      </div>
+      <svg id="spark" viewBox="0 0 200 36" preserveAspectRatio="none" aria-hidden="true"><polygon id="spark-area" points="" /><polyline id="spark-line" points="" /></svg>
+      <ul class="rows">
+        <li><span>POWER</span><b id="power">scanning…</b></li>
+        <li><span>UPLINK</span><b id="net">scanning…</b></li>
+        <li><span>MEMORY</span><b id="mem">–</b></li>
+        <li><span>STORAGE</span><b id="store">–</b></li>
+        <li class="extra"><span>UPTIME</span><b id="uptime">–</b></li>
+      </ul>
+    </section>
+
+    <section class="panel hit" id="music" aria-label="Now playing">
+      <h2><b>03</b>AUDIO</h2>
+      <div class="now">
+        <div class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="song-box">
+          <div id="song">Scanning…</div>
+          <div id="artist"></div>
+        </div>
+      </div>
+      <div class="ctl">
+        <button class="hit" data-a="previous" title="Previous" aria-label="Previous">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h2v14H6zM20 5v14L9 12z" /></svg>
+        </button>
+        <button class="hit main" data-a="toggle" id="pp" title="Play / pause" aria-label="Play or pause">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path class="i-play" d="M7 4v16l13-8z" /><path class="i-pause" d="M6 4h4v16H6zM14 4h4v16h-4z" /></svg>
+        </button>
+        <button class="hit" data-a="next" title="Next" aria-label="Next">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 5h2v14h-2zM4 5v14l11-7z" /></svg>
+        </button>
+      </div>
+    </section>
+    </div>
+
+    <div class="col right">
+    <section class="panel hit" id="mission" aria-label="Mission board">
+      <h2><b>02</b>MISSION BOARD</h2>
+      <div class="scroll">
+        <div id="exam"></div>
+        <div id="event"></div>
+        <h3>OBJECTIVES <span id="todo-count"></span></h3>
+        <ul id="todos"></ul>
+        <h3 id="rems-head">REMINDERS</h3>
+        <ul id="rems"></ul>
+      </div>
+    </section>
+    <section class="panel hit" id="weather" aria-label="Weather">
+      <h2><b>04</b>ATMOSPHERE</h2>
+      <div id="wx"></div>
+    </section>
+    </div>
+
+    <footer id="status"><i class="dot"></i><span id="status-text">BOOTING…</span></footer>
+    <script src="hud.js"></script>
+  </body>
+</html>

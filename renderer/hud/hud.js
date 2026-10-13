@@ -1,0 +1,422 @@
+'use strict';
+/* Iron Man HUD page: boots up, shows what main sends (hud.js in main), fades out. */
+
+const $ = (id) => document.getElementById(id);
+const api = window.hud;
+const body = document.body;
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const GB = 1024 ** 3;
+
+let head = { title: 'STARK HUD', sub: 'MARK 85 · ONLINE', theme: 'stark', name: 'Prince', tutor: '', sound: true };
+let on = false;
+let interactive = false;
+let clockTimer = null;
+let leaveTimer = null;
+let test = false;
+const state = { system: null, slow: null, missions: null, music: undefined, weather: null, cpuHistory: [] };
+
+/** <tag class="cls">text</tag> - all text goes in as text, never as HTML. */
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined && text !== null) e.textContent = String(text);
+  return e;
+}
+const gb = (b) => `${(b / GB).toFixed(b >= 100 * GB ? 0 : 1)} GB`;
+const pad = (n) => String(n).padStart(2, '0');
+
+// ------------------------------------------------------------------ reticle ticks (drawn once)
+(function ticks() {
+  const g = $('ticks');
+  for (let i = 0; i < 60; i++) {
+    const a = (i / 60) * Math.PI * 2;
+    const major = i % 5 === 0;
+    const r1 = major ? 146 : 151;
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', 200 + Math.sin(a) * r1);
+    line.setAttribute('y1', 200 - Math.cos(a) * r1);
+    line.setAttribute('x2', 200 + Math.sin(a) * 157);
+    line.setAttribute('y2', 200 - Math.cos(a) * 157);
+    if (major) line.setAttribute('class', 'major');
+    g.appendChild(line);
+  }
+})();
+
+// ------------------------------------------------------------------ clock
+function tick() {
+  const d = new Date();
+  const h = d.getHours();
+  $('hm').textContent = `${h % 12 || 12}:${pad(d.getMinutes())}`;
+  $('ampm').textContent = h < 12 ? 'AM' : 'PM';
+  $('date').textContent = `${DAYS[d.getDay()]} · ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+  const hello = h < 5 ? 'Burning the midnight oil' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : h < 21 ? 'Good evening' : 'Good night';
+  $('greet').textContent = `${hello}, ${head.name}`;
+  const C = 1030.4; // 2πr, r = 164
+  $('sec').style.strokeDashoffset = String(C * (1 - (d.getSeconds() + 1) / 60));
+}
+
+/** Title letters "decode" from noise, like a suit booting. */
+function decode(node, text, ms = 520) {
+  const glyphs = 'ABCDEFGHJKLMNPRSTUVWXYZ0123456789#%&';
+  const t0 = performance.now();
+  const step = (now) => {
+    const k = Math.min(1, (now - t0) / ms);
+    const fixed = Math.floor(text.length * k);
+    node.textContent = text
+      .split('')
+      .map((ch, i) => (i < fixed || ch === ' ' ? ch : glyphs[Math.floor(Math.random() * glyphs.length)]))
+      .join('');
+    if (k < 1 && on) requestAnimationFrame(step);
+    else node.textContent = text;
+  };
+  requestAnimationFrame(step);
+}
+
+/** A short "power up" chirp (Web Audio, no sound files). */
+function chirp() {
+  try {
+    const ctx = new AudioContext();
+    const t = ctx.currentTime;
+    const gain = ctx.createGain();
+    gain.connect(ctx.destination);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.05, t + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.42);
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(240, t);
+    o.frequency.exponentialRampToValueAtTime(980, t + 0.28);
+    o.connect(gain);
+    o.start(t);
+    o.stop(t + 0.45);
+    const b = ctx.createOscillator();
+    const bg = ctx.createGain();
+    b.type = 'triangle';
+    b.frequency.setValueAtTime(1760, t + 0.3);
+    bg.gain.setValueAtTime(0.0001, t + 0.3);
+    bg.gain.exponentialRampToValueAtTime(0.025, t + 0.32);
+    bg.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+    b.connect(bg).connect(ctx.destination);
+    b.start(t + 0.3);
+    b.stop(t + 0.52);
+    setTimeout(() => ctx.close().catch(() => {}), 900);
+  } catch {
+    /* no audio device - fine */
+  }
+}
+
+// ------------------------------------------------------------------ show / hide
+api.onShow((d) => {
+  head = { ...head, ...(d.head || {}) };
+  test = !!d.test;
+  clearTimeout(leaveTimer);
+  body.className = ''; // restart the boot animations
+  void body.offsetWidth;
+  body.classList.add('on', head.theme === 'shadow' ? 'shadow' : 'stark');
+  if (interactive) body.classList.add('held');
+  on = true;
+  $('sub').textContent = head.sub;
+  decode($('title'), head.title);
+  setStatus('BOOTING…', '');
+  tick();
+  clearInterval(clockTimer);
+  clockTimer = setInterval(tick, 1000);
+  if (head.sound && !test) chirp();
+});
+
+api.onHide(() => {
+  if (!on) return api.hidden();
+  on = false;
+  clearInterval(clockTimer);
+  body.classList.remove('on');
+  body.classList.add('leaving');
+  clearTimeout(leaveTimer);
+  leaveTimer = setTimeout(() => {
+    body.className = 'off';
+    api.hidden();
+  }, 420);
+});
+
+api.onTimer(({ ms }) => {
+  const t = $('timer');
+  t.classList.remove('run');
+  t.classList.toggle('pinned', !ms);
+  if (!ms) return;
+  t.style.setProperty('--ms', `${ms}ms`);
+  void t.offsetWidth;
+  t.classList.add('run');
+});
+
+// panels take the mouse only while the cursor is on them (see HudDisplay.poll in main)
+api.onCursor((c) => {
+  let want = false;
+  if (c.inside && on) {
+    const at = document.elementFromPoint(c.x, c.y);
+    want = !!(at && at.closest('.hit'));
+  }
+  if (c.interactive !== want) interactive = !want;
+  if (want !== interactive) {
+    interactive = want;
+    api.interactive(want);
+  }
+  body.classList.toggle('held', want);
+});
+
+$('close').addEventListener('click', () => api.close());
+document.querySelectorAll('.ctl button').forEach((b) =>
+  b.addEventListener('click', () => {
+    if (b.disabled) return;
+    if (b.dataset.a === 'toggle' && state.music && !state.music.none) {
+      state.music.playing = !state.music.playing; // feels instant; main sends the real state back
+      renderMusic(state.music);
+    }
+    api.media(b.dataset.a);
+  })
+);
+
+// ------------------------------------------------------------------ data
+api.onData((d) => {
+  if (d.system) renderSystem(d.system);
+  if (d.slow) renderSlow(d.slow);
+  if (d.missions) renderMissions(d.missions);
+  if (d.music !== undefined) renderMusic(d.music);
+  if (d.weather) renderWeather(d.weather);
+  updateStatus();
+});
+
+// gold / red from these levels (% used)
+const LIMITS = { 'g-cpu': [70, 90], 'g-ram': [80, 92], 'g-disk': [85, 95] };
+function gauge(id, pctValue, text) {
+  const g = $(id);
+  const p = Number.isFinite(pctValue) ? Math.max(0, Math.min(100, pctValue)) : 0;
+  const [warn, bad] = LIMITS[id];
+  g.querySelector('.fill').style.strokeDashoffset = String(263.9 * (1 - p / 100));
+  g.querySelector('.val span').textContent = text;
+  g.classList.toggle('warn', p >= warn && p < bad);
+  g.classList.toggle('bad', p >= bad);
+}
+
+function renderSystem(s) {
+  state.system = s;
+  if (Number.isFinite(s.cpu)) {
+    gauge('g-cpu', s.cpu, `${s.cpu}%`);
+    state.cpuHistory.push(s.cpu);
+    if (state.cpuHistory.length > 40) state.cpuHistory.shift();
+    const n = state.cpuHistory.length;
+    const pts = state.cpuHistory.map((v, i) => `${n === 1 ? 200 : (i / (n - 1)) * 200},${(34 - (v / 100) * 32).toFixed(1)}`);
+    $('spark-line').setAttribute('points', pts.join(' '));
+    $('spark-area').setAttribute('points', n > 1 ? `0,36 ${pts.join(' ')} 200,36` : '');
+  }
+  if (s.ram) {
+    gauge('g-ram', s.ram.pct, `${s.ram.pct}%`);
+    $('mem').textContent = `${gb(s.ram.used)} / ${gb(s.ram.total)}`;
+  }
+  if (s.disk) {
+    gauge('g-disk', s.disk.pct, `${s.disk.pct}%`);
+    $('store').textContent = `${gb(s.disk.free)} free`;
+    $('store').className = s.disk.free < 10 * GB ? 'bad' : s.disk.free < 25 * GB ? 'warn' : '';
+  } else {
+    $('store').textContent = '–';
+  }
+  if (Number.isFinite(s.uptimeH)) $('uptime').textContent = s.uptimeH >= 48 ? `${Math.floor(s.uptimeH / 24)} days` : `${s.uptimeH} h`;
+  renderSlow({ battery: s.battery, online: s.online }); // the last battery / internet readings, if any
+}
+
+function renderSlow(s) {
+  const now = { ...(state.slow || {}) };
+  if (s.battery !== undefined) now.battery = s.battery;
+  if (s.online === true || s.online === false) now.online = s.online;
+  state.slow = now;
+  const p = $('power');
+  if (!('battery' in now)) {
+    /* still reading */
+  } else if (!now.battery) {
+    p.textContent = 'AC POWER';
+    p.className = '';
+  } else {
+    const n = Math.round(now.battery.percent);
+    p.textContent = `${n}%${now.battery.charging ? ' · CHARGING' : ''}`;
+    p.className = now.battery.charging ? 'good' : n <= 15 ? 'bad' : n <= 30 ? 'warn' : '';
+  }
+  const net = $('net');
+  if (now.online === true) {
+    net.textContent = 'ONLINE';
+    net.className = 'good';
+  } else if (now.online === false) {
+    net.textContent = 'OFFLINE';
+    net.className = 'bad';
+  }
+}
+
+function renderMissions(m) {
+  state.missions = m;
+  const exam = $('exam');
+  exam.replaceChildren();
+  if (m.exam) {
+    const e = m.exam;
+    const box = el('div', `exam${e.days <= 0 ? ' now' : ''}`);
+    const count = el('div', 'count');
+    count.append(el('b', '', e.days <= 0 ? '!!' : pad(e.days)), el('small', '', e.days <= 0 ? 'TODAY' : e.days === 1 ? 'DAY' : 'DAYS'));
+    const info = el('div', 'info');
+    const bar = el('div', 'bar');
+    const fill = el('i');
+    bar.append(fill);
+    info.append(el('div', 'subj', `${e.subject} exam`), el('div', 'when', `${e.dateText} · ${e.countdown}`), bar, el('div', 'prog', `STUDY PLAN ${e.progress.done}/${e.progress.total}`));
+    box.append(count, info);
+    exam.append(box);
+    requestAnimationFrame(() => (fill.style.width = `${e.progress.total ? Math.round((100 * e.progress.done) / e.progress.total) : 0}%`));
+    if (e.today.length) {
+      exam.append(el('h3', '', "TODAY'S TRAINING"));
+      const ul = el('ul', 'train');
+      for (const t of e.today.slice(0, 3)) {
+        const li = el('li', t.done ? 'done' : '');
+        li.append(el('i', '', t.done ? '✅' : t.icon), el('span', '', t.text), el('em', '', t.subject));
+        ul.append(li);
+      }
+      exam.append(ul);
+    }
+    const later = (m.nextExams || []).slice(1);
+    if (later.length) exam.append(el('div', 'then', `THEN: ${later.map((x) => `${x.subject} (${x.days}d)`).join(' · ')}`));
+  } else {
+    exam.append(el('div', 'muted', `No exams on the radar. Say "my exams: maths 20 nov ch 1-8" and ${head.tutor || 'your tutor'} plans it.`));
+  }
+
+  const ev = $('event');
+  ev.replaceChildren();
+  ev.className = m.event && m.event.soon ? 'soon' : '';
+  if (m.event) ev.append(el('span', '', `📅 ${m.event.title}`), el('small', '', m.event.when));
+
+  $('todo-count').textContent = m.todoCount ? `· ${m.todoCount}` : '';
+  const todos = $('todos');
+  todos.replaceChildren();
+  if (!m.todos.length) todos.append(el('li', 'muted', 'All objectives clear ✓'));
+  m.todos.forEach((t, i) => {
+    const li = el('li', i >= 3 ? 'extra' : '');
+    const btn = el('button', 'check hit');
+    btn.title = 'Mark done';
+    btn.setAttribute('aria-label', `Mark "${t.text}" done`);
+    btn.innerHTML = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3"/></svg>'; // fixed markup, no data
+    btn.addEventListener('click', () => {
+      if (li.classList.contains('done')) return;
+      li.classList.add('done');
+      api.todoDone(t.id);
+    });
+    li.append(btn, el('span', '', t.text));
+    todos.append(li);
+  });
+
+  const rems = $('rems');
+  rems.replaceChildren();
+  $('rems-head').style.display = m.reminders.length ? '' : 'none';
+  m.reminders.forEach((r, i) => {
+    const li = el('li', i >= 1 ? 'extra' : '');
+    li.append(el('i', '', '⏰'), el('span', '', r.text), el('em', '', r.when));
+    rems.append(li);
+  });
+  fitMission();
+}
+
+/** Short screen: the mission board fades out at the bottom instead of running into the weather. */
+function fitMission() {
+  const box = $('mission');
+  const inner = box.querySelector('.scroll');
+  box.classList.toggle('clipped', inner.scrollHeight > inner.clientHeight + 2);
+}
+window.addEventListener('resize', fitMission);
+
+function renderMusic(m) {
+  state.music = m;
+  const panel = $('music');
+  const buttons = panel.querySelectorAll('.ctl button');
+  panel.classList.toggle('playing', !!(m && m.playing));
+  buttons.forEach((b) => (b.disabled = !m));
+  if (m === null) {
+    $('song').textContent = 'Music controls need Windows';
+    $('artist').textContent = '';
+  } else if (m.none) {
+    $('song').textContent = 'No audio signal';
+    $('artist').textContent = 'Say "play lofi" to start something';
+  } else {
+    $('song').textContent = m.title || 'Unknown track';
+    $('artist').textContent = [m.artist, m.app].filter(Boolean).join(' · ') + (m.playing ? '' : ' · PAUSED');
+  }
+}
+
+function renderWeather(w) {
+  state.weather = w;
+  const box = $('wx');
+  box.replaceChildren();
+  if (!w.ok) {
+    const msg = {
+      'no-city': ['SET YOUR CITY', 'Say "set my city to Jaipur" (or Settings → HUD) and the weather shows up here.'],
+      'unknown-city': ['CITY NOT FOUND', `Couldn't find "${w.city || ''}". Try the nearest big city.`],
+    }[w.reason] || ['SENSORS OFFLINE', "Couldn't reach the weather service right now."];
+    const text = el('div', 'wx-text');
+    text.append(el('b', 'warn', msg[0]));
+    box.append(text, el('div', 'muted', msg[1]));
+    return;
+  }
+  const main = el('div', 'wx-main');
+  const temp = el('div', 'wx-temp', w.now.temp);
+  temp.append(el('sup', '', '°C'));
+  const text = el('div', 'wx-text');
+  text.append(el('b', '', w.now.text), el('span', '', [w.place, w.country].filter(Boolean).join(', ')));
+  main.append(el('div', 'wx-icon', w.now.icon), temp, text);
+  const rows = el('ul', 'rows');
+  const row = (k, v, cls = '', extra = false) => {
+    const li = el('li', extra ? 'extra' : '');
+    li.append(el('span', '', k), el('b', cls, v));
+    rows.append(li);
+  };
+  row('FEELS LIKE', `${w.now.feels}°C`);
+  if (w.today.min !== null) row('TODAY', `${w.today.min}° – ${w.today.max}°`);
+  if (w.today.rain !== null) row('RAIN', `${w.today.rain}%`, w.today.rain >= 60 ? 'warn' : '');
+  row('HUMIDITY · WIND', `${w.now.humidity}% · ${w.now.wind} km/h`, '', true);
+  if (w.tomorrow && w.tomorrow.min !== null) row('TOMORROW', `${w.tomorrow.icon} ${w.tomorrow.min}° – ${w.tomorrow.max}°`, '', true);
+  box.append(main, rows);
+}
+
+/** The line at the bottom: the most important thing right now. */
+function updateStatus() {
+  const s = state.system || {};
+  const slow = state.slow || {};
+  const m = state.missions || {};
+  const bat = slow.battery;
+  if (bat && !bat.charging && bat.percent <= 15) return setStatus(`POWER CRITICAL · ${Math.round(bat.percent)}% · PLUG IN`, 'bad');
+  if (slow.online === false) return setStatus('NO UPLINK · YOU ARE OFFLINE', 'bad');
+  if (s.disk && s.disk.free < 10 * GB) return setStatus(`STORAGE LOW · ${gb(s.disk.free)} LEFT`, 'bad');
+  if (m.exam && m.exam.days <= 0) return setStatus(`EXAM DAY · ${m.exam.subject.toUpperCase()} · YOU GOT THIS`, 'warn');
+  if (Number.isFinite(s.cpu) && s.cpu >= 90) return setStatus(`CPU UNDER HEAVY LOAD · ${s.cpu}%`, 'warn');
+  if (bat && !bat.charging && bat.percent <= 30) return setStatus(`POWER LOW · ${Math.round(bat.percent)}%`, 'warn');
+  if (m.event && m.event.soon) return setStatus(`INCOMING · ${m.event.title.toUpperCase()} · ${m.event.when.toUpperCase()}`, 'warn');
+  if (m.exam && m.exam.days === 1) return setStatus(`${m.exam.subject.toUpperCase()} EXAM TOMORROW · FINAL PREP`, 'warn');
+  if (state.system) setStatus('ALL SYSTEMS NOMINAL', 'good');
+}
+
+function setStatus(text, cls) {
+  $('status-text').textContent = text;
+  $('status').className = cls;
+}
+
+// self-test hook: what's on screen
+window.__hudTest = {
+  state: () => ({
+    on,
+    interactive,
+    body: body.className,
+    title: head.title,
+    text: (id) => ($(id) ? $(id).innerText : ''),
+    time: $('hm').textContent,
+    status: $('status-text').textContent,
+    statusClass: $('status').className,
+    timerMs: $('timer').classList.contains('run') ? $('timer').style.getPropertyValue('--ms') : 'off',
+    playing: $('music').classList.contains('playing'),
+  }),
+  rect: (sel) => {
+    const r = document.querySelector(sel).getBoundingClientRect();
+    return { x: r.x, y: r.y, w: r.width, h: r.height };
+  },
+};
+
+api.ready();

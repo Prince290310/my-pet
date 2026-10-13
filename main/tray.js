@@ -43,6 +43,10 @@ function createTray({ brain, settings, loginItem, actions, getUpdater = () => nu
     if (actions.rescue) items.push({ id: 'rescue', label: `Unstick ${settings.get('petName')} (can't click?)`, click: () => actions.rescue() });
     if (callGang) items.push({ id: 'gang', label: appearance.isAvengers(settings) ? 'Avengers, Assemble! ⚡' : 'Call the Gang 🐾', click: () => callGang() });
     if (appearance.isAvengers(settings) && appearance.mainHero(settings) === 'ironman') items.push({ id: 'fly', label: 'Fly Across Screen', click: () => brain.command('fly') });
+    if (actions.showHud) {
+      const key = actions.hudKey ? actions.hudKey() : '';
+      items.push({ id: 'hud', label: `${appearance.isAvengers(settings) ? 'Iron Man HUD' : 'Show HUD'}${key ? ` (${key})` : ''}`, click: () => actions.showHud() });
+    }
     items.push(
       { id: 'chat', label: 'Chat… (Ctrl+Click pet)', click: () => actions.openChat() },
       {
@@ -99,7 +103,7 @@ function createTray({ brain, settings, loginItem, actions, getUpdater = () => nu
   brain.on('reminder-dismissed', rebuild);
   brain.on('reminder-done', rebuild);
   settings.on('change', (_all, changed) => {
-    if (changed.some((k) => ['muteQuips', 'scale', 'petName', 'appearance', 'mainHero'].includes(k))) rebuild();
+    if (changed.some((k) => ['muteQuips', 'scale', 'petName', 'appearance', 'mainHero', 'hudHotkey'].includes(k))) rebuild();
   });
   rebuild();
 

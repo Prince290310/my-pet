@@ -125,6 +125,37 @@
         </div>
       </section>
 
+      <section class="hud">
+        <h2 id="hudTitle">Iron Man HUD</h2>
+        <p class="note">A see-through helmet display over your screen: time, CPU / RAM / battery, your next exam, to-dos, the song playing and the weather. Hover a panel to keep it open, click ✓ to tick off a to-do. Also: say <b>"hud"</b> or <b>"status report"</b>.</p>
+        <label class="field"><span>Hotkey</span>
+          <select id="hudHotkey">
+            <option value="ctrl-alt-h">Ctrl + Alt + H</option>
+            <option value="alt-shift-h">Alt + Shift + H</option>
+            <option value="ctrl-alt-space">Ctrl + Alt + Space</option>
+            <option value="ctrl-shift-f12">Ctrl + Shift + F12</option>
+            <option value="off">Off (chat / tray only)</option>
+          </select>
+        </label>
+        <p class="note" id="hudKeyNote" role="status"></p>
+        <label class="field"><span>Fades out after</span>
+          <select id="hudSeconds">
+            <option value="8">8 seconds</option>
+            <option value="12">12 seconds</option>
+            <option value="20">20 seconds</option>
+            <option value="30">30 seconds</option>
+            <option value="60">1 minute</option>
+            <option value="0">Never - stays until I close it</option>
+          </select>
+        </label>
+        <label class="field"><span>Weather city</span>
+          <input id="weatherCity" maxlength="60" placeholder="e.g. Jaipur" spellcheck="false" />
+        </label>
+        <p class="note">Weather comes from Open-Meteo - free, no account. Only the city name is sent.</p>
+        <label class="check"><input id="hudSound" type="checkbox" /><i></i>Power-up sound when it opens</label>
+        <button type="button" id="hudShow" class="ghost">SHOW HUD NOW</button>
+      </section>
+
       <section class="startup">
         <h2>Startup routine</h2>
         <p class="note">When Windows starts, Shadow opens these for you, then gives your briefing. Apps, folders, sites - or "play …" for music.</p>

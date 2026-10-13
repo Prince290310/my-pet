@@ -345,7 +345,8 @@ input[type='time'] {
 #startupRun {
   margin: 0 0 12px;
 }
-#spStatus.bad {
+#spStatus.bad,
+#hudKeyNote.warn {
   color: #ff6f91;
 }
 .team-preview { display: block; width: 100%; height: auto; image-rendering: pixelated; border: 1px solid var(--line); margin: 12px 0; }

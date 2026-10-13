@@ -2095,6 +2095,219 @@ async function run(ctx, h) {
     quiet();
     brain.rest(60000);
 
+    section('Iron Man HUD (fake weather server + fake music - nothing real is touched)');
+    {
+      const { parseHudCommand } = require('./hud');
+      const { globalShortcut } = require('electron');
+      const P = (t) => JSON.stringify(parseHudCommand(t));
+      check('HUD phrases: "hud", "show my hud", "status report", "hide hud"', P('hud') === '{"type":"show"}' && P('Show my HUD') === '{"type":"show"}' && P('status report') === '{"type":"show","report":true}' && P('hide hud') === '{"type":"hide"}');
+      check('weather phrases: "weather", "what\'s the weather in Mumbai?", "will it rain tomorrow?"', P('weather') === '{"type":"weather","day":"today","city":""}' && JSON.parse(P("what's the weather like in Mumbai?")).city === 'Mumbai' && P('will it rain tomorrow?') === '{"type":"weather","ask":"rain","day":"tomorrow","city":""}');
+      check('"set my city to Jaipur" / "my city is Pune"; random chat is left alone', P('set my city to Jaipur') === '{"type":"city","city":"Jaipur"}' && JSON.parse(P('my city is Pune')).city === 'Pune' && P('set city to 123') === 'null' && P('play lofi') === 'null' && P('todo: weather report') === 'null');
+
+      // fake Open-Meteo: geocoding + forecast
+      const wxHits = [];
+      const wxServer = http.createServer((req, res) => {
+        const u = new URL(req.url, 'http://x');
+        wxHits.push(u.pathname + u.search);
+        res.setHeader('Content-Type', 'application/json');
+        if (u.pathname === '/v1/search') {
+          const name = u.searchParams.get('name').toLowerCase();
+          const places = { jaipur: { name: 'Jaipur', admin1: 'Rajasthan', country: 'India', country_code: 'IN', latitude: 26.91, longitude: 75.79 }, mumbai: { name: 'Mumbai', admin1: 'Maharashtra', country: 'India', country_code: 'IN', latitude: 19.07, longitude: 72.88 } };
+          return res.end(JSON.stringify(places[name] ? { results: [places[name]] } : {}));
+        }
+        if (u.pathname === '/v1/forecast') {
+          const mumbai = u.searchParams.get('latitude').startsWith('19');
+          return res.end(JSON.stringify({
+            current: { temperature_2m: mumbai ? 29.4 : 31.2, apparent_temperature: mumbai ? 34 : 33.1, relative_humidity_2m: mumbai ? 80 : 38, weather_code: mumbai ? 61 : 1, wind_speed_10m: 12, is_day: 1 },
+            daily: { time: ['d0', 'd1'], weather_code: [1, 63], temperature_2m_max: [34.2, 33], temperature_2m_min: [24.1, 25], precipitation_probability_max: [10, 70] },
+          }));
+        }
+        res.statusCode = 404;
+        res.end('{}');
+      });
+      await new Promise((r) => wxServer.listen(0, '127.0.0.1', r));
+      const wxBase = `http://127.0.0.1:${wxServer.address().port}`;
+      ctx.hudData.geoBase = wxBase;
+      ctx.hudData.weatherBase = wxBase;
+      ctx.hudData.hooks = { cpu: () => 37 };
+      settings.update({ weatherCity: '' });
+
+      let hr = await ctx.handleMessage('weather', []);
+      check('"weather" with no city asks for one', hr.text.includes('set my city to Jaipur') && !wxHits.length, hr.text);
+      hr = await ctx.handleMessage('set my city to jaipur', []);
+      check('"set my city to jaipur" checks the place, saves it and answers with the weather', settings.get('weatherCity') === 'Jaipur' && hr.text.includes('Jaipur, Rajasthan') && hr.text.includes('🌤️ 31°C'), hr.text);
+      hr = await ctx.handleMessage("what's the weather?", []);
+      check('"what\'s the weather?" -> temperature, feels-like, today\'s range, rain chance', hr.text === '🌤️ Jaipur: 31°C (feels 33°C), mainly clear · today 24–34°C · 10% chance of rain', hr.text);
+      check('...from the 15-minute cache (no second forecast request)', wxHits.filter((x) => x.startsWith('/v1/forecast')).length === 1, wxHits.join(' '));
+      hr = await ctx.handleMessage('will it rain tomorrow?', []);
+      check('"will it rain tomorrow?" -> yes/maybe/no + umbrella tip', hr.text === '☔ Yes, most likely - 70% chance of rain in Jaipur tomorrow. Take an umbrella ☂️', hr.text);
+      hr = await ctx.handleMessage('weather in Mumbai', []);
+      check('"weather in Mumbai" looks up another city without changing yours', hr.text.startsWith('🌧️ Mumbai: 29°C') && settings.get('weatherCity') === 'Jaipur', hr.text);
+      hr = await ctx.handleMessage('weather in Atlantis', []);
+      check('an unknown city gets a friendly answer', hr.text.includes('couldn\'t find a place called "Atlantis"'), hr.text);
+
+      // what the HUD shows
+      const day = (n) => {
+        const d = new Date(Date.now() + n * 86400000);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      };
+      ctx.exams.cancel('all');
+      ctx.exams.addFromForm({ subject: 'Maths', date: day(4), topics: '1-6' });
+      ctx.exams.addFromForm({ subject: 'Physics', date: day(7), topics: 'optics, waves' });
+      ctx.tasks.data.todos = []; // a clean board for these checks
+      const hudTodo = ctx.tasks.addTodo('Finish physics assignment').todo;
+      ctx.tasks.addTodo('Submit lab record');
+      const hudPlayer = { title: 'Kesariya', artist: 'Arijit Singh', app: 'Spotify.exe', status: 'Playing' };
+      const hudMedia = [];
+      ctx.music.hooks = {
+        media: async (action) => {
+          hudMedia.push(action);
+          if (action === 'play') hudPlayer.status = 'Playing';
+          if (action === 'pause') hudPlayer.status = 'Paused';
+          if (action === 'next') hudPlayer.title = 'Apna Bana Le';
+          return { ok: true, ...hudPlayer };
+        },
+      };
+      ctx.care.hooks = { ...ctx.care.hooks, battery: async () => ({ percent: 84, charging: true }), online: async () => true, disk: async () => ({ free: 118 * 1024 ** 3, total: 476 * 1024 ** 3 }) };
+      ctx.hudData.cache.battery = ctx.hudData.cache.online = null;
+      ctx.hudSecondsOverride = 0; // stays up while we look at it
+
+      quiet();
+      hr = await ctx.handleMessage('hud', []);
+      const hud = ctx.hud;
+      const hwin = () => hud.window();
+      const hjs = (code) => hwin().webContents.executeJavaScript(code);
+      const hstate = () => hjs('window.__hudTest.state()');
+      const up = await waitFor(async () => hud.visible && hwin() && hwin().isVisible() && (await hstate()).on, 6000);
+      check('"hud" opens the HUD over the screen', up && hr.text.startsWith('🐾 HUD up, Prince.'), hr.text);
+      const wa = ctx.sensors.displayAt(ctx.sensors.cursor()).workArea;
+      const hb = hwin().getBounds();
+      check('...covering the work area, always on top, never taking focus', hb.x === wa.x && hb.y === wa.y && hb.width === wa.width && hb.height === wa.height && hwin().isAlwaysOnTop() && !hwin().isFocusable() && !hwin().isFocused());
+      const loaded = await waitFor(async () => {
+        const t = await hjs(`[...['sys','mission','music','weather']].map(id => document.getElementById(id).innerText).join('\\n')`);
+        return /37%/.test(t) && /Finish physics assignment/.test(t) && /Kesariya/.test(t) && /31/.test(t) && /84%/.test(t) ? t : false;
+      }, 6000);
+      check('Systems panel: CPU, RAM, disk, battery, internet', loaded && /37%/.test(loaded) && /84% · CHARGING/.test(loaded) && /ONLINE/.test(loaded) && /118 GB free/.test(loaded), (loaded || '').slice(0, 160));
+      const mission = await hjs('document.getElementById("mission").innerText');
+      check('Mission board: next exam countdown, today\'s study, the other exams, to-dos', /MATHS EXAM/i.test(mission) && /04\s*DAYS/.test(mission) && /TODAY'S TRAINING/i.test(mission) && /Physics \(7d\)/.test(mission) && /Finish physics assignment/.test(mission) && /Submit lab record/.test(mission), mission.replace(/\n/g, ' | ').slice(0, 220));
+      const audio = await hjs('document.getElementById("music").innerText');
+      check('Audio panel: the song playing, with controls', /Kesariya/.test(audio) && /Arijit Singh · Spotify/.test(audio) && (await hstate()).playing, audio.replace(/\n/g, ' | '));
+      const wxText = await hjs('document.getElementById("weather").innerText');
+      check('Atmosphere panel: weather for your city', /31/.test(wxText) && /Mainly clear/.test(wxText) && /JAIPUR, INDIA/i.test(wxText) && /24° – 34°/.test(wxText), wxText.replace(/\n/g, ' | '));
+      const hs = await hstate();
+      check('header + status line: "SHADOW HUD" in the original theme, "ALL SYSTEMS NOMINAL"', hs.title === 'SHADOW HUD' && hs.body.includes('shadow') && hs.status === 'ALL SYSTEMS NOMINAL' && /^\d{1,2}:\d\d$/.test(hs.time), JSON.stringify(hs));
+      await sleep(900); // let the boot animation finish
+      await shot('hud', hwin().webContents);
+
+      // the panels take the mouse only while the cursor is on them
+      const centerOf = async (sel) => {
+        const r = await hjs(`window.__hudTest.rect(${JSON.stringify(sel)})`);
+        const b = hwin().getBounds();
+        return { x: Math.round(b.x + r.x + r.w / 2), y: Math.round(b.y + r.y + r.h / 2) };
+      };
+      check('click-through by default', !hud.hovering && !(await hstate()).interactive);
+      fake.cursor = await centerOf('#music');
+      check('cursor over a panel -> that panel takes the mouse', await waitFor(() => hud.hovering, 2000));
+      fake.cursor = await centerOf('#core');
+      check('cursor over the middle of the screen -> clicks go through again', await waitFor(() => !hud.hovering, 2000));
+
+      // buttons
+      await hjs('document.getElementById("pp").click()');
+      await waitFor(() => hudMedia.includes('pause'), 3000);
+      check('⏯ pauses the song (and the panel shows PAUSED)', hudMedia.includes('pause') && (await waitFor(async () => /PAUSED/.test(await hjs('document.getElementById("artist").textContent')), 3000)));
+      await hjs('document.querySelector(\'[data-a="next"]\').click()');
+      check('⏭ skips to the next song', await waitFor(async () => hudMedia.includes('next') && /Apna Bana Le/.test(await hjs('document.getElementById("song").textContent')), 3000));
+      await hjs('document.querySelector("#todos .check").click()');
+      check('✓ ticks off a to-do', await waitFor(() => !ctx.tasks.openTodos().some((t) => t.id === hudTodo.id), 3000));
+      check('...and the board drops it', await waitFor(async () => !/Finish physics assignment/.test(await hjs('document.getElementById("todos").innerText')), 4000));
+      await hjs('document.getElementById("close").click()');
+      check('✕ closes the HUD (fade out, then hidden)', await waitFor(async () => !hwin().isVisible() && !hud.visible && (await hstate()).body === 'off', 3000));
+
+      // fading out by itself; hovering a panel keeps it open
+      ctx.hudSecondsOverride = 1;
+      fake.cursor = { x: -99999, y: -99999 };
+      hud.show('test');
+      await waitFor(() => hwin().isVisible(), 3000);
+      const timer = await hstate();
+      check('fades out by itself after the set time', timer.timerMs === '1000ms' && (await waitFor(() => !hwin().isVisible(), 3500)), timer.timerMs);
+      hud.show('test');
+      await waitFor(() => hwin().isVisible(), 3000);
+      await sleep(200);
+      fake.cursor = await centerOf('#mission');
+      await waitFor(() => hud.hovering, 2000);
+      await sleep(1600);
+      check('...but stays while you hover a panel', hwin().isVisible() && hud.visible);
+      fake.cursor = { x: -99999, y: -99999 };
+      check('...and fades a few seconds after you move away', await waitFor(() => !hwin().isVisible(), 5000));
+
+      // hotkey, tray, right-click menu, Settings
+      const accel = ctx.hudKey;
+      check('hotkey Ctrl+Alt+H is registered (or reported as taken by another app)', (accel === 'CommandOrControl+Alt+H' && globalShortcut.isRegistered(accel)) || ctx.hudKeyTaken, `${accel} taken=${ctx.hudKeyTaken}`);
+      ctx.hudSecondsOverride = 0;
+      hud.toggle('hotkey');
+      await waitFor(() => hwin().isVisible(), 3000);
+      const toggledOn = hud.visible;
+      hud.toggle('hotkey');
+      check('the hotkey toggles it on and off', toggledOn && (await waitFor(() => !hwin().isVisible(), 3000)));
+      settings.update({ hudHotkey: 'alt-shift-h' });
+      check('changing the hotkey swaps the registration', (ctx.hudKey === 'Alt+Shift+H' || ctx.hudKeyTaken) && !globalShortcut.isRegistered('CommandOrControl+Alt+H'), ctx.hudKey);
+      settings.update({ hudHotkey: 'off' });
+      check('"Off" unregisters it', ctx.hudKey === '' && !ctx.hudKeyTaken && !globalShortcut.isRegistered('Alt+Shift+H'));
+      settings.update({ hudHotkey: 'ctrl-alt-h' });
+      const trayHud = ctx.trayCtl.menu().getMenuItemById('hud');
+      check('tray menu has the HUD (with its hotkey)', !!trayHud && (trayHud.label === `Show HUD${ctx.hudKey ? ' (Ctrl+Alt+H)' : ''}`), trayHud && trayHud.label);
+      trayHud.click();
+      check('...which opens it', await waitFor(() => hwin().isVisible() && hud.visible, 3000));
+      hud.hide('test');
+      check('right-click menu has it too', h.petMenuTemplate().some((i) => /^HUD/.test(i.label || '')));
+
+      // status report: the HUD on the PC, a text summary on the phone
+      hr = await ctx.handleMessage('status report', [], 'phone');
+      check('"status report" from the phone -> a text summary (CPU, battery, song, exam, to-dos, weather)', hr.text.startsWith('📊 Status report, Prince:') && /CPU 37%/.test(hr.text) && /🔋 84% \(charging\)/.test(hr.text) && /🎵 Apna Bana Le – Arijit Singh/.test(hr.text) && /📚 Maths exam in 4 days/.test(hr.text) && /📝 1 to-do/.test(hr.text) && /Jaipur 31°C/.test(hr.text), hr.text.replace(/\n/g, ' | '));
+      check('...without opening the HUD on the PC', !hud.visible);
+      hr = await ctx.handleMessage('hide hud', []);
+      check('"hide hud" when it isn\'t open says so', hr.text === "The HUD isn't open, Prince.", hr.text);
+      hr = await ctx.handleMessage('status report', []);
+      check('"status report" on the PC opens the HUD', hr.text.startsWith('📊 Status report is up on your HUD') && (await waitFor(() => hwin().isVisible(), 3000)));
+      hr = await ctx.handleMessage('hide hud', []);
+      check('"hide hud" closes it', hr.text === 'HUD closed.' && (await waitFor(() => !hwin().isVisible(), 3000)));
+
+      // warning colours in the status line
+      ctx.care.hooks = { ...ctx.care.hooks, battery: async () => ({ percent: 12, charging: false }) };
+      ctx.hudData.cache.battery = null;
+      hud.show('test');
+      check('low battery turns the status line red', await waitFor(async () => { const s = await hstate(); return s.statusClass === 'bad' && /POWER CRITICAL · 12%/.test(s.status); }, 4000));
+      hud.hide('test');
+      await waitFor(() => !hwin().isVisible(), 3000);
+      ctx.care.hooks = { ...ctx.care.hooks, battery: async () => ({ percent: 84, charging: true }) };
+      ctx.hudData.cache.battery = null;
+
+      h.openSettings();
+      const swHud = await waitFor(() => require('./windows').getSettingsWindow(), 3000);
+      await waitFor(() => js('!!document.getElementById("hudHotkey") && document.getElementById("weatherCity").value !== ""', swHud.webContents), 3000);
+      const hudForm = await js(`({ key: document.getElementById('hudHotkey').value, secs: document.getElementById('hudSeconds').value, city: document.getElementById('weatherCity').value, sound: document.getElementById('hudSound').checked, note: document.getElementById('hudKeyNote').textContent, title: document.getElementById('hudTitle').textContent })`, swHud.webContents);
+      check('Settings → HUD shows hotkey, fade time, weather city, sound', hudForm.key === 'ctrl-alt-h' && hudForm.secs === '12' && hudForm.city === 'Jaipur' && hudForm.sound && hudForm.title === 'HUD' && (/Press Ctrl\+Alt\+H anywhere/.test(hudForm.note) || /already used/.test(hudForm.note)), JSON.stringify(hudForm));
+      await js(`document.getElementById('hudSeconds').value = '20'; document.getElementById('weatherCity').value = 'Mumbai'; document.getElementById('hudSound').checked = false; document.getElementById('form').requestSubmit()`, swHud.webContents);
+      check('...and SAVE stores them', await waitFor(() => settings.get('hudSeconds') === 20 && settings.get('weatherCity') === 'Mumbai' && settings.get('hudSound') === false, 3000));
+      delete ctx.hudSecondsOverride;
+      await js('document.getElementById("hudShow").click()', swHud.webContents);
+      check('SHOW HUD NOW opens it (with the new 20 s fade)', (await waitFor(() => hwin().isVisible(), 3000)) && (await waitFor(async () => (await hstate()).timerMs === '20000ms', 2000)));
+      hud.hide('test');
+      await waitFor(() => !hwin().isVisible(), 3000);
+      swHud.close();
+      await waitFor(() => !require('./windows').getSettingsWindow(), 3000);
+
+      settings.update({ hudSeconds: 12, hudSound: true, weatherCity: '' });
+      ctx.exams.cancel('all');
+      ctx.tasks.data.todos = [];
+      ctx.tasks.save();
+      ctx.hudData.hooks = {};
+      await new Promise((r) => wxServer.close(r));
+      fake.cursor = { x: -99999, y: -99999 };
+      quiet();
+      brain.rest(60000);
+    }
+
     section('Morning briefing & to-do nudges');
     quiet();
     brain.rest(60000);
@@ -2242,6 +2455,7 @@ async function run(ctx, h) {
     }
     check('appearance changes preserve all other saved preferences', JSON.stringify({ ...settings.all(), appearance: null }) === preserved);
     check('custom personality and reminder files stay untouched', Object.entries(originalConfigFiles).every(([n, value]) => fs.readFileSync(config.file(n), 'utf8') === value));
+    check('the HUD becomes the STARK HUD (Iron Man colours)', ctx.hud.head().title === 'STARK HUD' && ctx.hud.head().theme === 'stark' && ctx.trayCtl.menu().getMenuItemById('hud').label.startsWith('Iron Man HUD'));
     check('tray uses Iron Man and Avengers assembly', ctx.trayCtl.menu().items[0].label.includes('Iron Man') && ctx.trayCtl.menu().getMenuItemById('gang').label.includes('Avengers'));
     check('AI identity follows the Avengers theme without changing the config', ctx.aiContext().petName === 'Iron Man' && ctx.aiContext().personality.includes('an Iron Man desktop companion') && config.personality === originalPersonality);
     check('AI lists the additional characters without claiming task skills', ctx.aiContext().personality.includes('These eight characters have no jobs or skills assigned') && Object.values(appearance.CHARACTERS).every(h => ctx.aiContext().personality.includes(h.name)));

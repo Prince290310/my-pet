@@ -313,6 +313,7 @@ main/            Electron main process
   tutor.js         Sage: lessons, quizzes, flashcards, homework checks
   care.js          Zen: battery/storage/RAM/CPU/internet watch, pc health, tidy Downloads
   music.js         Tempo: play/pause/next, what's playing, play-a-mood searches
+  hud.js           Iron Man HUD: system/mission/music/weather data, the overlay, "weather"
   telegram.js      control Shadow from your phone through your own Telegram bot
   settings.js      settings.json load/validate/save
   tray.js          tray icon + menu
@@ -323,6 +324,7 @@ renderer/
   pet/             sprite player, speech bubbles, hit-testing
   chat/            mini chat panel
   settings/        settings window
+  hud/             Iron Man HUD overlay (visor, arc-reactor clock, panels)
   fonts/           pixel fonts (Pixelify Sans, Press Start 2P - OFL), bundled for offline use
 assets/          sprites.png + sprites.json, icon.ico/png, tray icons (generated)
 config/          quips.json, reminders.json, personality.md (defaults)
@@ -783,3 +785,40 @@ How the timetable works:
 
 A reminder pauses the game. From the phone you can play `quiz race`. Best scores are kept in
 `%APPDATA%\Shadow\games.json`.
+
+---
+
+## 19. Iron Man HUD
+
+Press **Ctrl + Alt + H** anywhere (or say `hud`, or use the tray menu) and a see-through **Tony Stark
+helmet display** boots up over your screen, then fades out after 12 seconds.
+
+![Iron Man HUD](assets/preview/hud.png)
+
+| Panel | Shows |
+| --- | --- |
+| Centre | Arc-reactor clock: time, date, a greeting |
+| 01 Systems | CPU / RAM / disk gauges, a live CPU graph, battery, internet, uptime |
+| 02 Mission board | Next exam countdown + today's study chapters, the next calendar event, your to-dos (✓ ticks one off), next reminders |
+| 03 Audio | The song playing in any app (Spotify, YouTube, …) with ⏮ ⏯ ⏭ |
+| 04 Atmosphere | Weather for your city: temperature, feels-like, today's range, rain chance, tomorrow |
+| Status line | The most important thing right now: low battery, offline, exam day, "ALL SYSTEMS NOMINAL" |
+
+| Say | What happens |
+| --- | --- |
+| `hud` · `show my hud` · `hide hud` | open / close it |
+| `status report` | opens the HUD; **from the phone** you get the same as a text message |
+| `weather` · `weather in Mumbai` · `will it rain tomorrow?` | the weather in chat |
+| `set my city to Jaipur` | your weather city (also Settings → HUD) |
+
+- **It never gets in your way.** Clicks go straight through to whatever is underneath, except on the
+  panels. Hover a panel to keep the HUD open (the timer bar turns gold); move away and it fades a few
+  seconds later. It never takes keyboard focus.
+- **Settings → HUD:** the hotkey (Ctrl+Alt+H, Alt+Shift+H, Ctrl+Alt+Space, Ctrl+Shift+F12 or off; if
+  another app already uses it, Settings tells you), how long it stays (8 s to 1 minute, or until you
+  close it), the weather city and the power-up sound. **SHOW HUD NOW** tries it.
+- Weather comes from **Open-Meteo**: free, no account, no key. Only the city name is sent.
+- In the original theme it becomes the purple **SHADOW HUD**.
+- It opens on the screen your mouse is on, and works on small laptop screens too (the mission board
+  fades out at the bottom instead of overlapping).
+

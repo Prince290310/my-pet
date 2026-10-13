@@ -260,7 +260,7 @@ $('restoreShadow').addEventListener('click', async () => {
     setStatus('Original Shadow & friends restored ✓');
   } catch (err) { setStatus(`Could not restore: ${err.message}`, true); }
 });
-function fill({ settings: s, appearance: theme, providers: list, startWithWindows, configDir, calendar, update, friends, telegram, spotify, exams }) {
+function fill({ settings: s, appearance: theme, providers: list, startWithWindows, configDir, calendar, update, friends, telegram, spotify, exams, hud }) {
   $('appearance').value = s.appearance;
   $('mainHero').replaceChildren(...theme.heroes.map(hero => { const option = document.createElement('option'); option.value = hero.id; option.textContent = hero.name; return option; }));
   $('mainHero').value = s.mainHero;
@@ -310,6 +310,12 @@ function fill({ settings: s, appearance: theme, providers: list, startWithWindow
   $('startupOnWake').checked = s.startupOnWake;
   $('examStudyTime').value = s.examStudyTime;
   showExams(exams);
+  $('hudTitle').textContent = s.appearance === 'avengers' ? 'Iron Man HUD' : 'HUD';
+  $('hudHotkey').value = s.hudHotkey;
+  $('hudSeconds').value = String(s.hudSeconds);
+  $('weatherCity').value = s.weatherCity;
+  $('hudSound').checked = s.hudSound;
+  showHudKey(hud);
 
   providers = list;
   keys = { ...s.apiKeys };
@@ -402,6 +408,10 @@ form.addEventListener('submit', async (e) => {
       musicService: (form.querySelector('input[name="musicService"]:checked') || {}).value,
       startupOnWake: $('startupOnWake').checked,
       examStudyTime: $('examStudyTime').value,
+      hudHotkey: $('hudHotkey').value,
+      hudSeconds: Number($('hudSeconds').value),
+      hudSound: $('hudSound').checked,
+      weatherCity: $('weatherCity').value.trim(),
       friendsMode: (form.querySelector('input[name="friendsMode"]:checked') || {}).value,
       friends: Object.fromEntries([...document.querySelectorAll('input[data-friend]')].map((b) => [b.dataset.friend, b.checked])),
       webSearch: $('webSearch').checked,
@@ -531,6 +541,22 @@ $('testTg').addEventListener('click', async () => {
 });
 
 $('callGang').addEventListener('click', () => window.settingsApi.callGang());
+
+/** Whether the HUD hotkey works (another app may already use it). */
+function showHudKey(hud) {
+  const note = $('hudKeyNote');
+  if (!hud || !hud.key) {
+    note.textContent = 'No hotkey - open it from the chat ("hud") or the tray menu.';
+    note.className = 'note';
+  } else if (hud.taken) {
+    note.textContent = `${hud.key} is already used by another app - pick a different one.`;
+    note.className = 'note warn';
+  } else {
+    note.textContent = `Press ${hud.key} anywhere to open or close it.`;
+    note.className = 'note';
+  }
+}
+$('hudShow').addEventListener('click', () => window.settingsApi.showHud());
 
 $('getSearchKey').addEventListener('click', () => window.settingsApi.openLink('https://app.tavily.com/home'));
 $('revealSearch').addEventListener('click', () => {

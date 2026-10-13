@@ -159,4 +159,49 @@ function openGameLayer(wa, pet) {
 }
 const getSettingsWindow = () => (settingsWin && !settingsWin.isDestroyed() ? settingsWin : null);
 
-module.exports = { openChat, openSettings, getChatWindow, getSettingsWindow, lockDown, openGameLayer, setAppearance };
+/**
+ * The Iron Man HUD (hud.js): a see-through layer over the work area. Click-through and never takes
+ * focus; HudDisplay turns the mouse on only while the cursor is over one of its panels.
+ */
+function openHudWindow(wa, { test = false } = {}) {
+  const win = new BrowserWindow({
+    x: wa.x,
+    y: wa.y,
+    width: wa.width,
+    height: wa.height,
+    show: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    frame: false,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    focusable: false,
+    alwaysOnTop: true,
+    title: 'HUD',
+    webPreferences: {
+      preload: path.join(PRELOAD, 'hud.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      spellcheck: false,
+      autoplayPolicy: 'no-user-gesture-required', // the short power-up sound
+    },
+  });
+  lockDown(win);
+  win.setIgnoreMouseEvents(true, { forward: !test });
+  win.setAlwaysOnTop(true, 'screen-saver');
+  win.on('minimize', () => setTimeout(() => !win.isDestroyed() && win.restore(), 60)); // Win+D
+  win.loadFile(path.join(RENDERER, 'hud', 'index.html'));
+  return {
+    win,
+    alive: () => !win.isDestroyed(),
+    send: (channel, payload) => !win.isDestroyed() && win.webContents.send(channel, payload),
+  };
+}
+
+module.exports = { openChat, openSettings, getChatWindow, getSettingsWindow, lockDown, openGameLayer, openHudWindow, setAppearance };

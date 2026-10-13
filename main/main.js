@@ -4,7 +4,7 @@
  * Main process entry: creates the pet window, brain, tray, reminders, calendar and IPC wiring.
  */
 
-const { app, ipcMain, screen, Menu, shell, nativeTheme, powerMonitor, desktopCapturer } = require('electron');
+const { app, ipcMain, screen, Menu, shell, nativeTheme, powerMonitor, desktopCapturer, globalShortcut } = require('electron');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -38,10 +38,11 @@ const { StartupRoutine, parseStartupCommand } = require('./startup');
 const { FileShare, parseFileCommand, parseBrowseCommand, parseNavCommand, mb } = require('./files');
 const { ExamPlanner, parseExamCommand } = require('./exams');
 const { CatchGame, QuizRace, Scores, parseGameCommand } = require('./games');
+const { HudData, HudDisplay, parseHudCommand, HOTKEYS } = require('./hud');
 const { PetWindow } = require('./petWindow');
 const { Brain } = require('./brain');
 const { createTray } = require('./tray');
-const { openChat, openSettings, getChatWindow, openGameLayer } = require('./windows');
+const { openChat, openSettings, getChatWindow, openGameLayer, openHudWindow } = require('./windows');
 const ai = require('./ai');
 const appearance = require('./appearance');
 
@@ -120,9 +121,12 @@ function petMenuTemplate() {
     { label: 'Pounce', click: () => brain.command('pounce') },
     { type: 'separator' },
     { label: 'Chat…', click: () => openChatPanel() },
+    ...(ctx.hud ? [{ label: `${appearance.isAvengers(ctx.settings) ? 'Iron Man HUD' : 'HUD'}${ctx.hudKey ? ` (${hudKeyLabel()})` : ''}`, click: () => ctx.hud.show('menu') }] : []),
     { label: 'Tuck Away', click: () => brain.command('tuck') },
   ];
 }
+
+const hudKeyLabel = () => (HOTKEYS[ctx.settings.get('hudHotkey')] || HOTKEYS.off).label;
 
 function showPetMenu() {
   const { pet } = ctx;
@@ -137,6 +141,7 @@ function settingsPayload() {
     spotify: ctx.spotify ? ctx.spotify.info() : null,
     exams: ctx.exams ? ctx.exams.upcoming().map((e) => ({ id: e.id, subject: e.subject, date: e.date, days: e.plan.length, done: e.plan.filter((d) => d.done).length })) : [],
     appearance: appearance.presentation(ctx.settings),
+    hud: { key: hudKeyLabel(), bound: !!ctx.hudKey, taken: !!ctx.hudKeyTaken },
     providers: ai.publicProviders(),
     calendar: ctx.calendar ? ctx.calendar.status() : null,
     update: ctx.updater ? ctx.updater.status() : null,
@@ -481,7 +486,7 @@ function init() {
   const screenshotHelpers = {
     // Shadow and the chat panel step out of the picture for a moment
     beforeScreenshot: async () => {
-      ctx.screenshotHidden = [pet.win, getChatWindow(), ...friends.windows().map((w) => w.win)].filter((w) => w && !w.isDestroyed() && w.isVisible());
+      ctx.screenshotHidden = [pet.win, getChatWindow(), ...friends.windows().map((w) => w.win), ctx.hud && ctx.hud.window()].filter((w) => w && !w.isDestroyed() && w.isVisible());
       ctx.screenshotHidden.forEach((w) => w.hide());
       await new Promise((r) => setTimeout(r, 250));
     },
@@ -880,6 +885,8 @@ function init() {
       if (examCmd.type === 'add' && !examCmd.error) friends.quickJob('sage', '📅 Making your plan!', 5000);
       return done1(exams.run(examCmd));
     }
+    const hudCmd = parseHudCommand(text);
+    if (hudCmd) return done1(await runHud(hudCmd, origin));
     // files for the phone: "send me my notes", "browse D:", and "3" / "back" / "more" in an open list
     const appAsked = apps.pendingChoice ? apps.pendingChoice.at : 0;
     const fileCmd = (files.active(appAsked) && parseNavCommand(text)) || parseFileCommand(text) || parseBrowseCommand(text);
@@ -1048,7 +1055,7 @@ function init() {
   // settings window
   ipcMain.handle('settings:load', () => settingsPayload());
   ipcMain.handle('settings:save', async (_e, patch = {}) => {
-    const allowed = ['appearance', 'mainHero', 'petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat', 'morningBriefing', 'todoNudges', 'webSearch', 'searchKey', 'pcControl', 'pcCare', 'whatsappAutomation', 'whatsappCallType', 'musicService', 'startupOnWake', 'phoneFiles', 'phoneFilesScope', 'examStudyTime', 'friendsMode', 'friends', 'telegramEnabled', 'telegramToken', 'telegramNotify'];
+    const allowed = ['appearance', 'mainHero', 'petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat', 'morningBriefing', 'todoNudges', 'webSearch', 'searchKey', 'pcControl', 'pcCare', 'whatsappAutomation', 'whatsappCallType', 'musicService', 'startupOnWake', 'phoneFiles', 'phoneFilesScope', 'examStudyTime', 'hudHotkey', 'hudSeconds', 'hudSound', 'weatherCity', 'friendsMode', 'friends', 'telegramEnabled', 'telegramToken', 'telegramNotify'];
     const clean = Object.fromEntries(Object.entries(patch).filter(([k]) => allowed.includes(k)));
     const before = settings.get('calendarUrl');
     settings.update(clean);
@@ -1112,11 +1119,102 @@ function init() {
     if (r.kind === 'update' && how === 'click') setTimeout(() => ctx.updater.install(), 1200);
   });
 
+  // ---- the Iron Man HUD (hud.js): Ctrl+Alt+H, "hud", "status report", "weather"
+  const hudData = (ctx.hudData = new HudData({
+    settings,
+    sources: {
+      get exams() {
+        return ctx.exams;
+      },
+      get tasks() {
+        return ctx.tasks;
+      },
+      get calendar() {
+        return ctx.calendar;
+      },
+      get music() {
+        return ctx.music;
+      },
+      get care() {
+        return ctx.care;
+      },
+    },
+    hooks: ctx.hudHooks || {},
+    ...(ctx.hudBases || {}),
+  }));
+  const hud = (ctx.hud = new HudDisplay({
+    data: hudData,
+    createWindow: (wa) => openHudWindow(wa, { test: SELF_TEST }),
+    sensors: ctx.sensors,
+    seconds: () => (ctx.hudSecondsOverride !== undefined ? ctx.hudSecondsOverride : settings.get('hudSeconds')),
+    test: SELF_TEST,
+    head: () => {
+      const avengers = appearance.isAvengers(settings);
+      return {
+        title: avengers ? 'STARK HUD' : `${appearance.displayName(settings).toUpperCase()} HUD`,
+        sub: [avengers ? 'MARK 85' : 'PANTHER OS', 'ONLINE', ctx.hudKey ? hudKeyLabel().toUpperCase() : ''].filter(Boolean).join(' · '),
+        theme: avengers ? 'stark' : 'shadow',
+        name: 'Prince',
+        tutor: friends.get('sage').def.name,
+        sound: settings.get('hudSound'),
+      };
+    },
+  }));
+  const fromHud = (e) => hud.alive() && e.sender === hud.window().webContents;
+  ipcMain.on('hud:ready', (e) => fromHud(e) && hud.onReady());
+  ipcMain.on('hud:show', () => hud.show('settings')); // Settings → SHOW HUD NOW
+  ipcMain.on('hud:interactive', (e, on) => fromHud(e) && hud.setInteractive(on));
+  ipcMain.on('hud:hidden', (e) => fromHud(e) && hud.hidden());
+  ipcMain.on('hud:close', (e) => fromHud(e) && hud.hide('button'));
+  ipcMain.on('hud:media', (e, action) => fromHud(e) && ['toggle', 'next', 'previous'].includes(action) && hud.media(action));
+  ipcMain.on('hud:todo-done', (e, id) => {
+    if (!fromHud(e) || typeof id !== 'string' || !ctx.tasks) return;
+    const r = ctx.tasks.completeTodo(1, [id]);
+    if (!r.todo) return;
+    friends.quickJob('dash', '✓ Crossed off!', 3500);
+    hud.extend(3000);
+    setTimeout(() => hud.push('missions'), 1500); // after the strike-through animation
+  });
+  /** "hud", "status report", "hide hud", "weather", "set my city to …" */
+  async function runHud(cmd, origin) {
+    if (cmd.type === 'weather') return hudData.weatherText(cmd);
+    if (cmd.type === 'city') return hudData.setCity(cmd.city);
+    if (cmd.type === 'hide') return hud.hide('chat') ? 'HUD closed.' : "The HUD isn't open, Prince.";
+    if (origin === 'phone') return hudData.statusText(); // there's no screen to show it on
+    hud.show(cmd.report ? 'report' : 'chat');
+    if (cmd.report) return '📊 Status report is up on your HUD, Prince.';
+    return `${appearance.isAvengers(settings) ? '⚡ HUD online' : '🐾 HUD up'}, Prince.${ctx.hudKey ? ` (${hudKeyLabel()} opens it anytime)` : ''}`;
+  }
+  // the hotkey (Settings → HUD); another app may already own it - Settings then says so
+  const bindHudKey = () => {
+    if (ctx.hudKey) globalShortcut.unregister(ctx.hudKey);
+    ctx.hudKey = '';
+    ctx.hudKeyTaken = false;
+    const accel = (HOTKEYS[settings.get('hudHotkey')] || HOTKEYS.off).accel;
+    if (!accel) return;
+    let ok = false;
+    try {
+      ok = globalShortcut.register(accel, () => hud.toggle('hotkey'));
+    } catch {
+      ok = false;
+    }
+    if (ok) ctx.hudKey = accel;
+    else ctx.hudKeyTaken = true;
+  };
+  ctx.bindHudKey = bindHudKey;
+  bindHudKey();
+  settings.on('change', (_all, changed) => {
+    if (changed.includes('hudHotkey')) bindHudKey();
+    if (changed.includes('weatherCity')) hudData.cache.weather.clear();
+  });
+  app.on('will-quit', () => globalShortcut.unregisterAll());
+  powerMonitor.on('suspend', () => hud.hide('sleep'));
+
   ctx.trayCtl = createTray({
     brain,
     settings,
     loginItem: { get: () => ctx.loginItem.get(), set: (on) => ctx.loginItem.set(on) },
-    actions: { openSettings, openConfigFolder, openChat: openChatPanel, quit, rescue: () => ctx.rescue() },
+    actions: { openSettings, openConfigFolder, openChat: openChatPanel, quit, rescue: () => ctx.rescue(), showHud: () => hud.show('tray'), hudKey: () => (ctx.hudKey ? hudKeyLabel() : '') },
     getUpdater: () => ctx.updater,
     callGang: () => ctx.friends.callGang(),
   });
@@ -1173,6 +1271,7 @@ function init() {
   });
 
   const onDisplays = () => {
+    hud.hide('display');
     brain.displaysChanged();
     syncDisplay(true);
     if (!press && !brain.dragging) rearm(); // never cut off a drag that's in progress
