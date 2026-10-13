@@ -14,7 +14,8 @@ $fixtureDir = Join-Path ([IO.Path]::GetTempPath()) ('shadow-whatsapp-fixture-' +
 New-Item -ItemType Directory -Path $fixtureDir | Out-Null
 $fixtureExe = Join-Path $fixtureDir 'WhatsApp.Root.exe'
 Add-Type -AssemblyName UIAutomationProvider, System.Windows.Forms, System.Drawing
-$fixtureReferences = $references + @([System.Windows.Automation.Provider.IRawElementProviderSimple].Assembly.Location, [System.Windows.Forms.Form].Assembly.Location, [System.Drawing.Point].Assembly.Location)
+# IRawElementProviderSimple lives in UIAutomationTypes; AutomationInteropProvider is in UIAutomationProvider itself.
+$fixtureReferences = $references + @([System.Windows.Automation.Provider.IRawElementProviderSimple].Assembly.Location, [System.Windows.Automation.Provider.AutomationInteropProvider].Assembly.Location, [System.Windows.Forms.Form].Assembly.Location, [System.Drawing.Point].Assembly.Location)
 Add-Type -Path (Join-Path $PSScriptRoot '../tests/WhatsAppUiFixture.cs') -OutputAssembly $fixtureExe -OutputType WindowsApplication -ReferencedAssemblies $fixtureReferences
 $cases = @(
   @{ mode = 'no-editor'; action = 'call'; kind = 'voice'; code = 'calling'; marker = 'voice' },
