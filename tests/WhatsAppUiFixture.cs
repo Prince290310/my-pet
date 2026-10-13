@@ -16,8 +16,10 @@ public sealed class WhatsAppUiFixture : Form {
     readonly FixtureRow result;
     readonly Timer watchdog;
     const string Contact = "Shadow fixture contact";
-    public WhatsAppUiFixture(string logPath, string mode) {
+    readonly string linkFile;
+    public WhatsAppUiFixture(string logPath, string mode, string linkPath = null) {
         log = logPath;
+        linkFile = linkPath;
         Text = "WhatsApp - Shadow automation fixture";
         StartPosition = FormStartPosition.Manual;
         Location = new Point(100, 60);
@@ -64,6 +66,38 @@ public sealed class WhatsAppUiFixture : Form {
         };
         result.Click += open;
         label.Click += open;
+        // Like the real app, answer whatsapp://send?phone=...&text=... links (forwarded by a second
+        // "--link" instance through a file): open that number's chat with the text typed in.
+        if (mode.StartsWith("link", StringComparison.Ordinal) && linkFile != null) {
+            var poll = new Timer { Interval = 100 };
+            poll.Tick += (sender, args) => {
+                if (!File.Exists(linkFile)) return;
+                string url;
+                try { url = File.ReadAllText(linkFile); File.Delete(linkFile); } catch (IOException) { return; }
+                var query = url.Substring(url.IndexOf('?') + 1);
+                string phone = "", text = "";
+                foreach (var part in query.Split('&')) {
+                    int eq = part.IndexOf('=');
+                    if (eq < 0) continue;
+                    string key = part.Substring(0, eq), value = Uri.UnescapeDataString(part.Substring(eq + 1));
+                    if (key == "phone") phone = value;
+                    if (key == "text") text = value;
+                }
+                File.AppendAllText(log, "link:" + phone + "\n");
+                if (mode == "link-other") {
+                    // A link that didn't take: some other chat is open with an empty message box.
+                    header.Text = "Different chat"; header.AccessibleName = "Different chat";
+                    editor.Visible = true; send.Visible = true; editor.Text = "";
+                    return;
+                }
+                string shown = mode == "link-number" ? "+91 98765 43210" : Contact;
+                header.Text = shown; header.AccessibleName = shown;
+                editor.Visible = true; send.Visible = true;
+                editor.Text = text;
+                File.AppendAllText(log, "opened\n");
+            };
+            poll.Start();
+        }
         EventHandler call = (sender, args) => {
             File.AppendAllText(log, sender == voice ? "voice\n" : "video\n");
             Controls.Add(new Button { AccessibleName = "End call", Text = "End call", Location = new Point(490, 210), Size = new Size(150, 40) });
@@ -99,8 +133,13 @@ public sealed class WhatsAppUiFixture : Form {
         }
     }
     [STAThread] public static void Main(string[] args) {
+        // Started by Windows for a whatsapp: link (see test-whatsapp-ui.ps1): hand the link to the open fixture.
+        if (args.Length >= 3 && args[0] == "--link") {
+            File.WriteAllText(args[1], args[2]);
+            return;
+        }
         SetProcessDPIAware();
         Application.EnableVisualStyles();
-        Application.Run(new WhatsAppUiFixture(args[0], args[1]));
+        Application.Run(new WhatsAppUiFixture(args[0], args[1], args.Length > 2 ? args[2] : null));
     }
 }

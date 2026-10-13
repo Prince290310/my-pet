@@ -41,4 +41,14 @@ if (-not [Shadow.WhatsAppDesktop]::InChatHeader(300, 60, 250, 90)) { throw 'Vali
 if ([Shadow.WhatsAppDesktop]::InChatHeader(20, 60, 250, 90)) { throw 'Sidebar contact accepted as chat header' }
 if ([Shadow.WhatsAppDesktop]::InChatHeader(300, 300, 250, 90)) { throw 'Message body accepted as chat header' }
 'PASS: recipient header verification does not require a composer and rejects sidebar/body matches'
+foreach ($ok in @('919876543210', '14155550123', '447700900123')) { if (-not [Shadow.WhatsAppDesktop]::ValidPhone($ok)) { throw "Valid number rejected: $ok" } }
+foreach ($bad in @('', '+919876543210', '98765', '91 98765 43210', '1234567890123456', '91987654321x')) { if ([Shadow.WhatsAppDesktop]::ValidPhone($bad)) { throw 'Invalid number accepted' } }
+$link = [Shadow.WhatsAppDesktop]::ChatLink('919876543210', "Hi +{ENTER} & 50% $([char]0xD83D)$([char]0xDE0A)`r`nok")
+if ($link -ne 'whatsapp://send?phone=919876543210&text=Hi%20%2B%7BENTER%7D%20%26%2050%25%20%F0%9F%98%8A%0Aok') { throw "Unexpected chat link: $link" }
+if ([Shadow.WhatsAppDesktop]::ChatLink('919876543210', '') -ne 'whatsapp://send?phone=919876543210') { throw 'Call link must carry no text' }
+foreach ($request in @(@('send', '+91 98', 'Mom', 'Hi', ''), @('send', '919876543210', 'Mom', '', ''), @('call', '919876543210', 'Mom', '', 'other'), @('delete', '919876543210', 'Mom', 'Hi', ''))) {
+  $result = [Shadow.WhatsAppDesktop]::RunLink($request[0], $request[1], $request[2], $request[3], $request[4])
+  if ($result.ok -or $result.code -ne 'helper_error') { throw 'Invalid link command reached WhatsApp' }
+}
+'PASS: phone-number links are encoded exactly (+, braces, %, emoji, new lines) and invalid numbers never open WhatsApp'
 [WhatsAppLayoutTests]::Main()

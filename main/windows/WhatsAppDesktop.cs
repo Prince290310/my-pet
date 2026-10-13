@@ -238,7 +238,7 @@ namespace Shadow {
         }
         static WhatsAppResult Status() {
             // Report only counters and known-control presence. Never return window titles, names or chat text.
-            var diagnostics = new WhatsAppDiagnostics { helperVersion = 5, appProcesses = RunningProcesses() };
+            var diagnostics = new WhatsAppDiagnostics { helperVersion = 6, appProcesses = RunningProcesses() };
             var result = Result(false, "helper_error");
             result.stage = "status";
             result.diagnostics = diagnostics;
@@ -479,6 +479,21 @@ namespace Shadow {
             }
             return false;
         }
+        static string Digits(string value) {
+            var digits = new StringBuilder();
+            foreach (char c in value ?? "") if (c >= '0' && c <= '9') digits.Append(c);
+            return digits.ToString();
+        }
+        // A chat opened by number shows the contact's saved name, or the number itself when it isn't saved.
+        static bool HeaderShowsNumber(AutomationElement root, string phone, double sidebarRight, double headerBottom) {
+            foreach (AutomationElement e in Elements(root)) {
+                string digits = Digits(e.Current.Name);
+                if (digits.Length < 8 || !(phone.EndsWith(digits, StringComparison.Ordinal) || digits.EndsWith(phone, StringComparison.Ordinal)) || !Usable(e) || !HeaderControl(e, root)) continue;
+                var rect = e.Current.BoundingRectangle;
+                if (InChatHeader(rect.Left, rect.Bottom, sidebarRight, headerBottom)) return true;
+            }
+            return false;
+        }
         static void AssertRecipient(AppWindow window, string contact, double right, double headerBottom, AutomationElement compose = null) {
             AssertWindow(window);
             var root = window.Root;
@@ -506,6 +521,16 @@ namespace Shadow {
             }
             return matches.Count == 1 ? matches[0] : null;
         }
+        public static bool ValidPhone(string phone) {
+            if (String.IsNullOrEmpty(phone) || phone.Length < 8 || phone.Length > 15) return false;
+            foreach (char c in phone) if (c < '0' || c > '9') return false;
+            return true;
+        }
+        /** WhatsApp's own link: opens that number's chat (starting WhatsApp if needed), with the text typed in. */
+        public static string ChatLink(string phone, string message) {
+            return "whatsapp://send?phone=" + phone + (String.IsNullOrEmpty(message) ? "" : "&text=" + Uri.EscapeDataString(message.Replace("\r\n", "\n")));
+        }
+        static string Clean(string text) { return (text ?? "").Replace("\r\n", "\n").TrimEnd(' ', '\n', '\t'); }
         static bool ValidContact(string contact) {
             if (String.IsNullOrWhiteSpace(contact) || contact.Length > 120) return false;
             foreach (char c in contact) if (Char.IsControl(c)) return false;
@@ -515,6 +540,130 @@ namespace Shadow {
             if (String.IsNullOrWhiteSpace(message) || message.Length > 4000) return false;
             foreach (char c in message) if (Char.IsControl(c) && c != '\n' && c != '\r' && c != '\t') return false;
             return true;
+        }
+        /**
+         * The phone-number route (no chat search): open WhatsApp's own link for the number, then
+         *  - send: only when the chat's message box shows exactly this message - the link put it there, which
+         *    proves the right chat is open - press Send;
+         *  - call: only when the chat header shows the contact's name or the number - press the call button.
+         * Long messages (too long for a link) open the chat by number, verify the header, then type.
+         */
+        public static WhatsAppResult RunLink(string action, string phone, string contact, string message, string callType) {
+            bool dispatched = false;
+            string stage = "validation";
+            Func<bool, string, WhatsAppResult> finish = (ok, code) => new WhatsAppResult { ok = ok, code = code, stage = stage };
+            try {
+                if (action != "send" && action != "call") return finish(false, "helper_error");
+                if (!ValidPhone(phone)) return finish(false, "helper_error");
+                if (!String.IsNullOrEmpty(contact) && !ValidContact(contact)) return finish(false, "helper_error");
+                if (action == "send" && !ValidMessage(message)) return finish(false, "helper_error");
+                if (action == "call" && callType != "voice" && callType != "video") return finish(false, "helper_error");
+                stage = "discover";
+                if (CallActive()) return finish(false, "call_active");
+                string expected = action == "send" ? Clean(message) : "";
+                string link = ChatLink(phone, action == "send" ? message : null);
+                bool typed = action == "send" && link.Length <= 1800; // longer texts are typed into the opened chat
+                stage = "open_link";
+                try {
+                    Process.Start(new ProcessStartInfo(typed ? link : ChatLink(phone, null)) { UseShellExecute = true });
+                } catch (System.ComponentModel.Win32Exception) {
+                    return finish(false, "not_installed"); // nothing handles whatsapp: links
+                }
+                var window = Wait(() => Window(), 20000);
+                if (window == null) return finish(false, RunningProcesses() > 0 ? "window_unavailable" : "not_running");
+                var root = window.Root;
+                stage = "focus";
+                ShowWindow(window.Handle, 9);
+                SetForegroundWindow(window.Handle);
+                Thread.Sleep(200);
+                AssertWindow(window);
+                var search = Wait(() => Find(Refresh(window), ControlType.Edit, SearchNames), 6000);
+                if (search == null) return finish(false, "controls_unavailable");
+                root = window.Root;
+                double sidebarRight = search.Current.BoundingRectangle.Right;
+                double headerBottom = search.Current.BoundingRectangle.Bottom + 24;
+                Func<bool> rightChat = () => (!String.IsNullOrEmpty(contact) && HeaderMatches(root, contact, sidebarRight, headerBottom)) || HeaderShowsNumber(root, phone, sidebarRight, headerBottom);
+                if (action == "send") {
+                    stage = "message_input";
+                    AutomationElement compose = null;
+                    if (typed) {
+                        // The link typed the message into that number's chat. Seeing exactly it there is the proof.
+                        string seen = null;
+                        bool verified = Wait(() => {
+                            root = Refresh(window);
+                            AssertWindow(window);
+                            if (ModalOpen(root)) throw new Failure("dialog_open");
+                            search = Find(root, ControlType.Edit, SearchNames);
+                            if (search == null) return null;
+                            compose = Composer(root, search);
+                            if (compose == null) return null;
+                            seen = Clean(Read(compose));
+                            return seen == expected ? "verified" : null;
+                        }, 15000) != null;
+                        if (!verified) return finish(false, compose == null ? "composer_unavailable" : "link_unverified");
+                    } else {
+                        stage = "verify_chat";
+                        if (Wait(() => {
+                            root = Refresh(window);
+                            AssertWindow(window);
+                            if (ModalOpen(root)) throw new Failure("dialog_open");
+                            return rightChat() ? "verified" : null;
+                        }, 15000) == null) return finish(false, "recipient_unverified");
+                        stage = "message_input";
+                        compose = Wait(() => Composer(root, search), 3500);
+                        if (compose == null) return finish(false, "composer_unavailable");
+                        if (Read(compose).Length > 0) return finish(false, "draft_exists");
+                        Write(window, compose, message.Replace("\r\n", "\n"));
+                        if (Wait(() => Clean(Read(compose)) == expected ? "verified" : null, 2500) == null) return finish(false, "message_unverified");
+                    }
+                    stage = "send_button";
+                    var send = Wait(() => SendButton(root, compose, sidebarRight), 2000);
+                    object invoke = null;
+                    bool button = send != null && send.TryGetCurrentPattern(InvokePattern.Pattern, out invoke);
+                    if (Clean(Read(compose)) != expected) return finish(false, "message_unverified");
+                    stage = "send_message";
+                    if (button) {
+                        dispatched = true;
+                        ((InvokePattern)invoke).Invoke();
+                    } else {
+                        // No accessible Send button: Enter in the verified message box sends it.
+                        Focus(window, compose);
+                        if (Clean(Read(compose)) != expected) return finish(false, "message_unverified");
+                        dispatched = true;
+                        SendKeys(window, compose, new[] { Key(0x0D, false, false), Key(0x0D, true, false) });
+                    }
+                    stage = "confirm_send";
+                    bool cleared = Wait(() => Read(compose).Length == 0 ? "cleared" : null, 4000) != null;
+                    return finish(cleared, cleared ? "sent" : "send_uncertain");
+                }
+                stage = "verify_chat";
+                if (Wait(() => {
+                    root = Refresh(window);
+                    AssertWindow(window);
+                    if (ModalOpen(root)) throw new Failure("dialog_open");
+                    return rightChat() ? "verified" : null;
+                }, 15000) == null) return finish(false, "recipient_unverified");
+                stage = "call_button";
+                var call = Wait(() => CallButton(root, callType == "voice" ? VoiceNames : VideoNames, sidebarRight, headerBottom), 3000);
+                if (call == null) return finish(false, "call_unavailable");
+                if (!rightChat()) return finish(false, "recipient_unverified");
+                if (CallActive()) return finish(false, "call_active");
+                object callInvoke;
+                if (!call.TryGetCurrentPattern(InvokePattern.Pattern, out callInvoke)) return finish(false, "call_not_invokable");
+                stage = "start_call";
+                dispatched = true;
+                ((InvokePattern)callInvoke).Invoke();
+                stage = "confirm_call";
+                bool calling = Wait(() => CallActive() ? "calling" : null, 6000) != null;
+                return finish(calling, calling ? "calling" : "call_uncertain");
+            } catch (Failure e) { return finish(false, dispatched ? (action == "send" ? "send_uncertain" : "call_uncertain") : e.Code); }
+            catch (Exception exception) {
+                var result = finish(false, dispatched ? (action == "send" ? "send_uncertain" : "call_uncertain") : "helper_error");
+                result.fault = exception is ElementNotAvailableException ? "element_unavailable" : exception is COMException ? "provider_error" :
+                    exception is InvalidOperationException ? "unsupported_operation" : exception is ArgumentException ? "invalid_argument" : "other";
+                result.errorNumber = exception.HResult.ToString("X8");
+                return result;
+            }
         }
         public static WhatsAppResult Run(string action, string contact, string message, string callType, bool waitForApp) {
             bool dispatched = false;

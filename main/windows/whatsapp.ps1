@@ -6,7 +6,12 @@ try {
   $references = @([System.Windows.Automation.AutomationElement].Assembly.Location, [System.Windows.Automation.ControlType].Assembly.Location, [System.Windows.Rect].Assembly.Location, [System.Diagnostics.Process].Assembly.Location)
   Add-Type -Path @((Join-Path $PSScriptRoot 'WhatsAppLayout.cs'), (Join-Path $PSScriptRoot 'WhatsAppDesktop.cs')) -ReferencedAssemblies $references
   $request = [Console]::In.ReadToEnd() | ConvertFrom-Json
-  $result = [Shadow.WhatsAppDesktop]::Run([string]$request.action, [string]$request.contact, [string]$request.message, [string]$request.callType, [bool]$request.waitForApp)
+  if ($request.phone) {
+    # Saved number: WhatsApp's own chat link, no chat search
+    $result = [Shadow.WhatsAppDesktop]::RunLink([string]$request.action, [string]$request.phone, [string]$request.contact, [string]$request.message, [string]$request.callType)
+  } else {
+    $result = [Shadow.WhatsAppDesktop]::Run([string]$request.action, [string]$request.contact, [string]$request.message, [string]$request.callType, [bool]$request.waitForApp)
+  }
   $result | ConvertTo-Json -Compress
 } catch {
   # Do not write private contact/message data or raw helper exceptions to logs.
