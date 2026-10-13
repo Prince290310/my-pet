@@ -12,7 +12,7 @@ public sealed class WhatsAppUiFixture : Form {
     [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
     readonly string log;
     readonly Label header;
-    readonly TextBox editor;
+    readonly FixtureBox editor;
     readonly FixtureRow result;
     readonly Timer watchdog;
     const string Contact = "Shadow fixture contact";
@@ -24,7 +24,12 @@ public sealed class WhatsAppUiFixture : Form {
         StartPosition = FormStartPosition.Manual;
         Location = new Point(100, 60);
         ClientSize = new Size(960, 580);
-        var search = new TextBox { Name = "Search", AccessibleName = "Search", Location = new Point(24, 70), Size = new Size(260, 28) };
+        // Somewhere for refused focus to go (like WebView-based WhatsApp keeping focus on its host).
+        var sink = new Button { AccessibleName = "Fixture focus sink", Text = "", Location = new Point(4, 548), Size = new Size(14, 14) };
+        Controls.Add(sink);
+        string policy = mode == "click-focus" ? "click" : mode == "focus-never" ? "never" : "";
+        Action<string> note = line => File.AppendAllText(log, line + "\n");
+        var search = new FixtureBox { Name = "Search", AccessibleName = "Search", Location = new Point(24, 70), Size = new Size(260, 28), Policy = policy, Sink = sink, Log = note };
         search.KeyPress += (sender, args) => File.AppendAllText(log, "search-keypress\n");
         Controls.Add(search);
         if (mode.StartsWith("recycled-search", StringComparison.Ordinal)) search.TextChanged += (sender, args) => {
@@ -52,8 +57,8 @@ public sealed class WhatsAppUiFixture : Form {
         var video = new Button { AccessibleName = "Video call", Text = "Video call", Location = new Point(435, 6), Size = new Size(150, 36) };
         chatHeader.Controls.Add(voice);
         chatHeader.Controls.Add(video);
-        editor = new TextBox { Name = "FixtureEditor", AccessibleName = "Unlabelled fixture editor", Multiline = true,
-            AcceptsReturn = true, Location = new Point(342, 492), Size = new Size(475, 64), Visible = false };
+        editor = new FixtureBox { Name = "FixtureEditor", AccessibleName = "Unlabelled fixture editor", Multiline = true,
+            AcceptsReturn = true, Location = new Point(342, 492), Size = new Size(475, 64), Visible = false, Policy = mode == "click-focus" ? "click" : "", Sink = sink, Log = note };
         Controls.Add(editor);
         editor.KeyPress += (sender, args) => File.AppendAllText(log, "draft-keypress\n");
         var send = new Button { AccessibleName = "Send", Text = "Send", Location = new Point(832, 502), Size = new Size(100, 44), Visible = false };
@@ -108,6 +113,24 @@ public sealed class WhatsAppUiFixture : Form {
         watchdog = new Timer { Interval = 45000 };
         watchdog.Tick += (sender, args) => Close();
         Shown += (sender, args) => { SetForegroundWindow(Handle); search.Focus(); watchdog.Start(); };
+    }
+    // Like a WebView field in the new WhatsApp: "click" ignores programmatic (UI Automation) focus and only
+    // takes a real mouse click; "never" refuses focus altogether. Refused focus goes to the sink.
+    sealed class FixtureBox : TextBox {
+        public string Policy = "";
+        public Control Sink;
+        public Action<string> Log;
+        bool clicked;
+        protected override void WndProc(ref Message m) {
+            if (m.Msg == 0x0201) { clicked = true; if (Policy != "" && Log != null) Log("click"); } // WM_LBUTTONDOWN (before the focus it causes)
+            if (m.Msg == 0x0008) clicked = false; // WM_KILLFOCUS
+            if (m.Msg == 0x0007 && Sink != null && (Policy == "never" || (Policy == "click" && !clicked))) { // WM_SETFOCUS
+                if (Log != null) Log("focus-refused");
+                Sink.Focus();
+                return;
+            }
+            base.WndProc(ref m);
+        }
     }
     // Model a WebView custom result with an exact name and clickable point, but no Invoke/Selection pattern.
     sealed class FixtureRow : Panel, IRawElementProviderSimple {

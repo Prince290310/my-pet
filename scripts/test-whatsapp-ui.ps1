@@ -23,7 +23,12 @@ $cases = @(
   @{ mode = 'editor'; action = 'send'; kind = ''; code = 'sent'; marker = 'sent:Literal +{ENTER}' },
   @{ mode = 'recycled-search-no-editor'; action = 'call'; kind = 'voice'; code = 'calling'; marker = 'voice' },
   @{ mode = 'recycled-search-editor'; action = 'send'; kind = ''; code = 'sent'; marker = 'sent:Literal +{ENTER}' },
-  @{ mode = 'wrong-header'; action = 'call'; kind = 'voice'; code = 'chat_not_opened'; marker = '' }
+  @{ mode = 'wrong-header'; action = 'call'; kind = 'voice'; code = 'chat_not_opened'; marker = '' },
+  # WebView-like fields: programmatic focus is ignored, a real click works (search and message box) ...
+  @{ mode = 'click-focus'; action = 'send'; kind = ''; code = 'sent'; marker = 'sent:Literal +{ENTER}' },
+  @{ mode = 'click-focus'; action = 'call'; kind = 'voice'; code = 'calling'; marker = 'voice' },
+  # ... or nothing works: stop before typing anything
+  @{ mode = 'focus-never'; action = 'call'; kind = 'voice'; code = 'focus_refused'; marker = '' }
 )
 # The phone-number route: WhatsApp's own whatsapp://send links. Only on CI, where the fixture can be the
 # whatsapp: link handler without touching a real WhatsApp installation's link association.
@@ -76,6 +81,12 @@ try {
         "PASS: native fixture $($case.mode)/$($case.action)/$($case.kind)"
         continue
       }
+      if ($case.mode -eq 'focus-never') {
+        if ($events.Contains('search-keypress') -or $events.Contains('opened') -or $events.Contains('voice') -or $events.Contains('sent:')) { throw 'Typed or acted although the search box never took the cursor' }
+        "PASS: native fixture $($case.mode)/$($case.action)/$($case.kind)"
+        continue
+      }
+      if ($case.mode -eq 'click-focus' -and -not ($events.Contains('focus-refused') -and $events.Contains('click'))) { throw 'The click fallback for refused focus was not exercised' }
       if (-not $events.Contains('search-keypress')) { throw 'Search was not entered through native keyboard events' }
       if ($case.mode.StartsWith('recycled-search') -and -not $events.Contains('search-recycled')) { throw 'Fixture did not replace its search accessibility element' }
       if (-not $events.Contains('opened')) { throw 'Native helper did not activate the custom search-result row' }

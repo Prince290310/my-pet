@@ -238,7 +238,7 @@ namespace Shadow {
         }
         static WhatsAppResult Status() {
             // Report only counters and known-control presence. Never return window titles, names or chat text.
-            var diagnostics = new WhatsAppDiagnostics { helperVersion = 6, appProcesses = RunningProcesses() };
+            var diagnostics = new WhatsAppDiagnostics { helperVersion = 7, appProcesses = RunningProcesses() };
             var result = Result(false, "helper_error");
             result.stage = "status";
             result.diagnostics = diagnostics;
@@ -316,11 +316,30 @@ namespace Shadow {
             }
             return false;
         }
+        // Keyboard focus is inside target. WebView fields can take a moment to report it, so look a few times.
+        static bool FocusIn(AutomationElement target, int ms) {
+            var clock = Stopwatch.StartNew();
+            do {
+                try {
+                    if (Inside(target, AutomationElement.FocusedElement)) return true;
+                } catch (ElementNotAvailableException) {
+                } catch (COMException e) {
+                    if (!StaleProvider(e)) throw;
+                }
+                Thread.Sleep(50);
+            } while (clock.ElapsedMilliseconds < ms);
+            return false;
+        }
         static void Focus(AppWindow window, AutomationElement target) {
             AssertWindow(window);
-            target.SetFocus();
-            Thread.Sleep(60);
-            if (!Inside(target, AutomationElement.FocusedElement)) throw new Failure("focus_changed");
+            try { target.SetFocus(); } catch (InvalidOperationException) { /* some WebView fields refuse programmatic focus */ }
+            if (FocusIn(target, 700)) return;
+            // The WebView-based WhatsApp can ignore UI Automation focus for its fields. One real click on the
+            // field's own verified point (foreground WhatsApp, nothing covering it) focuses it the normal way.
+            AssertWindow(window);
+            try { Click(window, target); }
+            catch (Failure e) { throw new Failure(e.Code == "click_blocked" || e.Code == "dialog_open" || e.Code == "focus_changed" ? e.Code : "focus_refused"); }
+            if (!FocusIn(target, 900)) throw new Failure("focus_refused");
         }
         static bool Inside(AutomationElement target, AutomationElement element) {
             var current = element;
@@ -337,7 +356,7 @@ namespace Shadow {
         }
         static void SendKeys(AppWindow window, AutomationElement edit, Input[] inputs) {
             AssertWindow(window);
-            if (!Inside(edit, AutomationElement.FocusedElement)) throw new Failure("focus_changed");
+            if (!FocusIn(edit, 400)) throw new Failure("focus_changed");
             if (SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(Input))) != inputs.Length) throw new Failure("controls_unavailable");
         }
         static void Write(AppWindow window, AutomationElement edit, string text) {

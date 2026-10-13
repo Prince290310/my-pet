@@ -488,6 +488,20 @@ function init() {
     if (matches.length !== 1) return false;
     return (await apps.start(matches[0])).startsWith('Opening');
   } }));
+  /** Sends and calls: Shadow's always-on-top chat panel and HUD step out of WhatsApp's way meanwhile. */
+  async function runWhatsApp(cmd) {
+    if (!['send', 'call'].includes(cmd.type) || !whatsapp.enabled()) return whatsapp.run(cmd);
+    const chat = getChatWindow();
+    if (chat) chat.setAlwaysOnTop(false);
+    if (ctx.hud && ctx.hud.visible) ctx.hud.hide('whatsapp');
+    ctx.whatsappAside = true;
+    try {
+      return await whatsapp.run(cmd);
+    } finally {
+      ctx.whatsappAside = false;
+      if (chat && !chat.isDestroyed()) chat.setAlwaysOnTop(true);
+    }
+  }
   ipcMain.handle('whatsapp:check', () => whatsapp.check());
   // Settings → WhatsApp contacts: add / remove a saved number
   ipcMain.handle('whatsapp:contacts', (_e, cmd = {}) => {
@@ -878,7 +892,7 @@ function init() {
       else brain.say(out, { ms: 3500 });
       return { text: out, sources: [] };
     };
-    if (whatsappCmd) return done1(await whatsapp.run(whatsappCmd));
+    if (whatsappCmd) return done1(await runWhatsApp(whatsappCmd));
     // during a quiz race everything Prince types is an answer (games.js)
     if (race.active()) {
       const g = parseGameCommand(text);
@@ -898,7 +912,7 @@ function init() {
     if (gang) return done1(gang);
     // Avenger/team summons retain precedence; a remaining "call NAME" is a WhatsApp call.
     const bareCall = parseWhatsAppCommand(message, { allowBareCall: true });
-    if (bareCall) return done1(await whatsapp.run(bareCall));
+    if (bareCall) return done1(await runWhatsApp(bareCall));
     const gameCmd = parseGameCommand(text);
     if (gameCmd) return done1(await runGame(gameCmd, origin));
     const startupCmd = parseStartupCommand(text);
