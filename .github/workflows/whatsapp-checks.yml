@@ -23,4 +23,4 @@ jobs:
       - name: Compile and check Windows accessibility helper
         run: powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/test-whatsapp-helper.ps1
       - name: Native chat selection, typing and call fixtures
-        run: powershell.exe -NoLogo -NoProfile -NonInteractive -STA -ExecutionPolicy Bypass -File scripts/test-whatsapp-ui.ps1
+        run: powershell.exe -NoLogo -NoProfile -NonInteractive -MTA -ExecutionPolicy Bypass -File scripts/test-whatsapp-ui.ps1

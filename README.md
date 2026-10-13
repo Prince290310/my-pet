@@ -111,6 +111,10 @@ only highlights it, the helper can use the row's accessibility-provided clickabl
 the point belongs to that row in the foreground WhatsApp window and rechecks the exact chat header
 before any outgoing action. It never guesses a screen location or uses a fixed click coordinate.
 Typing uses literal Unicode keyboard events, so WebView apps receive input events for search/drafts.
+The helper uses an MTA thread for Windows UI Automation. It reacquires the search control after typing,
+requeries filtering results, and tolerates recycled accessibility nodes without retrying outgoing actions.
+Search errors distinguish typing, readback and result enumeration. Unexpected provider failures include
+only a known exception category and numeric Windows error number, never exception messages or chat data.
 Diagnostics distinguish a visible call button from an invokable call action. Failed commands report
 the step where they stopped, without including chat content. A `ready` check confirms app/search detection;
 the helper verifies the requested message or call when you issue the command.

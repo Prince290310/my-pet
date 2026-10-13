@@ -25,6 +25,19 @@ public sealed class WhatsAppUiFixture : Form {
         var search = new TextBox { Name = "Search", AccessibleName = "Search", Location = new Point(24, 70), Size = new Size(260, 28) };
         search.KeyPress += (sender, args) => File.AppendAllText(log, "search-keypress\n");
         Controls.Add(search);
+        if (mode.StartsWith("recycled-search", StringComparison.Ordinal)) search.TextChanged += (sender, args) => {
+            if (search.Text != Contact) return;
+            BeginInvoke(new Action(() => {
+                if (search.IsDisposed) return;
+                var fresh = new TextBox { Name = "Search", AccessibleName = "Search", Bounds = search.Bounds, Text = search.Text };
+                fresh.KeyPress += (source, key) => File.AppendAllText(log, "search-keypress\n");
+                Controls.Remove(search);
+                search.Dispose();
+                Controls.Add(fresh);
+                fresh.Focus();
+                File.AppendAllText(log, "search-recycled\n");
+            }));
+        };
         result = new FixtureRow { Name = "FixtureResult", Location = new Point(16, 115), Size = new Size(285, 72), BackColor = Color.LightGray };
         var label = new Label { AccessibleName = "\u202A" + Contact + "\u202C", Text = Contact, Location = new Point(12, 10), Size = new Size(248, 28) };
         result.Controls.Add(label);
@@ -46,7 +59,7 @@ public sealed class WhatsAppUiFixture : Form {
         EventHandler open = (sender, args) => {
             File.AppendAllText(log, "opened\n");
             if (mode != "wrong-header") { header.Text = Contact; header.AccessibleName = Contact; }
-            editor.Visible = mode != "no-editor";
+            editor.Visible = !mode.Contains("no-editor");
             send.Visible = editor.Visible;
         };
         result.Click += open;

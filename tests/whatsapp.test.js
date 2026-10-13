@@ -159,7 +159,8 @@ test('native transport uses a fixed script and literal UTF-8 JSON on stdin', asy
   assert.match(await control.run(request), /Sent/);
   assert.equal(invocation.file, 'powershell.exe');
   assert.ok(invocation.args.includes('-File'));
-  assert.ok(invocation.args.includes('-STA'));
+  assert.ok(invocation.args.includes('-MTA'));
+  assert.ok(!invocation.args.includes('-STA'));
   assert.ok(!invocation.args.some(arg => arg.includes(request.contact) || arg.includes(request.message)));
   assert.deepEqual(JSON.parse(invocation.data), { action: 'send', contact: request.contact, message: request.message });
 });
@@ -215,6 +216,17 @@ test('failed calls report a whitelisted execution stage without returning arbitr
   assert.match(reply, /Stopped while finding call button/);
   assert.match(reply, /Result: call_not_invokable/);
   assert.ok(!control.describe({ code: 'helper_error', stage: 'PRIVATE CHAT' }, { action: 'call' }).includes('PRIVATE'));
+});
+test('search faults show a specific stage and safe Windows error number without private exception data', () => {
+  const { control } = setup();
+  const reply = control.describe({ ok: false, code: 'helper_error', stage: 'search_verify',
+    fault: 'element_unavailable', errorNumber: '80040201', message: 'PRIVATE CHAT TEXT' }, { action: 'call' });
+  assert.match(reply, /Stopped while checking search text/);
+  assert.match(reply, /Windows detail: element_unavailable \(80040201\)/);
+  assert.ok(!reply.includes('PRIVATE'));
+  const unsafe = control.describe({ code: 'helper_error', stage: 'search_results', fault: 'PRIVATE', errorNumber: 'PRIVATE' }, { action: 'send' });
+  assert.match(unsafe, /reading search results/);
+  assert.ok(!unsafe.includes('PRIVATE'));
 });
 test('button presence and an invokable call action are separate diagnostic checks', () => {
   const text = diagnosticsText({ code: 'ready', diagnostics: { voiceCall: true, voiceInvoke: false, videoCall: true, videoInvoke: true } });

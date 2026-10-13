@@ -37,6 +37,7 @@ public static class WhatsAppLayoutTests {
         Check("Unicode normalization and casing preserve contact identity", WhatsAppLayout.SameName("Jos\u00E9", " JOSE\u0301 "));
         Check("distinct contacts stay distinct", !WhatsAppLayout.SameName("Mom", "Mom work"));
         Check("meaningful zero width joiners are preserved", !WhatsAppLayout.SameName("A\u200DB", "AB"));
+        Check("unrelated malformed provider names do not crash matching", !WhatsAppLayout.SameName("Mom", "broken\uD800"));
         Console.WriteLine(passed + " production selector regression checks passed");
     }
 }

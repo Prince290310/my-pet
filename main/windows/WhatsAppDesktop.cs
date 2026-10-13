@@ -11,6 +11,8 @@ namespace Shadow {
         public bool ok { get; set; }
         public string code { get; set; }
         public string stage { get; set; }
+        public string fault { get; set; }
+        public string errorNumber { get; set; }
         public WhatsAppDiagnostics diagnostics { get; set; }
     }
     public sealed class WhatsAppDiagnostics {
@@ -236,7 +238,7 @@ namespace Shadow {
         }
         static WhatsAppResult Status() {
             // Report only counters and known-control presence. Never return window titles, names or chat text.
-            var diagnostics = new WhatsAppDiagnostics { helperVersion = 4, appProcesses = RunningProcesses() };
+            var diagnostics = new WhatsAppDiagnostics { helperVersion = 5, appProcesses = RunningProcesses() };
             var result = Result(false, "helper_error");
             result.stage = "status";
             result.diagnostics = diagnostics;
@@ -272,12 +274,32 @@ namespace Shadow {
         }
         static T Wait<T>(Func<T> check, int ms) where T : class {
             var clock = Stopwatch.StartNew();
+            Exception lastStale = null;
             do {
-                T value = check();
-                if (value != null) return value;
+                try {
+                    T value = check();
+                    lastStale = null;
+                    if (value != null) return value;
+                } catch (ElementNotAvailableException exception) {
+                    // Filtering replaces WebView accessibility nodes. A later read must query new nodes.
+                    lastStale = exception;
+                } catch (COMException e) {
+                    if (!StaleProvider(e)) throw;
+                    lastStale = e;
+                }
                 Thread.Sleep(100);
             } while (clock.ElapsedMilliseconds < ms);
+            if (lastStale != null) throw lastStale;
             return null;
+        }
+        static bool StaleProvider(COMException exception) {
+            return exception.HResult == unchecked((int)0x80040201) || exception.HResult == unchecked((int)0x80010108) ||
+                exception.HResult == unchecked((int)0x800401FD) || exception.HResult == unchecked((int)0x8001010A);
+        }
+        static AutomationElement Refresh(AppWindow window) {
+            if (!IsWindow(window.Handle)) throw new Failure("unavailable");
+            window.Root = AutomationElement.FromHandle(window.Handle);
+            return window.Root;
         }
         static void AssertWindow(AppWindow window) {
             uint id;
@@ -338,8 +360,17 @@ namespace Shadow {
         static string Read(AutomationElement edit) {
             object raw;
             string value;
-            if (edit.TryGetCurrentPattern(ValuePattern.Pattern, out raw)) value = ((ValuePattern)raw).Current.Value;
-            else if (edit.TryGetCurrentPattern(TextPattern.Pattern, out raw)) value = ((TextPattern)raw).DocumentRange.GetText(-1);
+            try {
+                if (edit.TryGetCurrentPattern(ValuePattern.Pattern, out raw)) {
+                    value = ((ValuePattern)raw).Current.Value;
+                    return (value ?? "").Replace("\r\n", "\n").TrimEnd('\r', '\n');
+                }
+            } catch (InvalidOperationException) {
+                // Some WebView fields advertise ValuePattern but only implement TextPattern reading.
+            } catch (COMException exception) {
+                if (exception.HResult != unchecked((int)0x80040204) && exception.HResult != unchecked((int)0x80004001)) throw;
+            }
+            if (edit.TryGetCurrentPattern(TextPattern.Pattern, out raw)) value = ((TextPattern)raw).DocumentRange.GetText(-1);
             else throw new Failure("controls_unavailable");
             return (value ?? "").Replace("\r\n", "\n").TrimEnd('\r', '\n');
         }
@@ -404,6 +435,7 @@ namespace Shadow {
             var rows = new List<AutomationElement>();
             var box = search.Current.BoundingRectangle;
             foreach (AutomationElement e in Elements(root)) {
+                try {
                 if (!Same(e.Current.Name, contact) || !Usable(e)) continue;
                 var rect = e.Current.BoundingRectangle;
                 if (rect.Top < box.Bottom || rect.Left > box.Right) continue;
@@ -412,6 +444,11 @@ namespace Shadow {
                 bool duplicate = false;
                 foreach (var previous in rows) if (Automation.Compare(previous, row)) duplicate = true;
                 if (!duplicate) rows.Add(row);
+                } catch (ElementNotAvailableException) {
+                    // A recycled result does not invalidate the remaining fresh rows.
+                } catch (COMException exception) {
+                    if (!StaleProvider(exception)) throw;
+                }
             }
             return rows;
         }
@@ -504,26 +541,43 @@ namespace Shadow {
                 if (search == null) return finish(false, "controls_unavailable");
                 if (ModalOpen(root)) return finish(false, "dialog_open");
                 if (CallActive()) return finish(false, "call_active");
-                stage = "search";
+                stage = "search_type";
                 double sidebarRight = search.Current.BoundingRectangle.Right;
                 double headerBottom = search.Current.BoundingRectangle.Bottom + 24;
                 Write(window, search, contact);
+                stage = "search_verify";
                 if (Wait(() => {
+                    root = Refresh(window);
                     AssertWindow(window);
+                    search = Find(root, ControlType.Edit, SearchNames);
+                    if (search == null) return null;
                     return Read(search) == contact ? "verified" : null;
-                }, 1200) == null) return finish(false, "search_unverified");
+                }, 2500) == null) return finish(false, "search_unverified");
+                sidebarRight = search.Current.BoundingRectangle.Right;
+                headerBottom = search.Current.BoundingRectangle.Bottom + 24;
                 // Wait for filtering to settle before accepting an exact, unique result.
                 Thread.Sleep(800);
+                stage = "search_results";
                 List<AutomationElement> matches = null;
-                Wait(() => { matches = Matches(root, search, contact); return matches.Count > 0 ? matches : null; }, 3500);
+                Func<List<AutomationElement>> results = () => {
+                    root = Refresh(window);
+                    AssertWindow(window);
+                    search = Find(root, ControlType.Edit, SearchNames);
+                    if (search == null || Read(search) != contact) return null;
+                    matches = Matches(root, search, contact);
+                    return matches.Count > 0 ? matches : null;
+                };
+                Wait(results, 3500);
                 if (matches == null || matches.Count == 0) return finish(false, "not_found");
                 Thread.Sleep(250);
-                matches = Matches(root, search, contact);
+                matches = Wait(results, 1500);
+                if (matches == null) return finish(false, "not_found");
                 if (matches.Count != 1) return finish(false, matches.Count > 1 ? "ambiguous" : "not_found");
                 stage = "select_chat";
                 bool clicked = Activate(window, matches[0]);
                 stage = "verify_chat";
                 Func<string> verify = () => {
+                    root = Refresh(window);
                     AssertWindow(window);
                     if (ModalOpen(root)) throw new Failure("dialog_open");
                     return HeaderMatches(root, contact, sidebarRight, headerBottom) ? "verified" : null;
@@ -586,7 +640,14 @@ namespace Shadow {
                 bool calling = Wait(() => CallActive() ? "calling" : null, 4500) != null;
                 return finish(calling, calling ? "calling" : "call_uncertain");
             } catch (Failure e) { return finish(false, dispatched ? (action == "send" ? "send_uncertain" : "call_uncertain") : e.Code); }
-            catch { return finish(false, dispatched ? (action == "send" ? "send_uncertain" : "call_uncertain") : "helper_error"); }
+            catch (Exception exception) {
+                var result = finish(false, dispatched ? (action == "send" ? "send_uncertain" : "call_uncertain") : "helper_error");
+                // Only the exception category and numeric HRESULT leave this process, never its message/stack.
+                result.fault = exception is ElementNotAvailableException ? "element_unavailable" : exception is COMException ? "provider_error" :
+                    exception is InvalidOperationException ? "unsupported_operation" : exception is ArgumentException ? "invalid_argument" : "other";
+                result.errorNumber = exception.HResult.ToString("X8");
+                return result;
+            }
         }
     }
 }

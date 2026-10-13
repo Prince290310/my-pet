@@ -25,7 +25,9 @@ namespace Shadow {
                 if (c == '\u200E' || c == '\u200F' || (c >= '\u202A' && c <= '\u202E') || (c >= '\u2066' && c <= '\u2069')) continue;
                 clean.Append(c);
             }
-            return clean.ToString().Trim().Normalize(NormalizationForm.FormC);
+            string text = clean.ToString().Trim();
+            try { return text.Normalize(NormalizationForm.FormC); }
+            catch (ArgumentException) { return text; } // An unrelated malformed provider label must not abort a search.
         }
         public static bool SidebarRow(WhatsAppBounds row, WhatsAppBounds label, WhatsAppBounds search, WhatsAppBounds window) {
             if (!row.Valid || !label.Valid || !search.Valid || !window.Valid) return false;

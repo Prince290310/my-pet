@@ -20,6 +20,8 @@ $cases = @(
   @{ mode = 'no-editor'; action = 'call'; kind = 'voice'; code = 'calling'; marker = 'voice' },
   @{ mode = 'no-editor'; action = 'call'; kind = 'video'; code = 'calling'; marker = 'video' },
   @{ mode = 'editor'; action = 'send'; kind = ''; code = 'sent'; marker = 'sent:Literal +{ENTER}' },
+  @{ mode = 'recycled-search-no-editor'; action = 'call'; kind = 'voice'; code = 'calling'; marker = 'voice' },
+  @{ mode = 'recycled-search-editor'; action = 'send'; kind = ''; code = 'sent'; marker = 'sent:Literal +{ENTER}' },
   @{ mode = 'wrong-header'; action = 'call'; kind = 'voice'; code = 'chat_not_opened'; marker = '' }
 )
 try {
@@ -42,6 +44,7 @@ try {
       if ($result.code -ne $case.code) { throw "Fixture $($case.mode)/$($case.action)/$($case.kind) returned $($result.code) at $($result.stage), expected $($case.code)" }
       $events = [IO.File]::ReadAllText($log)
       if (-not $events.Contains('search-keypress')) { throw 'Search was not entered through native keyboard events' }
+      if ($case.mode.StartsWith('recycled-search') -and -not $events.Contains('search-recycled')) { throw 'Fixture did not replace its search accessibility element' }
       if (-not $events.Contains('opened')) { throw 'Native helper did not activate the custom search-result row' }
       if ($case.marker -and -not $events.Contains($case.marker)) { throw 'Requested fixture action did not happen' }
       if ($case.action -eq 'send' -and -not $events.Contains("sent:$message`n")) { throw 'Literal Unicode/multiline text was not preserved' }

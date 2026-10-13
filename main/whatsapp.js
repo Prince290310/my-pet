@@ -65,7 +65,8 @@ const ERRORS = {
 };
 
 const STAGES = { validation: 'validating command', status: 'checking app', discover: 'finding app', focus: 'focusing WhatsApp',
-  search: 'searching chats', select_chat: 'opening chat', verify_chat: 'verifying recipient', message_input: 'reading message input',
+  search: 'searching chats', search_type: 'entering chat search', search_verify: 'checking search text', search_results: 'reading search results',
+  select_chat: 'opening chat', verify_chat: 'verifying recipient', message_input: 'reading message input',
   send_button: 'finding Send button', send_message: 'sending message', confirm_send: 'checking send result',
   call_button: 'finding call button', start_call: 'starting call', confirm_call: 'checking call result' };
 
@@ -99,7 +100,7 @@ class WhatsAppControl {
     if (task.cancelled) return { ok: false, code: 'stopped' };
     if (this.hooks.run) return this.hooks.run(request, task);
     return new Promise(resolve => {
-      const child = (this.hooks.execFile || execFile)('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-STA', '-ExecutionPolicy', 'Bypass', '-File', nativeHelperPath()],
+      const child = (this.hooks.execFile || execFile)('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-MTA', '-ExecutionPolicy', 'Bypass', '-File', nativeHelperPath()],
         { windowsHide: true, timeout: 35000, maxBuffer: 64 * 1024, encoding: 'utf8' }, (err, stdout) => {
           task.child = null;
           if (task.cancelled) return resolve({ ok: false, code: 'stopped' });
@@ -139,7 +140,10 @@ class WhatsAppControl {
     if (result && result.code === 'busy') return 'A WhatsApp command is already running. Wait for it or say "stop whatsapp".';
     const error = ERRORS[result && result.code] || ERRORS.helper_error;
     const stage = result && Object.hasOwn(STAGES, result.stage) ? STAGES[result.stage] : null;
-    return error + (stage && ['send', 'call'].includes(request.action) ? `\nStopped while ${stage}. Result: ${Object.hasOwn(ERRORS, result.code) ? result.code : 'helper_error'}.` : '');
+    const faults = ['element_unavailable', 'provider_error', 'unsupported_operation', 'invalid_argument', 'other'];
+    const fault = result && faults.includes(result.fault) && /^[0-9A-F]{8}$/.test(result.errorNumber || '')
+      ? `\nWindows detail: ${result.fault} (${result.errorNumber}).` : '';
+    return error + (stage && ['send', 'call'].includes(request.action) ? `\nStopped while ${stage}. Result: ${Object.hasOwn(ERRORS, result.code) ? result.code : 'helper_error'}.${fault}` : '');
   }
   async run(cmd) {
     if (cmd.type === 'help') return HELP;
