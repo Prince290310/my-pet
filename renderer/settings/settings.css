@@ -71,6 +71,10 @@ h2 {
   align-items: center;
   gap: 10px;
 }
+.news-topics {
+  flex-wrap: wrap;
+  gap: 4px 18px;
+}
 section.hud h3 {
   margin: 22px 0 10px;
   padding-top: 14px;

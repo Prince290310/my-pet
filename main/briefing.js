@@ -144,6 +144,43 @@ function hello(now) {
   return h < 5 ? 'Up late' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
 }
 
+/** Text the voice reads: no emoji or symbols, "6h 04m" said properly. */
+function sayable(t) {
+  return String(t || '')
+    .replace(/\p{Extended_Pictographic}|\uFE0F|\u200D/gu, '')
+    .replace(/\b(\d+)h (\d+)m\b/g, (_m, h, mm) => `${Number(h)} hour${h === '1' ? '' : 's'} ${Number(mm)} minute${mm === '01' ? '' : 's'}`)
+    .replace(/\b(\d+)m\b/g, '$1 minutes')
+    .replace(/\((\d+)%\)/g, '$1 percent')
+    .replace(/(\d+)%/g, '$1 percent')
+    .replace(/[()]/g, '')
+    .replace(/\s*[·•|]\s*/g, ', ')
+    .replace(/\s*[–—]\s*/g, ' to ')
+    .replace(/…/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+/** "a, b and c" */
+function list(items) {
+  const a = items.filter(Boolean);
+  return a.length <= 1 ? a.join('') : `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}`;
+}
+const NEWS_ICON = { banking: '🏦', india: '📰', world: '🌍', topic: '⭐' };
+const NEWS_SAID = { banking: 'From RBI and banking', india: 'In India', world: 'Around the world', topic: 'On your topic' };
+/** News sections for a report (each headline clickable) + what the voice says for them. */
+function newsParts(news, sectionsBefore, per = 3) {
+  const sections = [];
+  const speech = [];
+  if (!news || !news.ok) return { sections, speech };
+  for (const sec of news.sections) {
+    const items = sec.items.slice(0, sec.key === 'banking' ? per + 1 : per);
+    if (!items.length) continue;
+    const index = sectionsBefore + sections.length;
+    sections.push({ title: sec.key === 'topic' ? sec.label : `NEWS · ${sec.label}`, wide: true, items: items.map((i) => ({ icon: NEWS_ICON[sec.key] || '📰', text: short(i.title, 110), when: short(i.source, 22), tone: '', url: i.url })) });
+    speech.push({ section: index, text: `${sec.key === 'topic' ? `On ${sec.label.toLowerCase()}` : NEWS_SAID[sec.key]}: ${items.map((i) => `${i.title}.`).join(' ')}` });
+  }
+  return { sections, speech };
+}
+
 /** Today's calendar events still worth mentioning, sorted. */
 function eventsBetween(calendar, from, to) {
   if (!calendar || !calendar.url || !calendar.url()) return [];
@@ -161,7 +198,7 @@ function examLines(exams, now) {
 }
 
 /** Morning (or any-time) briefing: the day ahead. */
-function buildBrief({ now = Date.now(), tasks, exams, calendar, weather, sys = {}, studyTime = '18:00', updateReady = false }) {
+function buildBrief({ now = Date.now(), tasks, exams, calendar, weather, sys = {}, studyTime = '18:00', updateReady = false, news = null }) {
   const endOfDay = new Date(now).setHours(23, 59, 59, 999);
   const events = eventsBetween(calendar, now, endOfDay);
   const ex = examLines(exams, now);
@@ -212,7 +249,37 @@ function buildBrief({ now = Date.now(), tasks, exams, calendar, weather, sys = {
   let summary = `${hello(now)}, Prince. ${parts.length ? `${parts.join(', ').replace(/^./, (c) => c.toUpperCase())}.` : 'Your schedule is clear today.'}`;
   if (w) summary += ` ${w.place}: ${w.now.temp}°C, ${w.now.text.toLowerCase()}${w.today.rain >= 50 ? ' - rain likely, take an umbrella' : ''}.`;
   const d = new Date(now);
-  return { kind: 'brief', title: 'MISSION BRIEFING', sub: `${DAYS[d.getDay()]} · ${d.getDate()} ${MONTHS[d.getMonth()]}`, summary, tiles: tiles.slice(0, 5), sections };
+
+  // what J.A.R.V.I.S. says, section by section (the HUD highlights each one as she reads it)
+  const speech = [{ section: -1, text: `${hello(now)}, Prince. Here's your briefing for ${DAYS[d.getDay()].charAt(0)}${DAYS[d.getDay()].slice(1).toLowerCase()}, ${d.getDate()} ${['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][d.getMonth()]}.` }];
+  if (w) speech.push({ section: -1, text: `In ${w.place} it's ${w.now.temp} degrees and ${w.now.text.toLowerCase()}${w.today.min !== null && w.today.min !== undefined ? `, between ${w.today.min} and ${w.today.max} today` : ''}${w.today.rain !== null && w.today.rain !== undefined ? `, with a ${w.today.rain} percent chance of rain${w.today.rain >= 50 ? ', so carry an umbrella' : ''}` : ''}.` });
+  speech.push({ section: 0, text: schedule.length ? `On your schedule: ${list(schedule.slice(0, 6).map((i) => `${i.icon === '📚' ? 'study time for ' : ''}${i.text}${i.when && i.when !== 'ALL DAY' ? ` at ${i.when}` : ''}`))}.` : 'Your schedule is clear today.' });
+  if (ex.next) speech.push({ section: 0, text: `Your ${ex.next.subject} exam is ${ex.next.countdown}.${ex.later && ex.later.length ? ` Then ${list(ex.later.map((e) => `${e.subject} in ${e.days} days`))}.` : ''}` });
+  if (todos.length) speech.push({ section: sections.findIndex((x) => x.title.startsWith('OBJECTIVES')), text: `You have ${plural(todos.length, 'to-do')}: ${list(todos.slice(0, 4).map((t) => t.text))}.` });
+  const said = heads.filter((h) => !(h.icon === '☔' && w)); // the weather line already said "umbrella"
+  if (said.length) speech.push({ section: sections.findIndex((x) => x.title === 'HEADS-UP'), text: `Heads up: ${said.map((h) => `${h.text}.`).join(' ')}` });
+  const n = newsParts(news, sections.length);
+  sections.push(...n.sections);
+  if (n.speech.length) speech.push({ section: n.speech[0].section, text: "Now, today's news." }, ...n.speech);
+  speech.push({ section: -1, text: new Date(now).getHours() < 17 ? "That's your briefing. Have a great day, Prince." : "That's your briefing, Prince." });
+  return { kind: 'brief', title: 'MISSION BRIEFING', sub: `${DAYS[d.getDay()]} · ${d.getDate()} ${MONTHS[d.getMonth()]}`, summary, tiles: tiles.slice(0, 5), sections, speech: speech.map((x) => ({ ...x, text: sayable(x.text) })) };
+}
+
+/** "news" / "rbi news": just the headlines. */
+function buildNews({ now = Date.now(), news }) {
+  const d = new Date(now);
+  const n = newsParts(news, 0, 5);
+  const sections = n.sections.length ? n.sections : [{ title: 'NEWS', wide: true, items: [{ icon: '📡', text: news && news.ok ? 'No fresh headlines right now' : "Couldn't reach the news right now - check the internet", when: '', tone: news && news.ok ? '' : 'bad' }] }];
+  const count = n.sections.reduce((k, x) => k + x.items.length, 0);
+  return {
+    kind: 'news',
+    title: 'NEWS BRIEFING',
+    sub: `${DAYS[d.getDay()]} · ${d.getDate()} ${MONTHS[d.getMonth()]} · ${clock12(now)}`,
+    summary: count ? `${plural(count, 'headline')} from the last day${n.sections.some((x) => /BANKING/.test(x.title)) ? ', RBI and banking first' : ''}. Click one to read it.` : sections[0].items[0].text + '.',
+    tiles: [],
+    sections,
+    speech: (n.speech.length ? [{ section: -1, text: "Here's the latest news, Prince." }, ...n.speech] : [{ section: -1, text: sections[0].items[0].text }]).map((x) => ({ ...x, text: sayable(x.text) })),
+  };
 }
 
 /** The last 12 hours, and what's next. */
@@ -269,12 +336,19 @@ function buildDebrief({ now = Date.now(), from = now - 12 * HOUR, log, tasks, ex
   else if (done.length >= 3) summary += ' Strong work, Prince.';
   else if (open.length) summary += ` ${plural(open.length, 'objective')} still open - pick one for next.`;
   if (next.length && next[0].when) summary += ` Next up: ${next[0].text} at ${next[0].when}.`;
-  return { kind: 'debrief', title: 'MISSION DEBRIEF', sub: `LAST 12 HOURS · ${clock12(from)} – ${clock12(now)}`, summary, tiles, sections };
+  const speech = [
+    { section: -1, text: `Here's your debrief for the last 12 hours, Prince. You were at the PC for ${duration(mins)}${reminded.length ? `, and I delivered ${plural(reminded.length, 'reminder')}` : ''}.` },
+    { section: 0, text: completed.length ? `Completed: ${list(completed.slice(-5).map((c) => c.text))}.` : 'Nothing was ticked off in these 12 hours.' },
+    { section: 1, text: open.length ? `Still open: ${list(open.slice(0, 3).map((t) => t.text))}.` : 'All your objectives are clear.' },
+    { section: 2, text: next.length ? `Coming up: ${list(next.slice(0, 4).map((x) => `${x.text}${x.when && x.when !== 'ALL DAY' ? ` at ${x.when}` : ''}`))}.` : 'Nothing is scheduled for the next 12 hours.' },
+    { section: -1, text: mins >= 8 * 60 ? "That's a long shift. Take a real break, Prince." : done.length >= 3 ? 'Strong work today, Prince.' : "That's all for now, Prince." },
+  ];
+  return { kind: 'debrief', title: 'MISSION DEBRIEF', sub: `LAST 12 HOURS · ${clock12(from)} – ${clock12(now)}`, summary, tiles, sections, speech: speech.map((x) => ({ ...x, text: sayable(x.text) })) };
 }
 
 /** A report as a phone message. */
 function reportText(r) {
-  const lines = [`${r.kind === 'brief' ? '☀️' : '📊'} ${r.title} - ${r.sub}`, r.summary];
+  const lines = [`${r.kind === 'brief' ? '☀️' : r.kind === 'news' ? '📰' : '📊'} ${r.title} - ${r.sub}`, r.summary];
   for (const s of r.sections) {
     lines.push('', s.title);
     for (const i of s.items) lines.push(`${i.icon} ${i.text}${i.when ? ` - ${i.when}` : ''}`);
@@ -382,4 +456,4 @@ class ReportScheduler {
   }
 }
 
-module.exports = { ActivityLog, ReportScheduler, buildBrief, buildDebrief, reportText, parseReportCommand, duration };
+module.exports = { ActivityLog, ReportScheduler, buildBrief, buildDebrief, buildNews, reportText, parseReportCommand, duration, sayable };

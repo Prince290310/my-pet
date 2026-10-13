@@ -51,6 +51,13 @@ const DEFAULTS = Object.freeze({
   hudBriefDelay: 15, // ...this many minutes after
   hudDebrief: true, // a debrief every 12 hours
   hudDebriefTime: '21:00', // ...at this time and 12 hours later
+  voiceOn: true, // J.A.R.V.I.S. reads the briefings, debriefs, news and console answers aloud
+  voiceAuto: true, // ...the automatic briefing/debrief too (not just when asked)
+  voiceName: '', // '' = a female English voice, Indian English first
+  voiceRate: 'normal', // slow | normal | fast
+  newsOn: true, // headlines in the briefing (news.js - Google News, no key)
+  newsTopics: { banking: true, india: true, world: true }, // RBI & banking, India, World
+  newsTopic: '', // one more topic to follow, e.g. "cricket"
   telegramEnabled: false, // control Shadow from your phone (telegram.js)
   telegramToken: '', // your bot's token from @BotFather (a password - stays on this PC)
   telegramChatId: 0, // the paired Telegram chat (only this one is listened to)
@@ -131,6 +138,13 @@ function validate(raw) {
     hudBriefDelay: [0, 5, 10, 15, 30, 60].includes(Number(s.hudBriefDelay)) ? Number(s.hudBriefDelay) : DEFAULTS.hudBriefDelay,
     hudDebrief: s.hudDebrief === undefined ? DEFAULTS.hudDebrief : Boolean(s.hudDebrief),
     hudDebriefTime: typeof s.hudDebriefTime === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(s.hudDebriefTime) ? s.hudDebriefTime : DEFAULTS.hudDebriefTime,
+    voiceOn: s.voiceOn === undefined ? DEFAULTS.voiceOn : Boolean(s.voiceOn),
+    voiceAuto: s.voiceAuto === undefined ? DEFAULTS.voiceAuto : Boolean(s.voiceAuto),
+    voiceName: typeof s.voiceName === 'string' ? s.voiceName.slice(0, 120) : '',
+    voiceRate: ['slow', 'normal', 'fast'].includes(s.voiceRate) ? s.voiceRate : DEFAULTS.voiceRate,
+    newsOn: s.newsOn === undefined ? DEFAULTS.newsOn : Boolean(s.newsOn),
+    newsTopics: Object.fromEntries(['banking', 'india', 'world'].map((k) => [k, s.newsTopics && typeof s.newsTopics[k] === 'boolean' ? s.newsTopics[k] : true])),
+    newsTopic: typeof s.newsTopic === 'string' ? s.newsTopic.replace(/[^\p{L}\p{N}\s&'.-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 40) : '',
     telegramEnabled: Boolean(s.telegramEnabled),
     telegramToken: typeof s.telegramToken === 'string' && /^\d{5,15}:[A-Za-z0-9_-]{30,60}$/.test(s.telegramToken.trim()) ? s.telegramToken.trim() : '',
     telegramChatId: Number.isSafeInteger(Number(s.telegramChatId)) ? Number(s.telegramChatId) : 0,

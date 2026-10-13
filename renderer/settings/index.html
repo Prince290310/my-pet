@@ -188,6 +188,34 @@
           <button type="button" id="briefNow" class="ghost">BRIEF ME NOW</button>
           <button type="button" id="debriefNow" class="ghost">DEBRIEF NOW</button>
         </div>
+
+        <h3 id="voiceTitle">J.A.R.V.I.S.'s voice</h3>
+        <label class="check"><input id="voiceOn" type="checkbox" /><i></i><span id="voiceOnLabel">Read briefings, debriefs, news and console answers aloud</span></label>
+        <label class="check"><input id="voiceAuto" type="checkbox" /><i></i>Also the automatic briefing and debrief (not only when I ask)</label>
+        <label class="field"><span>Voice</span>
+          <select id="voiceName"><option value="">Auto - a female voice (Indian English first)</option></select>
+        </label>
+        <label class="field"><span>Speed</span>
+          <select id="voiceRate"><option value="slow">Slow</option><option value="normal">Normal</option><option value="fast">Fast</option></select>
+        </label>
+        <div class="inline">
+          <button type="button" id="voiceTest" class="ghost">TEST VOICE</button>
+          <span id="voiceNote" class="note" role="status"></span>
+        </div>
+        <p class="note">Uses the voices built into Windows - free, offline. More voices: Windows Settings → Time &amp; language → Speech → Add voices (e.g. English (India)). Say <b>"stop talking"</b> or click 🔇 to stop her.</p>
+
+        <h3>News in the briefing</h3>
+        <label class="check"><input id="newsOn" type="checkbox" /><i></i>Read me the news when I'm briefed</label>
+        <div class="inline news-topics">
+          <label class="check"><input id="newsBanking" type="checkbox" /><i></i>RBI &amp; banking</label>
+          <label class="check"><input id="newsIndia" type="checkbox" /><i></i>India</label>
+          <label class="check"><input id="newsWorld" type="checkbox" /><i></i>World</label>
+        </div>
+        <label class="field"><span>Also follow</span>
+          <input id="newsTopic" maxlength="40" placeholder="e.g. cricket, stock market, ISRO" spellcheck="false" />
+        </label>
+        <p class="note">Headlines from Google News (free, no account). Say <b>"news"</b> or <b>"rbi news"</b> anytime.</p>
+        <button type="button" id="newsNow" class="ghost">NEWS NOW</button>
       </section>
 
       <section class="startup">

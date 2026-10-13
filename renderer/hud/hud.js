@@ -117,7 +117,7 @@ api.onShow((d) => {
   if (interactive) body.classList.add('held');
   on = true;
   $('c-name').textContent = head.consoleName || 'J.A.R.V.I.S.';
-  setMode(d.mode || 'hud', d.report);
+  setMode(d.mode || 'hud', d.report, d.speak);
   $('sub').textContent = head.sub;
   decode($('title'), head.title);
   setStatus('BOOTING…', '');
@@ -128,6 +128,7 @@ api.onShow((d) => {
 });
 
 api.onHide(() => {
+  stopSpeech();
   if (!on) return api.hidden();
   on = false;
   clearInterval(clockTimer);
@@ -168,21 +169,26 @@ api.onCursor((c) => {
 $('close').addEventListener('click', () => api.close());
 $('open-console').addEventListener('click', () => api.openConsole());
 $('r-ok').addEventListener('click', () => api.close());
+$('r-mute').addEventListener('click', () => stopSpeech());
+$('c-mute').addEventListener('click', () => stopSpeech());
+api.onMute(() => stopSpeech());
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') api.close();
 });
 
 // ------------------------------------------------------------------ modes: hud · jarvis · brief · debrief
 let mode = 'hud';
-function setMode(m, report) {
+function setMode(m, report, speakIt) {
   mode = m;
-  body.classList.remove('mode-hud', 'mode-jarvis', 'mode-brief', 'mode-debrief');
+  body.classList.remove('mode-hud', 'mode-jarvis', 'mode-brief', 'mode-debrief', 'mode-news');
   body.classList.add(`mode-${m}`);
   if (m !== 'jarvis') lockOff();
   if (report) renderReport(report);
+  if (report && speakIt) speak(report.speech || [], 'report');
+  else if (m !== 'jarvis') stopSpeech();
   if (m === 'jarvis') focusInput();
 }
-api.onMode(({ mode: m, report }) => setMode(m, report));
+api.onMode(({ mode: m, report, speak: speakIt }) => setMode(m, report, speakIt));
 api.onFocus(() => focusInput());
 function focusInput() {
   if (mode !== 'jarvis') return;
@@ -252,6 +258,13 @@ api.onAnswer((r) => {
   while (log.children.length > 24) log.firstChild.remove(); // keep the last few exchanges
   if (r.rect) lockOn(r.rect, r.label);
   focusInput();
+  // she says it too (sentence by sentence, so it can be stopped in between)
+  const sentences = String(r.text || '')
+    .split(/\n+|(?<=[.!?])\s+(?=[A-Z0-9"'])/)
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .map((text) => ({ section: 'answer', text, el: a }));
+  speak(sentences, 'answer');
 });
 
 api.onScan(({ phase }) => {
@@ -285,6 +298,124 @@ function lockOff() {
   $('lock').classList.remove('on');
 }
 
+// ------------------------------------------------------------------ her voice
+// The page speaks with the Windows voices (a female English one; Indian English first). If it can't,
+// main's backup voice (voice.js) reads the same lines and tells us which one it's on.
+const FEMALE = /heera|neerja|kajal|swara|ananya|zira|hazel|susan|libby|sonia|maisie|aria|jenny|michelle|ana\b|emma|ava|catherine|natasha|linda|heather|eva\b|samantha|karen|moira|tessa|veena|serena|victoria|fiona|female|woman/i;
+const MALE = /david|mark|ravi|prabhat|george|james|guy|ryan|daniel|alex\b|fred|rishi|thomas|william|brian|christopher|eric|roger|steffan|male\b/i;
+const talk = { id: 0, items: [], fallback: false };
+const synth = () => (typeof speechSynthesis === 'undefined' ? null : speechSynthesis);
+function voiceList() {
+  try {
+    return synth() ? synth().getVoices() : [];
+  } catch {
+    return [];
+  }
+}
+function pickVoice() {
+  const all = voiceList();
+  if (head.voiceName) {
+    const v = all.find((x) => x.name === head.voiceName);
+    if (v) return v;
+  }
+  const score = (v) => (FEMALE.test(v.name) ? 6 : 0) - (MALE.test(v.name) ? 6 : 0) + (/en[-_]IN/i.test(v.lang) ? 3 : /en[-_]GB/i.test(v.lang) ? 1 : 0) + (v.localService ? 1 : 0);
+  return all.filter((v) => /^en/i.test(v.lang)).sort((a, b) => score(b) - score(a))[0] || null;
+}
+function voicesReady() {
+  if (voiceList().length || !synth()) return Promise.resolve();
+  return new Promise((r) => {
+    const t = setTimeout(r, 1500);
+    synth().addEventListener('voiceschanged', () => (clearTimeout(t), r()), { once: true });
+  });
+}
+function lit(item) {
+  document.querySelectorAll('.lit').forEach((x) => x.classList.remove('lit'));
+  if (!item) return;
+  let node = null;
+  if (item.el) node = item.el;
+  else if (item.section === -1) node = $('r-summary');
+  else if (Number.isInteger(item.section)) node = document.querySelector(`#r-sections .sec[data-i="${item.section}"]`);
+  if (!node) return;
+  node.classList.add('lit');
+  if (node.closest('#r-sections')) node.scrollIntoView({ block: 'nearest', behavior: test ? 'auto' : 'smooth' });
+}
+/** Read the items aloud, one after another. A new speak() or stopSpeech() cuts it off. */
+async function speak(items, what) {
+  stopSpeech();
+  if (!head.voice || !items.length) return;
+  const id = ++talk.id;
+  talk.items = items;
+  body.classList.add('speaking');
+  api.speech('start');
+  if (test) {
+    // the self-test can't hear: note what would be said, step through it quickly
+    window.__spoken = (window.__spoken || []).concat(items.map((x) => x.text));
+    for (const item of items) {
+      if (id !== talk.id) return;
+      lit(item);
+      await new Promise((r) => setTimeout(r, window.__slowSpeech || 60));
+    }
+    return finishSpeech(id);
+  }
+  await voicesReady();
+  if (id !== talk.id) return;
+  const v = pickVoice();
+  if (!v) return backupVoice(items, id);
+  for (let i = 0; i < items.length; i++) {
+    if (id !== talk.id) return;
+    lit(items[i]);
+    const r = await sayOne(items[i].text, v);
+    if (r === 'stop' || id !== talk.id) return;
+    if (r === 'fail') return backupVoice(items.slice(i), id); // this PC's browser speech doesn't work: Windows reads it
+  }
+  finishSpeech(id);
+}
+function sayOne(text, v) {
+  return new Promise((resolve) => {
+    const u = new SpeechSynthesisUtterance(text);
+    u.voice = v;
+    u.lang = v.lang;
+    u.rate = head.voiceRate || 1;
+    u.pitch = 1.05;
+    let started = false;
+    u.onstart = () => (started = true);
+    u.onend = () => resolve('ok');
+    u.onerror = (e) => resolve(e.error === 'interrupted' || e.error === 'canceled' ? 'stop' : 'fail');
+    synth().speak(u);
+    // some PCs never start (no audio device / blocked): don't hang
+    setTimeout(() => !started && (synth().cancel(), resolve('fail')), 4000);
+  });
+}
+function backupVoice(items, id) {
+  talk.fallback = true;
+  talk.items = items;
+  api.speakFallback(items.map((x) => x.text));
+  talk.fallbackId = id;
+}
+api.onSpeechLine(({ i }) => talk.fallback && lit(talk.items[i]));
+api.onSpeechEnd(() => talk.fallback && finishSpeech(talk.fallbackId));
+function finishSpeech(id) {
+  if (id !== talk.id) return;
+  talk.fallback = false;
+  body.classList.remove('speaking');
+  lit(null);
+  api.speech('done');
+}
+function stopSpeech() {
+  const was = body.classList.contains('speaking');
+  talk.id++;
+  try {
+    if (synth()) synth().cancel();
+  } catch {
+    /* nothing to stop */
+  }
+  if (talk.fallback) api.stopFallback();
+  talk.fallback = false;
+  body.classList.remove('speaking');
+  lit(null);
+  if (was) api.speech('done');
+}
+
 // ------------------------------------------------------------------ briefing / debrief card
 function renderReport(r) {
   $('r-title').textContent = r.title;
@@ -299,14 +430,20 @@ function renderReport(r) {
     })
   );
   const secs = $('r-sections');
+  secs.scrollTop = 0;
   secs.replaceChildren(
-    ...r.sections.map((sec) => {
-      const box = el('div', 'sec');
+    ...r.sections.map((sec, i) => {
+      const box = el('div', `sec${sec.wide ? ' wide' : ''}`);
+      box.dataset.i = String(i);
       const ul = el('ul');
       for (const it of sec.items) {
-        const li = el('li', it.tone || '');
+        const li = el('li', `${it.tone || ''}${it.url ? ' link' : ''}`);
         li.append(el('i', '', it.icon), el('span', '', it.text));
         if (it.when) li.append(el('em', '', it.when));
+        if (it.url) {
+          li.title = 'Open in the browser';
+          li.addEventListener('click', () => api.openLink(it.url));
+        }
         ul.append(li);
       }
       box.append(el('h3', '', sec.title), ul);
@@ -565,6 +702,9 @@ window.__hudTest = {
     timerMs: $('timer').classList.contains('run') ? $('timer').style.getPropertyValue('--ms') : 'off',
     playing: $('music').classList.contains('playing'),
     mode,
+    speaking: body.classList.contains('speaking'),
+    spoken: window.__spoken || [],
+    lit: (() => { const x = document.querySelector('.lit'); return x ? x.dataset.i || x.id || x.className : ''; })(),
     focused: document.activeElement === $('q'),
     log: $('log').innerText,
     thinking: !!thinking,

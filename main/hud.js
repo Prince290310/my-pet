@@ -451,10 +451,11 @@ class HudDisplay extends EventEmitter {
    * Bring the HUD up on the screen the mouse is on.
    * mode: 'hud' | 'jarvis' (console, focused) | 'brief' / 'debrief' (with `report` in the centre)
    */
-  show(why = 'chat', { mode = 'hud', report = null } = {}) {
-    if (this.visible && this.ready && this.alive()) return this.switchTo(mode, report);
+  show(why = 'chat', { mode = 'hud', report = null, speak = false } = {}) {
+    if (this.visible && this.ready && this.alive()) return this.switchTo(mode, report, speak);
     this.mode = mode;
     this.report = report;
+    this.speakIt = speak;
     clearTimeout(this.closing);
     this.closing = null;
     const display = this.sensors.displayAt(this.sensors.cursor());
@@ -487,7 +488,7 @@ class HudDisplay extends EventEmitter {
       this.w.win.showInactive();
       this.w.win.setAlwaysOnTop(true, 'screen-saver');
       this.w.win.moveTop();
-      this.w.send('hud:show', { head: this.head(), test: this.test, width: wa.width, height: wa.height, mode: this.mode, report: this.report });
+      this.w.send('hud:show', { head: this.head(), test: this.test, width: wa.width, height: wa.height, mode: this.mode, report: this.report, speak: this.speakIt });
       this.focusConsole(this.mode === 'jarvis');
       this.refresh(true);
       this.startTimers();
@@ -511,6 +512,7 @@ class HudDisplay extends EventEmitter {
     this.pending = null;
     this.stopTimers();
     this.setInteractive(false);
+    this.talking = false;
     this.emit('hide', why);
     if (!this.alive()) return true;
     this.focusConsole(false);
@@ -556,16 +558,17 @@ class HudDisplay extends EventEmitter {
   fadeMs() {
     const secs = this.seconds();
     if (this.mode === 'jarvis' || !secs) return 0;
-    if (this.mode === 'brief' || this.mode === 'debrief') return Math.max(60, secs) * 1000; // time to read it
+    if (this.talking) return 0; // she's still speaking
+    if (['brief', 'debrief', 'news'].includes(this.mode)) return Math.max(60, secs) * 1000; // time to read it
     return secs * 1000;
   }
 
   /** Already up: switch what it shows (and who has the keyboard). */
-  switchTo(mode, report = null) {
+  switchTo(mode, report = null, speak = false) {
     this.mode = mode;
     if (report) this.report = report;
     if (!this.alive()) return true;
-    this.w.send('hud:mode', { mode, report: report || null });
+    this.w.send('hud:mode', { mode, report: report || null, speak });
     this.focusConsole(mode === 'jarvis');
     this.fadeIn(this.fadeMs());
     return true;
@@ -583,6 +586,15 @@ class HudDisplay extends EventEmitter {
     } else if (win.isFocusable()) {
       win.setFocusable(false);
     }
+  }
+
+  /** She started / stopped talking: stay up while she speaks, then the usual fade (30 s for a report). */
+  speaking(on) {
+    this.talking = !!on;
+    if (!this.visible) return;
+    if (on) return this.fadeIn(0);
+    if (this.mode === 'jarvis' || !this.seconds()) return;
+    this.fadeIn(['brief', 'debrief', 'news'].includes(this.mode) ? 30000 : this.fadeMs());
   }
 
   /** The AI's nicer summary arrived after the report was already up. */

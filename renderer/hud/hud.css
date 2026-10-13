@@ -1112,6 +1112,105 @@ body.mode-debrief #core {
   background: rgb(var(--c) / 0.18);
 }
 
+/* ------------------------------------------------------------------ voice: speaking wave, highlight, mute */
+.wave {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  height: 14px;
+  order: 2;
+}
+body.speaking .wave {
+  display: inline-flex;
+}
+.wave i {
+  width: 3px;
+  height: 30%;
+  background: var(--gold);
+  box-shadow: 0 0 6px rgb(255 200 87 / 0.7);
+  animation: eq 0.7s ease-in-out infinite alternate;
+}
+.wave i:nth-child(2) { animation-duration: 0.45s; }
+.wave i:nth-child(3) { animation-duration: 0.8s; }
+.wave i:nth-child(4) { animation-duration: 0.55s; }
+.wave i:nth-child(5) { animation-duration: 0.65s; }
+.mute {
+  display: none;
+}
+body.speaking .mute {
+  display: inline-block;
+}
+#c-mute {
+  order: 3;
+  font-size: 12px;
+  padding: 0 4px;
+}
+#r-mute {
+  margin-right: auto;
+  padding: 6px 12px;
+  border: 1px solid var(--dim);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  color: var(--gold);
+}
+body.speaking.mode-brief #r-mute,
+body.speaking.mode-debrief #r-mute,
+body.speaking.mode-news #r-mute {
+  display: inline-block;
+}
+.r-foot {
+  justify-content: space-between !important;
+}
+body.speaking #reticle .reactor {
+  animation: talk 0.5s ease-in-out infinite alternate;
+}
+@keyframes talk {
+  to { opacity: 0.45; }
+}
+#r-summary.lit,
+#r-sections .sec.lit {
+  position: relative;
+}
+#r-sections .sec {
+  padding: 2px 8px 4px;
+  margin: 0;
+  border-left: 2px solid transparent;
+  transition: background 0.3s, border-color 0.3s;
+}
+#r-sections .sec.lit {
+  border-left-color: var(--gold);
+  background: rgb(255 200 87 / 0.06);
+}
+#r-sections .sec.wide {
+  grid-column: 1 / -1;
+}
+#r-sections {
+  max-height: calc(84vh - 300px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--dim) transparent;
+}
+#r-sections li.link {
+  cursor: pointer;
+}
+#r-sections li.link:hover span {
+  color: var(--hud);
+  text-decoration: underline;
+}
+.ex-a.lit {
+  border-left-color: var(--gold);
+  box-shadow: -6px 0 14px -8px var(--gold);
+}
+body.mode-news #report {
+  display: block;
+  animation: reportIn 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) 0.2s both;
+}
+body.mode-news #core {
+  opacity: 0;
+  visibility: hidden;
+}
+
 /* ------------------------------------------------------------------ screen scan + target lock */
 body.capturing #visor,
 body.capturing #top,

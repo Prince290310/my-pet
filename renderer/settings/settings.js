@@ -323,6 +323,18 @@ function fill({ settings: s, appearance: theme, providers: list, startWithWindow
   $('hudDebrief').checked = s.hudDebrief;
   $('hudDebriefTime').value = s.hudDebriefTime;
   showDebriefTwin();
+  const who = hud ? hud.consoleName : 'J.A.R.V.I.S.';
+  $('voiceTitle').textContent = `${who}'s voice`;
+  $('voiceOn').checked = s.voiceOn;
+  $('voiceAuto').checked = s.voiceAuto;
+  $('voiceRate').value = s.voiceRate;
+  wantedVoice = s.voiceName;
+  fillVoices();
+  $('newsOn').checked = s.newsOn;
+  $('newsBanking').checked = s.newsTopics.banking;
+  $('newsIndia').checked = s.newsTopics.india;
+  $('newsWorld').checked = s.newsTopics.world;
+  $('newsTopic').value = s.newsTopic;
 
   providers = list;
   keys = { ...s.apiKeys };
@@ -424,6 +436,13 @@ form.addEventListener('submit', async (e) => {
       hudBriefDelay: Number($('hudBriefDelay').value),
       hudDebrief: $('hudDebrief').checked,
       hudDebriefTime: $('hudDebriefTime').value,
+      voiceOn: $('voiceOn').checked,
+      voiceAuto: $('voiceAuto').checked,
+      voiceName: $('voiceName').value,
+      voiceRate: $('voiceRate').value,
+      newsOn: $('newsOn').checked,
+      newsTopics: { banking: $('newsBanking').checked, india: $('newsIndia').checked, world: $('newsWorld').checked },
+      newsTopic: $('newsTopic').value.trim(),
       friendsMode: (form.querySelector('input[name="friendsMode"]:checked') || {}).value,
       friends: Object.fromEntries([...document.querySelectorAll('input[data-friend]')].map((b) => [b.dataset.friend, b.checked])),
       webSearch: $('webSearch').checked,
@@ -567,6 +586,49 @@ function showDebriefTwin() {
 }
 $('hudDebriefTime').addEventListener('input', showDebriefTwin);
 $('briefNow').addEventListener('click', () => window.settingsApi.reportNow('brief'));
+$('newsNow').addEventListener('click', () => window.settingsApi.reportNow('news'));
+
+// ---- her voice: the Windows voices this PC has (the HUD uses the same ones)
+let wantedVoice = '';
+const englishVoices = () => {
+  try {
+    return speechSynthesis.getVoices().filter((v) => /^en/i.test(v.lang));
+  } catch {
+    return [];
+  }
+};
+function fillVoices() {
+  const sel = $('voiceName');
+  const list = englishVoices();
+  sel.replaceChildren(
+    new Option('Auto - a female voice (Indian English first)', ''),
+    ...list.map((v) => new Option(`${v.name.replace(/^Microsoft /, '')}${v.localService ? '' : ' (online)'}`, v.name))
+  );
+  if (wantedVoice && !list.some((v) => v.name === wantedVoice)) sel.append(new Option(`${wantedVoice} (not on this PC)`, wantedVoice));
+  sel.value = wantedVoice;
+  $('voiceNote').textContent = list.length ? `${list.length} English voice${list.length === 1 ? '' : 's'} on this PC` : 'No voices found here - the HUD will use Windows\' own speech.';
+}
+try {
+  speechSynthesis.addEventListener('voiceschanged', fillVoices);
+} catch {
+  /* no speech here */
+}
+$('voiceTest').addEventListener('click', () => {
+  const list = englishVoices();
+  const name = $('voiceName').value;
+  const v = list.find((x) => x.name === name) || list.find((x) => /heera|neerja|zira|hazel|susan|aria|jenny|libby|sonia|female/i.test(x.name)) || list[0];
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance("Hello Prince. This is how I'll sound when I brief you.");
+    if (v) u.voice = v;
+    u.rate = { slow: 0.9, normal: 1, fast: 1.15 }[$('voiceRate').value] || 1;
+    u.pitch = 1.05;
+    speechSynthesis.speak(u);
+    $('voiceNote').textContent = v ? `Speaking: ${v.name.replace(/^Microsoft /, '')}` : 'Speaking with the default voice';
+  } catch {
+    $('voiceNote').textContent = 'Could not play a voice here.';
+  }
+});
 $('debriefNow').addEventListener('click', () => window.settingsApi.reportNow('debrief'));
 function keyNote(note, hud, none) {
   if (!hud || !hud.key) {

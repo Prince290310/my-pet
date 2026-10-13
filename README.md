@@ -331,6 +331,8 @@ main/            Electron main process
   hud.js           Iron Man HUD: system/mission/music/weather data, the overlay, "weather"
   jarvis.js        J.A.R.V.I.S.: the HUD console, reading the screen, target boxes
   briefing.js      the HUD's briefing (after the laptop opens) and 12-hour debrief, activity log
+  news.js          headlines for the briefing (Google News RSS: RBI & banking, India, World)
+  voice.js         J.A.R.V.I.S.'s backup voice (Windows speech) when the HUD page can't speak
   telegram.js      control Shadow from your phone through your own Telegram bot
   settings.js      settings.json load/validate/save
   tray.js          tray icon + menu
@@ -875,5 +877,24 @@ Follow-ups like `why?` or `show the steps` look at the same screenshot for 5 min
 - Screen time is counted as minutes at the PC (mouse or keyboard used in that minute). The activity
   log keeps only counts and short labels for 3 days (`%APPDATA%\Shadow\activity.json`).
 
-![Mission briefing](assets/preview/hud-briefing.png)
+### J.A.R.V.I.S.'s voice and the news
+
+**She talks.** J.A.R.V.I.S. reads the briefing, the debrief, the news and her console answers out
+loud. Each part of the card lights up as she reads it: weather, schedule, exams, objectives, heads-ups,
+then the headlines.
+- She uses a **female voice** built into Windows (free, offline), with **Indian English (Heera)** first
+  if your PC has it, then Zira, Hazel, Aria and so on. Pick another one and the speed in Settings →
+  HUD → voice (**TEST VOICE** plays a sample). More voices: Windows Settings → Time & language →
+  Speech → Add voices.
+- Say `stop talking`, click **🔇 MUTE**, or close the HUD to stop her. The HUD stays up while she
+  speaks and fades 30 seconds after she's done.
+- You can keep the automatic briefings silent and only hear the ones you ask for (Settings).
+
+**News in every briefing.** The 15-minute briefing and every `brief me` end with the day's headlines:
+**RBI & banking first**, then India and the world (Google News, free, no account), plus one topic of
+your own if you like (Settings → "Also follow", e.g. `cricket`). Click a headline to open it.
+- `news` · `rbi news` · `banking news` · `world news` show the headlines card on the HUD and read
+  it out. From the phone you get them as a message.
+
+![Mission briefing with news](assets/preview/hud-briefing.png)
 

@@ -40,7 +40,9 @@ const { ExamPlanner, parseExamCommand } = require('./exams');
 const { CatchGame, QuizRace, Scores, parseGameCommand } = require('./games');
 const { HudData, HudDisplay, parseHudCommand, HOTKEYS, JARVIS_HOTKEYS } = require('./hud');
 const { Jarvis, parseJarvisOpen, isScreenRequest, boxToWindow, consoleRules, screenRules } = require('./jarvis');
-const { ActivityLog, ReportScheduler, buildBrief, buildDebrief, reportText, parseReportCommand } = require('./briefing');
+const { ActivityLog, ReportScheduler, buildBrief, buildDebrief, buildNews, reportText, parseReportCommand } = require('./briefing');
+const { NewsFeed, parseNewsCommand } = require('./news');
+const { WindowsVoice } = require('./voice');
 const { PetWindow } = require('./petWindow');
 const { Brain } = require('./brain');
 const { createTray } = require('./tray');
@@ -913,6 +915,17 @@ function init() {
       await showReport(reportCmd.type, 'chat');
       return done1(reportCmd.type === 'brief' ? '☀️ Your briefing is up on the HUD, Prince.' : '📊 Your debrief is up on the HUD, Prince.');
     }
+    const newsCmd = parseNewsCommand(text);
+    if (newsCmd) {
+      if (origin === 'phone') return done1(reportText(await reportData('news', newsCmd.only)));
+      await showReport('news', 'chat', newsCmd.only);
+      return done1(`📰 ${newsCmd.only === 'banking' ? 'RBI & banking news' : 'The news'} is up on the HUD, Prince.`);
+    }
+    if (/^(?:(?:jarvis|shadow)[, ]+)?(?:stop talking|stop speaking|be quiet|quiet|shut up|silence|enough|mute (?:jarvis|yourself|the voice))[.!]*$/i.test(text) && hud.visible) {
+      hud.w.send('hud:mute');
+      voice.stop();
+      return done1('🔇 Okay, Prince.');
+    }
     if (parseJarvisOpen(text)) {
       if (origin === 'phone') return done1(`${consoleName()} lives in the HUD on your PC, Prince - but ask me anything right here.`);
       if (origin === 'hud') return done1("Right here, Prince. What's the mission?");
@@ -1090,7 +1103,7 @@ function init() {
   // settings window
   ipcMain.handle('settings:load', () => settingsPayload());
   ipcMain.handle('settings:save', async (_e, patch = {}) => {
-    const allowed = ['appearance', 'mainHero', 'petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat', 'morningBriefing', 'todoNudges', 'webSearch', 'searchKey', 'pcControl', 'pcCare', 'whatsappAutomation', 'whatsappCallType', 'musicService', 'startupOnWake', 'phoneFiles', 'phoneFilesScope', 'examStudyTime', 'hudHotkey', 'hudSeconds', 'hudSound', 'weatherCity', 'jarvisHotkey', 'hudBrief', 'hudBriefDelay', 'hudDebrief', 'hudDebriefTime', 'friendsMode', 'friends', 'telegramEnabled', 'telegramToken', 'telegramNotify'];
+    const allowed = ['appearance', 'mainHero', 'petName', 'scale', 'quipMinMinutes', 'quipMaxMinutes', 'sleepTimeoutMinutes', 'muteQuips', 'aiProvider', 'aiModel', 'aiBaseUrl', 'apiKeys', 'calendarUrl', 'calendarLeadMinutes', 'calendarAtStart', 'calendarInChat', 'morningBriefing', 'todoNudges', 'webSearch', 'searchKey', 'pcControl', 'pcCare', 'whatsappAutomation', 'whatsappCallType', 'musicService', 'startupOnWake', 'phoneFiles', 'phoneFilesScope', 'examStudyTime', 'hudHotkey', 'hudSeconds', 'hudSound', 'weatherCity', 'jarvisHotkey', 'hudBrief', 'hudBriefDelay', 'hudDebrief', 'hudDebriefTime', 'voiceOn', 'voiceAuto', 'voiceName', 'voiceRate', 'newsOn', 'newsTopics', 'newsTopic', 'friendsMode', 'friends', 'telegramEnabled', 'telegramToken', 'telegramNotify'];
     const clean = Object.fromEntries(Object.entries(patch).filter(([k]) => allowed.includes(k)));
     const before = settings.get('calendarUrl');
     settings.update(clean);
@@ -1193,6 +1206,9 @@ function init() {
         tutor: friends.get('sage').def.name,
         sound: settings.get('hudSound'),
         consoleName: consoleName(),
+        voice: settings.get('voiceOn'),
+        voiceName: settings.get('voiceName'),
+        voiceRate: { slow: 0.9, normal: 1, fast: 1.15 }[settings.get('voiceRate')] || 1,
       };
     },
   }));
@@ -1301,8 +1317,18 @@ function init() {
     },
   }));
   ipcMain.on('hud:console', (e) => fromHud(e) && hud.show('button', { mode: 'jarvis' }));
-  ipcMain.on('hud:report-now', (_e, kind) => ['brief', 'debrief'].includes(kind) && showReport(kind, 'settings').catch(() => {})); // Settings buttons
+  ipcMain.on('hud:report-now', (_e, kind) => ['brief', 'debrief', 'news'].includes(kind) && showReport(kind, 'settings').catch(() => {})); // Settings buttons
   ipcMain.on('hud:open-link', (e, url) => fromHud(e) && sourceUrls.has(url) && /^https?:\/\//i.test(url) && openUrl(url));
+  // her voice: the HUD page speaks; this is the backup (voice.js) and the "keep the HUD up while she talks"
+  const voice = (ctx.voice = new WindowsVoice({ hooks: ctx.voiceHooks || {} }));
+  ipcMain.on('hud:speech', (e, state) => fromHud(e) && hud.speaking(state === 'start'));
+  ipcMain.on('hud:speak-fallback', (e, lines) => {
+    if (!fromHud(e) || !Array.isArray(lines)) return;
+    const send = (ch, d) => hud.alive() && hud.w.send(ch, d);
+    if (!voice.speak(lines.map(String), { rate: settings.get('voiceRate'), onLine: (i) => send('hud:speech-line', { i }), onEnd: () => send('hud:speech-end', {}) })) send('hud:speech-end', {});
+  });
+  ipcMain.on('hud:speak-stop', (e) => fromHud(e) && voice.stop());
+  hud.on('hide', () => voice.stop());
   ipcMain.on('hud:ask', async (e, text) => {
     if (!fromHud(e) || typeof text !== 'string') return;
     let r;
@@ -1327,13 +1353,27 @@ function init() {
   // ---- the briefing (15 min after the laptop opens) and the debrief every 12 hours (briefing.js)
   const activity = (ctx.activity = new ActivityLog({ file: path.join(app.getPath('userData'), 'activity.json') }));
   setInterval(() => activity.minute(ctx.sensors.idleSeconds() < 120), 60 * 1000);
-  async function reportData(kind) {
-    const [weather, quick, slow] = await Promise.all([hudData.weather().catch(() => null), hudData.quickSystem().catch(() => ({})), hudData.slowSystem().catch(() => ({}))]);
+  const news = (ctx.news = new NewsFeed({ settings, ...(ctx.newsBases || {}) }));
+  async function reportData(kind, only = '') {
+    if (kind === 'news') return remember(buildNews({ now: Date.now(), news: await news.headlines({ only, per: 5 }).catch(() => ({ ok: false, sections: [] })) }));
+    const wantNews = kind === 'brief' && settings.get('newsOn');
+    const [weather, quick, slow, headlines] = await Promise.all([
+      hudData.weather().catch(() => null),
+      hudData.quickSystem().catch(() => ({})),
+      hudData.slowSystem().catch(() => ({})),
+      wantNews ? news.headlines({ per: 3 }).catch(() => null) : null,
+    ]);
     const base = { now: Date.now(), tasks: ctx.tasks, exams, calendar: ctx.calendar, weather, sys: { ...quick, ...slow }, studyTime: settings.get('examStudyTime'), updateReady: !!(ctx.updater && ctx.updater.ready) };
-    return kind === 'brief' ? buildBrief(base) : buildDebrief({ ...base, log: activity });
+    return remember(kind === 'brief' ? buildBrief({ ...base, news: headlines }) : buildDebrief({ ...base, log: activity }));
+  }
+  /** Headline links on the card may be opened (and only those - see hud:open-link). */
+  function remember(report) {
+    for (const sec of report.sections) for (const it of sec.items) if (it.url) sourceUrls.add(it.url);
+    return report;
   }
   /** A nicer, spoken-style summary from the AI (if there is one) replaces the built-in sentence. */
   async function polishReport(report) {
+    if (ctx.noPolish) return;
     const c = aiContext();
     if (ai.PROVIDERS[c.provider].needsKey && !c.apiKey) return;
     try {
@@ -1344,10 +1384,11 @@ function init() {
       /* keep the built-in sentence */
     }
   }
-  async function showReport(kind, why) {
-    const report = await reportData(kind);
-    hud.show(why, { mode: kind, report });
-    polishReport(report);
+  async function showReport(kind, why, only = '') {
+    const report = await reportData(kind, only);
+    const speak = settings.get('voiceOn') && (why !== 'auto' || settings.get('voiceAuto'));
+    hud.show(why, { mode: kind, report, speak });
+    if (kind !== 'news') polishReport(report);
     return report;
   }
   ctx.showReport = showReport;

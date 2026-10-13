@@ -14,6 +14,9 @@ contextBridge.exposeInMainWorld('hud', {
   openConsole: () => ipcRenderer.send('hud:console'),
   scanReady: () => ipcRenderer.send('hud:scan-ready'),
   openLink: (url) => ipcRenderer.send('hud:open-link', String(url)),
+  speech: (state) => ipcRenderer.send('hud:speech', String(state)),
+  speakFallback: (lines) => ipcRenderer.send('hud:speak-fallback', Array.isArray(lines) ? lines.map(String).slice(0, 60) : []),
+  stopFallback: () => ipcRenderer.send('hud:speak-stop'),
 
   onShow: on('hud:show'),
   onHide: on('hud:hide'),
@@ -25,4 +28,7 @@ contextBridge.exposeInMainWorld('hud', {
   onAnswer: on('hud:answer'),
   onScan: on('hud:scan'),
   onReport: on('hud:report'),
+  onSpeechLine: on('hud:speech-line'),
+  onSpeechEnd: on('hud:speech-end'),
+  onMute: on('hud:mute'),
 });
