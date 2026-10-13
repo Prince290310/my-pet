@@ -75,6 +75,7 @@ helper. See the setup below. General screen control and automatic incoming-chat 
 | `call Mom on WhatsApp` | Start a voice call by default |
 | `video call Mom on WhatsApp` | Start a video call |
 | `whatsapp status` | Check the open app without changing chats |
+| `whatsapp diagnostics` | Show app detection and accessible-control details without changing chats |
 | `stop whatsapp` | Stop the current automation command |
 
 **Default call** can be changed in Settings. A command specifying voice or video takes precedence.
@@ -92,6 +93,13 @@ Stopping cannot undo a message or call already started; check WhatsApp before re
 
 WhatsApp versions can expose different accessibility controls. Unrecognized controls or chat headers
 stop the operation, and CHECK WHATSAPP currently checks chat search, not every send/call control.
+Detection supports classic, Beta, `WhatsApp.Root` and the official Microsoft Store package, including
+native windows exposed as accessibility panes and titles containing unread counts. Commands restore
+a detected minimized main window. An open app with an inaccessible window is reported separately
+from an app that is not running, and is not relaunched.
+If a check fails, expand **Detection details** or use `whatsapp diagnostics`. These report only app/window
+counts and known-control availability; they contain no window titles, contact names or message text.
+The check does not restore windows or switch chats. Composer/call buttons may be absent if no chat is open.
 Microphone/camera permissions are managed by Windows and WhatsApp. Native automation requires
 validation against your installed Windows app; Linux tests use a fake helper and do not prove live calls work.
 

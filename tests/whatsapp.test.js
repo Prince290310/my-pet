@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { PassThrough } = require('node:stream');
-const { WhatsAppControl, parseWhatsAppCommand: parse, validContact, validMessage, nativeHelperPath } = require('../main/whatsapp');
+const { WhatsAppControl, parseWhatsAppCommand: parse, validContact, validMessage, nativeHelperPath, diagnosticsText } = require('../main/whatsapp');
 const { validate } = require('../main/settings');
 function setup(overrides = {}, hooks = {}) {
   const values = { pcControl: true, whatsappAutomation: true, whatsappCallType: 'voice', ...overrides };
@@ -137,4 +137,50 @@ test('installed apps resolve the helper outside the virtual ASAR archive', () =>
   const packaged = nativeHelperPath('C:\\Program Files\\Shadow\\resources\\app.asar\\main');
   assert.ok(packaged.includes('app.asar.unpacked'));
   assert.ok(!packaged.includes('app.asar\\main'));
+});
+test('a running app with an inaccessible window is not mistaken for a closed app or relaunched', async () => {
+  let opened = 0;
+  const { control } = setup({}, { run: async () => ({ ok: false, code: 'window_unavailable' }) });
+  control.launch = async () => { opened++; return true; };
+  assert.match(await control.run(parse('call Mom on WhatsApp')), /WhatsApp is running/);
+  assert.equal(opened, 0);
+});
+test('diagnostics remain read only when automation is disabled and never launch the app', async () => {
+  const requests = [];
+  let opened = 0;
+  const { control } = setup({ whatsappAutomation: false, pcControl: false }, { run: async request => {
+    requests.push(request);
+    return { ok: false, code: 'window_unavailable', diagnostics: {
+      helperVersion: 2, appProcesses: 3, appWindows: 0, inaccessibleWindows: 1,
+      minimized: false, search: false, composer: false, voiceCall: false, videoCall: false,
+    } };
+  } });
+  control.launch = async () => { opened++; return true; };
+  assert.deepEqual(parse('WHATSAPP DIAGNOSTICS!'), { type: 'diagnostics' });
+  const output = await control.run(parse('whatsapp diagnostics'));
+  assert.match(output, /WhatsApp is running/);
+  assert.match(output, /WhatsApp processes: 3/);
+  assert.match(output, /Inaccessible app windows: 1/);
+  assert.deepEqual(requests, [{ action: 'status' }]);
+  assert.equal(opened, 0);
+});
+test('diagnostic rendering drops titles, private data and unexpected non-scalar values', () => {
+  const output = diagnosticsText({ code: 'private contact name', diagnostics: {
+    helperVersion: 2, appProcesses: 'Private message', appWindows: -1,
+    inaccessibleWindows: { message: 'PRIVATE' }, search: 'PRIVATE',
+    composer: true, voiceCall: false, windowTitle: 'PRIVATE', chats: ['PRIVATE'],
+  } });
+  assert.match(output, /Result: helper_error/);
+  assert.match(output, /WhatsApp processes: unknown/);
+  assert.match(output, /Chat search accessible: unknown/);
+  assert.match(output, /Message input accessible: yes/);
+  assert.ok(!output.includes('PRIVATE') && !output.includes('Private') && !output.includes('private contact'));
+});
+test('a minimized app is distinguished from a closed app without triggering launch or retry', async () => {
+  let opened = 0, count = 0;
+  const { control } = setup({}, { run: async () => { count++; return { ok: false, code: 'minimized' }; } });
+  control.launch = async () => { opened++; return true; };
+  assert.match((await control.check()).text, /minimized/);
+  assert.equal(opened, 0);
+  assert.equal(count, 1);
 });

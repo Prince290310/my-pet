@@ -1143,7 +1143,10 @@ async function run(ctx, h) {
     wa.platform = 'win32';
     wa.hooks = { run: async request => {
       waCalls.push(request);
-      return { ok: true, code: request.action === 'status' ? 'ready' : request.action === 'send' ? 'sent' : 'calling' };
+      return { ok: true, code: request.action === 'status' ? 'ready' : request.action === 'send' ? 'sent' : 'calling',
+        ...(request.action === 'status' ? { diagnostics: { helperVersion: 2, appProcesses: 1, appWindows: 1,
+          inaccessibleWindows: 0, minimized: false, search: true, composer: true, voiceCall: true, videoCall: true,
+          windowTitle: 'PRIVATE CHAT NAME' } } : {}) };
     } };
     check('WhatsApp starts disabled with voice calls preferred', !settings.get('whatsappAutomation') && settings.get('whatsappCallType') === 'voice');
     let waReply = await ctx.handleMessage('message Mom on WhatsApp: hi', []);
@@ -1171,6 +1174,9 @@ async function run(ctx, h) {
     await js('document.getElementById("checkWhatsApp").click()', swWhatsApp.webContents);
     await waitFor(() => js('document.getElementById("whatsappResult").textContent.includes("accessible")', swWhatsApp.webContents), 3000);
     check('CHECK WHATSAPP performs a read-only status request', waCalls.at(-1).action === 'status' && await js('document.getElementById("whatsappResult").textContent.includes("accessible")', swWhatsApp.webContents));
+    check('Settings exposes detection details without private window titles', await js('!document.getElementById("whatsappDiagnostics").hidden && document.getElementById("whatsappDiagnosticsText").textContent.includes("WhatsApp processes: 1") && !document.getElementById("whatsappDiagnosticsText").textContent.includes("PRIVATE")', swWhatsApp.webContents));
+    waReply = await ctx.handleMessage('whatsapp diagnostics', []);
+    check('diagnostics chat commands route to read-only checks', waCalls.at(-1).action === 'status' && waReply.text.includes('Chat search accessible: yes') && !waReply.text.includes('PRIVATE'));
     let finishWa;
     wa.hooks = { run: () => new Promise(resolve => { finishWa = resolve; }) };
     const waPending = ctx.handleMessage('whatsapp send Mom: hi', []);
@@ -2251,12 +2257,15 @@ async function run(ctx, h) {
       const state = await fstate(f);
       check(`${f.def.name} uses its own humanoid sprite`, f.meta.character && state.character === f.meta.character && state.appearance === 'avengers');
       if (f.def.cosmetic) {
+        // Ambient idle/landing timers must not replace the animation under test.
+        f.clearTimers();
         for (const animation of ['idle', 'move', 'talk', 'play', 'sleep', 'arrive', 'land']) {
           f.play(animation, true);
-          await sleep(60);
-          check(`${f.def.name} ${animation} animation renders`, (await fstate(f)).anim === animation && await js('Array.from(document.getElementById("pet").getContext("2d").getImageData(0,0,32,32).data).some((v,i)=>i%4===3&&v>0)', f.win.win.webContents));
+          const rendered = await waitFor(async () => (await fstate(f)).anim === animation && await js('Array.from(document.getElementById("pet").getContext("2d").getImageData(0,0,32,32).data).some((v,i)=>i%4===3&&v>0)', f.win.win.webContents), 2000);
+          check(`${f.def.name} ${animation} animation renders`, !!rendered);
         }
         f.play('idle', true);
+        f.scheduleIdle();
       }
     }
     const { teamSlots } = require('./team-layout');

@@ -3,7 +3,7 @@
 const { execFile } = require('node:child_process');
 const path = require('node:path');
 
-const HELP = 'WhatsApp commands: "message Mom on WhatsApp: I will be home at 8", "reply to Mom on WhatsApp: Yes", "call Mom on WhatsApp", "video call Mom on WhatsApp", "whatsapp status", "stop whatsapp". Use the exact saved chat name.';
+const HELP = 'WhatsApp commands: "message Mom on WhatsApp: I will be home at 8", "reply to Mom on WhatsApp: Yes", "call Mom on WhatsApp", "video call Mom on WhatsApp", "whatsapp status", "whatsapp diagnostics", "stop whatsapp". Use the exact saved chat name.';
 const MAX_MESSAGE = 4000;
 function nativeHelperPath(base = __dirname) {
   // External PowerShell cannot read Electron's virtual app.asar filesystem.
@@ -13,6 +13,7 @@ function parseWhatsAppCommand(input) {
   const text = String(input || '').trim();
   if (/^(?:stop|cancel) whatsapp(?: automation)?[.!]?$/i.test(text)) return { type: 'stop' };
   if (/^(?:whatsapp (?:status|check)|check whatsapp)[.!]?$/i.test(text)) return { type: 'status' };
+  if (/^whatsapp diagnostics[.!]?$/i.test(text)) return { type: 'diagnostics' };
   if (/^whatsapp help[.!]?$/i.test(text)) return { type: 'help' };
   let m;
   if ((m = /^(?:(voice|video) )?call (.+?) (?:on|via|in) whatsapp[.!]?$/i.exec(text)) ||
@@ -33,11 +34,14 @@ function validMessage(s) { return typeof s === 'string' && s.trim().length > 0 &
 
 const ERRORS = {
   not_running: 'Open the WhatsApp Windows app and sign in, then try again.',
+  window_unavailable: 'WhatsApp is running, but I could not access its main window. Restore the app from the taskbar so your chats are visible, then run CHECK WHATSAPP again.',
+  minimized: 'WhatsApp is minimized. Restore it from the taskbar, then run CHECK WHATSAPP again. Sending and calling commands can restore a detected window automatically.',
   not_installed: 'I could not find the WhatsApp Windows app. Install it and sign in first.',
   multiple_windows: 'Close the extra WhatsApp windows and try again.',
   unavailable: 'WhatsApp is not ready. Keep the PC unlocked, open WhatsApp and sign in.',
   controls_unavailable: 'I cannot read the controls in this WhatsApp version. Use the English app language, update WhatsApp, then run CHECK WHATSAPP in Settings.',
   not_found: 'I could not find that exact chat name in WhatsApp. Check the saved name and try again.',
+  search_unverified: 'I could not verify the chat search text in WhatsApp. No message or call was sent.',
   ambiguous: 'More than one chat has that name. Give the intended chat a unique name in WhatsApp before trying again.',
   recipient_unverified: 'I could not verify the selected WhatsApp chat. No message or call was sent.',
   draft_exists: 'That WhatsApp chat already has an unsent draft. Send or clear it in WhatsApp, then try again.',
@@ -53,6 +57,16 @@ const ERRORS = {
   stopped: 'WhatsApp automation stopped. Check WhatsApp if a message or call had already started.',
   helper_error: 'The WhatsApp control helper could not complete the command. Open WhatsApp and run CHECK WHATSAPP in Settings.',
 };
+
+function diagnosticsText(result) {
+  const code = result && (result.code === 'ready' || Object.hasOwn(ERRORS, result.code) || result.code === 'busy') ? result.code : 'helper_error';
+  const info = result && result.diagnostics;
+  if (!info || typeof info !== 'object') return `Result: ${code}. Detection details are unavailable.`;
+  const count = key => Number.isInteger(info[key]) && info[key] >= 0 && info[key] <= 10000 ? info[key] : 'unknown';
+  const flag = key => info[key] === true ? 'yes' : info[key] === false ? 'no' : 'unknown';
+  // Whitelist scalar diagnostics: never include raw helper output, window titles, chat names or messages.
+  return `Result: ${code}\nHelper version: ${count('helperVersion')}\nWhatsApp processes: ${count('appProcesses')}\nVisible app windows: ${count('appWindows')}\nInaccessible app windows: ${count('inaccessibleWindows')}\nMinimized: ${flag('minimized')}\nChat search accessible: ${flag('search')}\nMessage input accessible: ${flag('composer')}\nVoice call button accessible: ${flag('voiceCall')}\nVideo call button accessible: ${flag('videoCall')}`;
+}
 
 class WhatsAppControl {
   constructor({ settings, platform = process.platform, hooks = {}, launch } = {}) {
@@ -105,7 +119,7 @@ class WhatsAppControl {
   async check() {
     if (this.platform !== 'win32') return { ok: false, text: 'WhatsApp Desktop automation runs on Windows.' };
     const result = await this.execute({ action: 'status' });
-    return { ok: !!result.ok, text: this.describe(result) };
+    return { ok: !!result.ok, text: this.describe(result), diagnostics: diagnosticsText(result) };
   }
   describe(result, request = {}) {
     if (result && result.ok && result.code === 'ready') return 'WhatsApp is open and its chat search is accessible. Commands are ready when WhatsApp automation is enabled.';
@@ -118,6 +132,10 @@ class WhatsAppControl {
     if (cmd.type === 'help') return HELP;
     if (cmd.type === 'stop') return this.stop();
     if (cmd.type === 'status') return (await this.check()).text;
+    if (cmd.type === 'diagnostics') {
+      const result = await this.check();
+      return result.text + (result.diagnostics ? '\n\n' + result.diagnostics : '');
+    }
     if (!this.enabled()) return 'Turn on WhatsApp Desktop automation and PC controls in Settings, then save.';
     if (this.platform !== 'win32') return 'WhatsApp Desktop automation runs on Windows.';
     if (!validContact(cmd.contact)) return 'Use an exact WhatsApp chat name, up to 120 characters, on one line.';
@@ -129,4 +147,4 @@ class WhatsAppControl {
     return this.describe(await this.execute(request, { launch: true }), request);
   }
 }
-module.exports = { WhatsAppControl, parseWhatsAppCommand, validContact, validMessage, nativeHelperPath, HELP };
+module.exports = { WhatsAppControl, parseWhatsAppCommand, validContact, validMessage, nativeHelperPath, diagnosticsText, HELP };

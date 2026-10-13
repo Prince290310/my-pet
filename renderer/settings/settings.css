@@ -158,6 +158,15 @@ select:focus {
 .test-result.bad {
   color: #ff6f91;
 }
+#whatsappDiagnostics summary {
+  color: var(--muted);
+  cursor: pointer;
+}
+#whatsappDiagnosticsText {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 13px/1.5 monospace;
+}
 input[type='number'] {
   width: 84px;
 }

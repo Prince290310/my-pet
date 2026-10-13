@@ -16,3 +16,24 @@ foreach ($request in $invalid) {
   if ($result.ok -or $result.code -ne 'helper_error') { throw 'Invalid command reached UI automation' }
 }
 'PASS: Windows accessibility helper compiles and rejects invalid commands before accessing UI'
+foreach ($name in @('WhatsApp', 'WhatsAppBeta', 'WhatsApp.Root', 'WhatsApp Desktop')) {
+  if (-not [Shadow.WhatsAppDesktop]::KnownProcessName($name)) { throw "Unrecognized WhatsApp process: $name" }
+}
+foreach ($name in @('chrome', 'msedge', 'notepad', 'WhatsAppFake')) {
+  if ([Shadow.WhatsAppDesktop]::KnownProcessName($name)) { throw 'Unrelated application accepted as WhatsApp' }
+}
+if (-not [Shadow.WhatsAppDesktop]::KnownPackage('5319275A.WhatsAppDesktop_cv1g1gvanyjgm')) { throw 'Microsoft Store package not recognized' }
+if ([Shadow.WhatsAppDesktop]::KnownPackage('Other.WhatsApp_fake')) { throw 'Unrelated package accepted' }
+'PASS: classic, root-process and Microsoft Store identities are recognized without accepting browsers'
+$candidates = @(
+  @($true, $false, $false, $false, $true), # Search identifies a window even with a changed title.
+  @($false, $true, $false, $false, $true), # A minimized main window can be restored for a command.
+  @($false, $true, $true, $false, $false), # Owned notifications are not main chat windows.
+  @($true, $true, $false, $true, $false), # A call window is not a chat target.
+  @($false, $false, $false, $false, $false)
+)
+foreach ($candidate in $candidates) {
+  $actual = [Shadow.WhatsAppDesktop]::MainWindowCandidate($candidate[0], $candidate[1], $candidate[2], $candidate[3])
+  if ($actual -ne $candidate[4]) { throw 'Incorrect main-window classification' }
+}
+'PASS: changed titles, minimized windows, notifications and call windows are classified correctly'

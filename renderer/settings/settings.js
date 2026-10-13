@@ -435,10 +435,13 @@ $('checkWhatsApp').addEventListener('click', async () => {
   button.disabled = true;
   out.className = 'test-result';
   out.textContent = 'Checking the open WhatsApp Windows app…';
+  $('whatsappDiagnostics').hidden = true;
   try {
     const result = await window.settingsApi.checkWhatsApp();
     out.textContent = result.text;
     out.classList.add(result.ok ? 'ok' : 'bad');
+    $('whatsappDiagnosticsText').textContent = result.diagnostics || '';
+    $('whatsappDiagnostics').hidden = !result.diagnostics;
   } catch { out.textContent = 'Could not check WhatsApp. Open the app and try again.'; }
   finally { button.disabled = false; }
 });
