@@ -372,7 +372,7 @@ main/            Electron main process
   reminders.js     reminder clock
   calendar.js      Google Calendar reminders (reads the secret iCal link)
   updater.js       self-update from GitHub Releases
-  tasks.js         "remind me…" reminders, to-do list, morning briefing
+  tasks.js         "remind me…" reminders, to-do list, repeating objectives/reminders, morning briefing
   search.js        internet search (Tavily / Wikipedia) + "google …"/"youtube …" commands
   apps.js          opens apps/folders/settings; lock, sleep, screenshot, volume, brightness
   friends.js       Shadow's gang: windows, jobs, playdates, display modes
@@ -572,6 +572,32 @@ Ctrl+Click Shadow and just say it. These commands work instantly, **even without
 - Reminders use the same walk-out bubble as everything else. If the PC was asleep, you still get it with
   "(was due 6:00 PM)". Reminders more than a day old are dropped.
 - Stored only on your PC in `%APPDATA%\Shadow\tasks.json`.
+
+### Repeating objectives and reminders 🔁
+
+Say it **once** and it comes back by itself - no need to add the same objective every day.
+
+| Say | What happens |
+| --- | --- |
+| `every day: study 2 hours` | goes on your objectives (to-do list, HUD mission board) every morning from 5 AM - and today too |
+| `every weekday at 7 pm: gym` | Mon-Fri objective, plus a nudge at 7 PM **only if it isn't done yet** |
+| `every mon, wed and fri: gym` · `every sunday: plan the week` · `every weekend: clean my room` | only on those days |
+| `add revise notes to my objectives every monday` · `make gym a daily objective` · `daily todo: meditate` | other ways to say it |
+| `make 2 daily` · `repeat 3 every weekday` | makes objective number 2 / 3 on your list repeat |
+| `remind me every day at 9 pm to drink water` | a ⏰ reminder at 9 PM every day |
+| `remind me every morning to take vitamins` | morning = 8 AM, afternoon = 2 PM, evening = 6 PM, night = 9 PM |
+| `remind me on mondays at 8 am to submit the form` | every Monday (`on monday` alone is one Monday only) |
+| `my repeating tasks` | the list, numbered |
+| `stop repeating 2` · `stop repeating gym` | ends one (today's copy stays on your list) |
+
+- Repeating objectives show 🔁 in your list, on the HUD mission board and in the briefing. Tick one off and
+  Shadow tells you when it's back ("🔁 Back tomorrow"). Not done today? It stays on the list - never twice.
+- `remove 2` on a repeating objective only removes today's copy; `stop repeating …` ends it.
+- If the PC was off at a reminder's time, it still comes when you're back (marked "was due 9:00 PM") -
+  unless that was more than 6 hours ago.
+- With an AI brain you can say it your own way too ("har roz subah 7 baje gym yaad dilana").
+- **Settings → Repeating tasks** lists them (STOP to end one) and adds new ones: what, objective or
+  reminder, which days, and the time.
 
 **Morning briefing:** the first time you're at the PC each day (from 5 AM), Shadow walks out with a
 **YOUR DAY** bubble: today's calendar events, how many to-dos are open, and today's reminders.

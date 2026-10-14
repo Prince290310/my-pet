@@ -227,6 +227,19 @@ function showStartup(items, loginOn) {
   $('startupLoginNote').textContent = loginOn ? '' : '⚠ "Start with Windows" (Behaviour) is off, so this only runs when you say "run my startup routine".';
 }
 
+function showRepeats(list) {
+  $('repeatList').replaceChildren(
+    ...(list && list.length
+      ? list.map((r) =>
+          li(`${r.todo ? '🔁' : '⏰'} ${r.label}`, 'STOP', async () => {
+            showRepeats(await window.settingsApi.repeatsRemove(r.id));
+          })
+        )
+      : [emptyLi('Nothing repeats yet.')])
+  );
+}
+window.settingsApi.repeatsList().then(showRepeats).catch(() => {});
+
 function showExams(list) {
   const nice = (k) => new Date(`${k}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
   $('examList').replaceChildren(
@@ -610,6 +623,20 @@ $('startupAdd').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
     e.preventDefault(); // not a form submit
     addStartup();
+  }
+});
+// ---- repeating tasks
+$('repeatAddBtn').addEventListener('click', async () => {
+  const text = $('repeatText').value.trim();
+  const kind = $('repeatKind').value;
+  if (!text) return ($('repeatMsg').textContent = 'Type what should repeat.');
+  if (kind === 'remind' && !$('repeatTime').value) return ($('repeatMsg').textContent = 'Pick the time for the reminder.');
+  const r = await window.settingsApi.repeatsAdd({ text, kind, days: $('repeatDays').value, time: $('repeatTime').value });
+  $('repeatMsg').textContent = r.reply;
+  showRepeats(r.list);
+  if (/^(?:Done|Updated)/.test(r.reply)) {
+    $('repeatText').value = '';
+    $('repeatTime').value = '';
   }
 });
 // ---- exam planner

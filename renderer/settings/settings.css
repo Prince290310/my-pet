@@ -426,6 +426,26 @@ html[data-appearance='avengers'] { --bg: #0d1726; --panel: #18283b; --ink: #f1f6
 html[data-appearance='avengers'] h2 { color: #9be9f4; }
 html[data-appearance='avengers'] header { padding-bottom: 14px; border-bottom: 2px solid #c53236; }
 
+.repeat-add {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.repeat-add #repeatText {
+  grid-column: 1 / -1;
+}
+.repeat-add input[type='time'] {
+  padding: 8px 10px;
+  border: 3px solid #07050c;
+  background: var(--field);
+  color: var(--ink);
+  font: 600 15px var(--font-pixel);
+  outline: none;
+  color-scheme: dark;
+}
+.repeat-add button {
+  justify-self: start;
+}
 .exam-add {
   display: grid;
   grid-template-columns: 1fr 1fr;

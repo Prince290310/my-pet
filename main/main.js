@@ -24,7 +24,7 @@ const { ConfigStore } = require('./config');
 const { ReminderScheduler } = require('./reminders');
 const { CalendarSync, GCAL_SETTINGS_URL } = require('./calendar');
 const { Updater } = require('./updater');
-const { TaskStore, parseCommand } = require('./tasks');
+const { TaskStore, parseCommand, parseDaySpec } = require('./tasks');
 const search = require('./search');
 const { AppLauncher, parsePcCommand, pcRequests } = require('./apps');
 const { WhatsAppControl, parseWhatsAppCommand } = require('./whatsapp');
@@ -846,6 +846,20 @@ function init() {
     const reply = exams.addFromForm({ subject: String(form.subject || ''), date: String(form.date || ''), topics: String(form.topics || '') });
     return { reply, exams: settingsPayload().exams };
   });
+  // Settings → Repeating tasks (tasks.js): the same as "every day: …" / "stop repeating 2" in the chat
+  const repeatList = () => (ctx.tasks ? ctx.tasks.repeats().map((r) => ({ id: r.id, todo: r.todo, label: ctx.tasks.describeRepeat(r) })) : []);
+  ipcMain.handle('repeats:list', () => repeatList());
+  ipcMain.handle('repeats:add', (_e, form = {}) => {
+    const d = parseDaySpec(String((form && form.days) || ''));
+    const time = typeof form.time === 'string' && /^\d{2}:\d{2}$/.test(form.time) ? form.time : '';
+    const reply = ctx.tasks.run(d ? { type: 'repeat-add', todo: form.kind !== 'remind', text: String(form.text || '').slice(0, 200), days: d.days, time } : { type: 'repeat-error', error: 'days' });
+    return { reply, list: repeatList() };
+  });
+  ipcMain.handle('repeats:remove', (_e, id) => {
+    const i = ctx.tasks.repeats().findIndex((r) => r.id === String(id));
+    if (i >= 0) ctx.tasks.stopRepeat({ n: i + 1 });
+    return repeatList();
+  });
   ipcMain.handle('exams:remove', (_e, id) => {
     exams.remove(String(id));
     return settingsPayload().exams;
@@ -1132,8 +1146,8 @@ function init() {
   }
   /** Dash the rabbit handles reminders and the to-do list. */
   function dashFor(type, reply) {
-    if (/^(?:That time|I didn't|There's no|Your list is empty|No reminders|Too many|That's too far|Add what)/.test(reply)) return;
-    const line = { remind: '📨 Noted - I\'ll deliver it!', 'todo-add': '📝 On the list!', 'todo-done': '✓ Crossed off!', 'todo-remove': '🗑️ Gone!', 'reminder-cancel': '✓ Cancelled!' }[type];
+    if (/^(?:That time|I didn't|There's no|Your list is empty|No reminders|Too many|That's too far|Add what|What time|Which days|Repeat what|More than one|I couldn't|Nothing repeats|That's \d+)/.test(reply)) return;
+    const line = { remind: '📨 Noted - I\'ll deliver it!', 'todo-add': '📝 On the list!', 'todo-done': '✓ Crossed off!', 'todo-remove': '🗑️ Gone!', 'reminder-cancel': '✓ Cancelled!', 'repeat-add': '🔁 Every time, got it!', 'repeat-stop': '✓ No more repeats!' }[type];
     if (line) friends.quickJob('dash', line, 3500);
   }
   // Dash also delivers reminders as they fire (not update notices or the morning briefing)

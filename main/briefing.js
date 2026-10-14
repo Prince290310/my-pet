@@ -236,7 +236,7 @@ function buildBrief({ now = Date.now(), tasks, exams, calendar, weather, sys = {
 
   const sections = [];
   sections.push({ title: "TODAY'S SCHEDULE", items: schedule.length ? schedule.slice(0, 6) : [{ icon: '🎉', text: 'Nothing scheduled - a free day', when: '', tone: 'good' }] });
-  if (todos.length) sections.push({ title: `OBJECTIVES · ${todos.length}`, items: todos.slice(0, 4).map((t) => ({ icon: '☐', text: short(t.text), when: '', tone: '' })) });
+  if (todos.length) sections.push({ title: `OBJECTIVES · ${todos.length}`, items: todos.slice(0, 4).map((t) => ({ icon: tasks.repeatOf && tasks.repeatOf(t) ? '🔁' : '☐', text: short(t.text), when: '', tone: '' })) });
   if (heads.length) sections.push({ title: 'HEADS-UP', items: heads });
 
   // one or two sentences, J.A.R.V.I.S. style

@@ -592,7 +592,13 @@ function renderMissions(m) {
       li.classList.add('done');
       api.todoDone(t.id);
     });
-    li.append(btn, el('span', '', t.text));
+    const label = el('span', '', t.text);
+    if (t.repeat) {
+      const tag = el('b', 'rep', '🔁'); // comes back by itself (tasks.js)
+      tag.title = 'Repeats - comes back by itself';
+      label.prepend(tag);
+    }
+    li.append(btn, label);
     todos.append(li);
   });
 

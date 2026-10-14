@@ -254,6 +254,23 @@
         <p class="note" id="startupLoginNote"></p>
       </section>
 
+      <section class="repeats">
+        <h2>Repeating tasks 🔁</h2>
+        <p class="note">Objectives that go on your list by themselves, and reminders that come back - no need to ask every day. Or tell Shadow: <b>"every day: study 2 hours"</b>, <b>"every weekday at 7 pm: gym"</b>, <b>"remind me every day at 9 pm to drink water"</b>.</p>
+        <ul id="repeatList" class="items"></ul>
+        <div class="repeat-add">
+          <input id="repeatText" maxlength="200" placeholder="What (e.g. study 2 hours)" spellcheck="false" />
+          <select id="repeatKind" aria-label="Type"><option value="todo">Objective</option><option value="remind">Reminder</option></select>
+          <select id="repeatDays" aria-label="Days">
+            <option value="daily">Every day</option><option value="weekdays">Weekdays</option><option value="weekends">Weekends</option>
+            <option value="mon">Mondays</option><option value="tue">Tuesdays</option><option value="wed">Wednesdays</option><option value="thu">Thursdays</option><option value="fri">Fridays</option><option value="sat">Saturdays</option><option value="sun">Sundays</option>
+          </select>
+          <input id="repeatTime" type="time" aria-label="Time" title="Reminder time (for an objective: a nudge if it isn't done)" />
+          <button type="button" id="repeatAddBtn" class="ghost">ADD</button>
+        </div>
+        <p class="note" id="repeatMsg" role="status"></p>
+      </section>
+
       <section class="exams">
         <h2>Exam planner</h2>
         <p class="note">Add every exam here, or tell Sage in the chat: <b>"my exams: maths 20 nov ch 1-8, physics 22 nov ch 1-5"</b> (or paste your date sheet). He plans them all together as one timetable, reminds you every day and quizzes you on that day's chapters.</p>

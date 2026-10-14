@@ -650,6 +650,12 @@ h3 span {
 #todos li.done .check svg {
   opacity: 1;
 }
+#todos li .rep {
+  margin-right: 5px;
+  font-weight: 400;
+  font-size: 10px;
+  opacity: 0.85;
+}
 #todos li.done {
   animation: struck 1.4s ease forwards;
 }

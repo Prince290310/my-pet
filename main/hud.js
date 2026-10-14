@@ -238,7 +238,7 @@ class HudData {
       exam,
       nextExams,
       event,
-      todos: open.slice(0, 5).map((t) => ({ id: t.id, text: t.text.slice(0, 70) })),
+      todos: open.slice(0, 5).map((t) => ({ id: t.id, text: t.text.slice(0, 70), repeat: !!(tasks.repeatOf && tasks.repeatOf(t)) })),
       todoCount: open.length,
       reminders: reminders.slice(0, 3).map((r) => ({ text: r.text.slice(0, 60), when: whenText(r.at, now) })),
     };

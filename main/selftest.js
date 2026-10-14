@@ -853,6 +853,38 @@ async function run(ctx, h) {
     const { TaskStore } = require('./tasks');
     const reloaded2 = new TaskStore({ file: tasksFile });
     check('to-dos and reminders are saved (survive a restart)', reloaded2.openTodos().length === 1 && reloaded2.pendingReminders().length === 1);
+    // repeating objectives / reminders (🔁) - set once, they come back by themselves
+    tr2 = await askChat('every day: study 2 hours');
+    const studyRep = tasks.repeats().find((r) => r.text === 'study 2 hours');
+    check('"every day: study 2 hours" makes a repeating objective, on today\'s list too', tr2.startsWith('Done 🔁 "study 2 hours" goes on your objectives every day') && studyRep && studyRep.todo && tasks.openTodos().some((t) => t.text === 'study 2 hours' && t.rid === studyRep.id), tr2);
+    tr2 = await askChat('remind me every day at 9 pm to drink water');
+    check('"remind me every day at 9 pm to …" makes a repeating reminder', tr2.startsWith("Done 🔁 I'll remind you every day at 9:00 PM: \"drink water\"") && tasks.repeats().some((r) => !r.todo && r.time === '21:00'), tr2);
+    tr2 = await askChat('remind me to drink water every day');
+    check('...without a time it asks for one', tr2.startsWith('What time should I remind you'), tr2);
+    tr2 = await askChat('show my list');
+    check('repeating objectives are marked 🔁 in the list', tr2 === 'Your list: 1. buy milk · 2. 🔁 study 2 hours', tr2);
+    const hudTodos = ctx.hudData.missions().todos;
+    check('...and in the HUD mission board', hudTodos.some((t) => t.text === 'study 2 hours' && t.repeat) && hudTodos.some((t) => t.text === 'buy milk' && !t.repeat), JSON.stringify(hudTodos));
+    tr2 = await askChat('my repeating tasks');
+    check('"my repeating tasks" lists both', tr2 === 'Repeating: 1. 🔁 every day - study 2 hours · 2. ⏰ every day at 9:00 PM - drink water. Stop one with "stop repeating 2".', tr2);
+    check('repeating tasks are saved (survive a restart)', new TaskStore({ file: tasksFile }).repeats().length === 2);
+    tr2 = await askChat('done 2');
+    check('ticking one off says when it comes back', tr2.includes('"study 2 hours" done. 🔁 Back tomorrow.'), tr2);
+    const nextDay = new Date();
+    nextDay.setDate(nextDay.getDate() + 1);
+    nextDay.setHours(6, 0, 0, 0);
+    const sim = new TaskStore({ clock: () => nextDay.getTime() });
+    sim.data = JSON.parse(JSON.stringify(tasks.data));
+    sim.data.reminders = []; // only the repeating ones here
+    sim.check(nextDay.getTime());
+    check('next morning it is back on the list by itself', sim.openTodos().filter((t) => t.text === 'study 2 hours').length === 1);
+    nextDay.setHours(21, 0, 30);
+    const fired9 = sim.check(nextDay.getTime());
+    check('...and the 9 PM reminder fires that day', fired9.length === 1 && fired9[0].message === 'Prince! Drink water 🔁', fired9.map((r) => r.message).join());
+    tr2 = await askChat('stop repeating 2');
+    check('"stop repeating 2" ends one', tr2 === 'Stopped ✓ "drink water" won\'t repeat any more.' && tasks.repeats().length === 1, tr2);
+    tr2 = await askChat('stop repeating study');
+    check('"stop repeating study" finds it by name', tr2.startsWith('Stopped ✓ "study 2 hours"') && tasks.repeats().length === 0, tr2);
     chatT.close();
     await waitFor(() => !h.getChatWindow(), 2000);
     quiet();
@@ -885,7 +917,7 @@ async function run(ctx, h) {
       req.on('end', () => {
         aiSeen.push(JSON.parse(body));
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ choices: [{ message: { content: `Theek hai Prince, gym time pakka!\n[[remind | ${t7} | gym]]\n[[todo add | pack gym bag]]` } }] }));
+        res.end(JSON.stringify({ choices: [{ message: { content: `Theek hai Prince, gym time pakka!\n[[remind | ${t7} | gym]]\n[[todo add | pack gym bag]]\n[[repeat todo | weekdays | 18:00 | gym workout]]` } }] }));
       });
     });
     await new Promise((r) => aiMock.listen(0, '127.0.0.1', r));
@@ -903,6 +935,11 @@ async function run(ctx, h) {
     check('AI is told the to-do list and how to set reminders', sys2.includes("Prince's to-do list") && sys2.includes('1. buy milk') && sys2.includes('[[remind |'));
     check('AI reply commands run (reminder + to-do) and stay hidden', !tr2.includes('[[') && tr2.startsWith('Theek hai Prince') && tasks.pendingReminders().some((r) => r.text === 'gym' && new Date(r.at).getHours() === 7) && tasks.openTodos().some((t) => t.text === 'pack gym bag'), tr2);
     check('...and the reply confirms the time', tr2.includes('tomorrow at 7:00 AM'), tr2);
+    const aiRep = tasks.repeats().find((r) => r.text === 'gym workout');
+    check('AI can set repeating objectives too ("har roz", "every weekday" …)', sys2.includes('[[repeat todo |') && aiRep && aiRep.todo && aiRep.time === '18:00' && aiRep.days.join() === '1,2,3,4,5' && tr2.includes('🔁 every weekday - gym workout'), tr2);
+    tasks.stopRepeat({ n: 1 });
+    const gymTodo = tasks.openTodos().findIndex((t) => t.text === 'gym workout');
+    if (gymTodo >= 0) tasks.removeTodo(gymTodo + 1); // later checks count the list
     chatT2.close();
     await waitFor(() => !h.getChatWindow(), 2000);
     await new Promise((r) => aiMock.close(r));
@@ -2159,6 +2196,23 @@ async function run(ctx, h) {
     await waitFor(() => ctx.exams.upcoming().some((e) => e.subject === 'Biology'), 3000);
     const bio = ctx.exams.upcoming().find((e) => e.subject === 'Biology');
     check('Settings → Exam planner: ADD EXAM (subject, date, "1-5")', bio && bio.topics.join() === 'Chapter 1,Chapter 2,Chapter 3,Chapter 4,Chapter 5' && bio.plan.length > 5);
+    // Settings → Repeating tasks
+    await js(`document.getElementById('repeatText').value = 'read 20 pages'; document.getElementById('repeatDays').value = 'weekdays'; document.getElementById('repeatAddBtn').click()`, swSt.webContents);
+    await waitFor(() => ctx.tasks.repeats().some((r) => r.text === 'read 20 pages'), 3000);
+    const readRep = ctx.tasks.repeats().find((r) => r.text === 'read 20 pages');
+    await waitFor(() => js('document.getElementById("repeatList").textContent.includes("read 20 pages")', swSt.webContents), 3000);
+    check('Settings → Repeating tasks: ADD an objective for weekdays', readRep && readRep.todo && readRep.days.join() === '1,2,3,4,5' && (await js('document.getElementById("repeatList").textContent', swSt.webContents)).includes('🔁 every weekday - read 20 pages'));
+    await js(`document.getElementById('repeatText').value = 'take vitamins'; document.getElementById('repeatKind').value = 'remind'; document.getElementById('repeatAddBtn').click()`, swSt.webContents);
+    await sleep(300);
+    check('...a reminder needs a time', (await js('document.getElementById("repeatMsg").textContent', swSt.webContents)) === 'Pick the time for the reminder.' && ctx.tasks.repeats().length === 1);
+    await js(`document.getElementById('repeatTime').value = '08:30'; document.getElementById('repeatDays').value = 'daily'; document.getElementById('repeatAddBtn').click()`, swSt.webContents);
+    await waitFor(() => ctx.tasks.repeats().length === 2, 3000);
+    check('...with a time it is added', ctx.tasks.repeats().some((r) => !r.todo && r.text === 'take vitamins' && r.time === '08:30') && (await js('document.getElementById("repeatList").textContent', swSt.webContents)).includes('⏰ every day at 8:30 AM - take vitamins'));
+    await js('[...document.querySelectorAll("#repeatList button")].forEach((b) => b.click())', swSt.webContents);
+    await waitFor(() => ctx.tasks.repeats().length === 0, 3000);
+    check('...and STOP ends them', ctx.tasks.repeats().length === 0);
+    const readTodo = ctx.tasks.openTodos().findIndex((t) => t.text === 'read 20 pages');
+    if (readTodo >= 0) ctx.tasks.removeTodo(readTodo + 1);
     const scopeUi = await js(`[...document.querySelectorAll('input[name="phoneFilesScope"]')].map((r) => r.value + (r.checked ? '*' : '')).join()`, swSt.webContents);
     check('Settings → Phone: "My phone can get files from" MAIN FOLDERS / WHOLE PC', scopeUi === 'folders*,pc', scopeUi);
     ctx.exams.data.exams = [];
